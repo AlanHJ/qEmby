@@ -179,7 +179,7 @@ This project is licensed under the [MIT License](LICENSE).
 - 🌗 深色 / 浅色主题切换
 - 🌐 国际化支持（中文 / 英文）
 - 🔍 支持搜索历史的媒体搜索
-- 📺 当前电视剧、电影媒体类型
+- 📺 当前支持电视剧、电影媒体类型
 - ⚡ 基于 C++20 协程的异步操作（QCoro）
 - 🪟 原生风格的自定义窗口边框（QWindowKit）
 
