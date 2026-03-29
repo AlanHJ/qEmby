@@ -57,6 +57,13 @@
 
 ## 📋 Roadmap
 
+- [x] Emby / Jellyfin media library browsing
+- [x] Built-in video player (libmpv)
+- [x] Dark / Light theme
+- [x] Internationalization (Chinese / English)
+- [x] Media search with history
+- [x] TV series & movies support
+- [x] Server administration dashboard
 - [ ] Playlist support (add/remove items)
 - [ ] Media identification & metadata refresh
 - [ ] Metadata and image editing
@@ -193,6 +200,13 @@ This project is licensed under the [MIT License](LICENSE).
 
 ## 📋 开发路线图
 
+- [x] Emby / Jellyfin 媒体库浏览
+- [x] 内置视频播放器（libmpv）
+- [x] 深色 / 浅色主题
+- [x] 国际化支持（中文 / 英文）
+- [x] 媒体搜索与搜索历史
+- [x] 电视剧、电影支持
+- [x] 服务器管理仪表盘
 - [ ] 支持添加到播放列表和从播放列表中移除
 - [ ] 支持识别来更新元数据
 - [ ] 支持修改元数据和图片
