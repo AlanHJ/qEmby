@@ -109,6 +109,7 @@
         <file>svg/player/volume-mute.svg</file>
         <file>svg/player/restore.svg</file>
         <file>svg/jellyfin.svg</file>
+        <file>svg/emby.svg</file>
         <file>svg/player/remove.svg</file>
         <file>svg/player/played.svg</file>
         <file>svg/player/unplayed.svg</file>

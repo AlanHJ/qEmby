@@ -665,14 +665,7 @@ void LoginView::refreshServerList() {
           pix.loadFromData(QByteArray::fromBase64(server.iconBase64.toUtf8()));
           iconLabel->setPixmap(pix);
         } else {
-          iconLabel->setObjectName("server-fallback-icon");
-          iconLabel->setText(server.type == ServerProfile::Emby ? "E" : "J");
-
-          
-          QFont fallbackFont = iconLabel->font();
-          fallbackFont.setPixelSize(18);
-          fallbackFont.setBold(true);
-          iconLabel->setFont(fallbackFont);
+          iconLabel->setPixmap(QPixmap(":/svg/emby.svg"));
         }
       }
 

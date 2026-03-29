@@ -1187,7 +1187,7 @@ QCoro::Task<void> HomeView::refreshProfile()
         }
         else
         {
-            m_serverIconLabel->setPixmap(QIcon(":/svg/qemby_logo.svg").pixmap(32, 32));
+            m_serverIconLabel->setPixmap(QPixmap(":/svg/emby.svg"));
         }
     }
 

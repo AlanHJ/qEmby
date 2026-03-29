@@ -74,35 +74,63 @@ QCoro::Task<ServerProfile> AuthService::login(const QString& serverUrl,
 
     QJsonObject policyObj = userObj["Policy"].toObject();
     tempProfile.isAdmin = policyObj["IsAdministrator"].toBool();
+ 
 
-    
-    try {
-        
-        QString highResIconPath = (tempProfile.type == ServerProfile::Jellyfin) 
-                                ? "/web/icon-transparent.png" 
-                                : "/web/touchicon.png";
-
-        const QByteArray highResIconBytes = co_await m_networkManager->getBytes(
-            tempProfile.url + highResIconPath, QMap<QString, QString>(),
-            requestOptions);
-        if (!highResIconBytes.isEmpty()) {
-            tempProfile.iconBase64 =
-                QString::fromUtf8(highResIconBytes.toBase64());
+    {
+        QStringList iconCandidates;
+        if (tempProfile.type == ServerProfile::Jellyfin) {
+            iconCandidates = {
+                QStringLiteral("/web/icon-transparent.png"),
+                QStringLiteral("/web/touchicon.png"),
+                QStringLiteral("/web/favicon.png"),
+                QStringLiteral("/web/favicon.ico"),
+            };
         } else {
-            const QByteArray fallbackIconBytes =
-                co_await m_networkManager->getBytes(
-                    tempProfile.url + "/web/favicon.ico",
-                    QMap<QString, QString>(), requestOptions);
-            if (!fallbackIconBytes.isEmpty()) {
-                tempProfile.iconBase64 =
-                    QString::fromUtf8(fallbackIconBytes.toBase64());
+            iconCandidates = {
+                QStringLiteral("/web/touchicon.png"),
+                QStringLiteral("/web/touchicon144.png"),
+                QStringLiteral("/web/favicon.png"),
+                QStringLiteral("/web/favicon.ico"),
+                QStringLiteral("/emby/web/touchicon.png"),
+                QStringLiteral("/emby/web/favicon.png"),
+            };
+        }
+
+        qDebug() << "[AuthService] Attempting to fetch server icon"
+                 << "| type:" << (tempProfile.type == ServerProfile::Jellyfin ? "Jellyfin" : "Emby")
+                 << "| candidates:" << iconCandidates.size();
+
+        for (const QString &iconPath : iconCandidates) {
+            try {
+                const QByteArray iconBytes = co_await m_networkManager->getBytes(
+                    tempProfile.url + iconPath, QMap<QString, QString>(),
+                    requestOptions);
+                if (!iconBytes.isEmpty()) {
+                    tempProfile.iconBase64 =
+                        QString::fromUtf8(iconBytes.toBase64());
+                    qDebug() << "[AuthService] Server icon fetched successfully"
+                             << "| path:" << iconPath
+                             << "| size:" << iconBytes.size() << "bytes";
+                    break;
+                }
+            } catch (const std::exception &e) {
+                qDebug() << "[AuthService] Icon fetch failed, trying next"
+                         << "| path:" << iconPath
+                         << "| error:" << e.what();
+            } catch (...) {
+                qDebug() << "[AuthService] Icon fetch failed (unknown error)"
+                         << "| path:" << iconPath;
             }
         }
-    } catch (...) {
-        
+
+        if (tempProfile.iconBase64.isEmpty()) {
+            qWarning() << "[AuthService] All icon fetch attempts failed"
+                       << "| url:" << tempProfile.url
+                       << "| type:" << (tempProfile.type == ServerProfile::Jellyfin ? "Jellyfin" : "Emby");
+        }
     }
 
-    
+    // 所有流程走完，落盘保存
     m_serverManager->addServer(tempProfile);
     m_serverManager->setActiveServer(tempProfile.id);
 
