@@ -34,6 +34,9 @@ compile_commands.json
 # 预编译第三方库 (请参阅 README 中的构建说明)
 libs/libmpv/
 
+# Release 构建产物
+*.zip
+
 # AI 辅助工具
 .antigravityignore
 .antigravityrules

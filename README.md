@@ -11,6 +11,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"/></a>
+  <a href="https://github.com/AlanHJ/qEmby/releases/latest"><img src="https://img.shields.io/github/v/release/AlanHJ/qEmby?include_prereleases&label=Download" alt="Release"/></a>
   <img src="https://img.shields.io/badge/Qt-6.x-green.svg" alt="Qt 6"/>
   <img src="https://img.shields.io/badge/C%2B%2B-20-orange.svg" alt="C++20"/>
   <img src="https://img.shields.io/badge/Platform-Windows-lightgrey.svg" alt="Platform: Windows"/>
