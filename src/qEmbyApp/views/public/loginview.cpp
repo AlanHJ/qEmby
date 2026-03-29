@@ -369,7 +369,7 @@ void LoginView::setupUi() {
   if (version.isEmpty())
     version = "1.0.0";
   if (orgName.isEmpty())
-    orgName = "xiaozhe";
+    orgName = "AlanHJ";
 
   auto *versionLabel =
       new QLabel(QString("%1 v%2").arg(orgName, version), this);

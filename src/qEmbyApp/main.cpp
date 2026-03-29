@@ -35,8 +35,8 @@ int main(int argc, char *argv[]) {
   QApplication a(argc, argv);
   a.setApplicationName(APP_NAME);
   a.setApplicationVersion(APP_VERSION);
-  a.setOrganizationName("xiaozhe");
-  a.setOrganizationDomain("qemby.xiaozhela.top");
+  a.setOrganizationName("AlanHJ");
+  a.setOrganizationDomain("github.com/AlanHJ/qEmby");
   a.setWindowIcon(QIcon(":/svg/qemby_logo.svg"));
 
   LanguageManager::instance()->init();

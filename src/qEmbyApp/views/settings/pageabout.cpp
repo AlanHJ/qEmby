@@ -88,15 +88,15 @@ PageAbout::PageAbout(QEmbyCore* core, QWidget *parent)
     m_versionLabel->setObjectName("AboutVersionLabel");
     m_mainLayout->addWidget(m_versionLabel);
 
-    m_authorLabel = new QLabel(tr("© 2026 qEmby Contributors. All rights reserved."), this);
+    m_authorLabel = new QLabel(tr("© 2026 AlanHJ. All rights reserved."), this);
     m_authorLabel->setAlignment(Qt::AlignCenter);
     m_authorLabel->setObjectName("AboutAuthorLabel");
     m_mainLayout->addWidget(m_authorLabel);
 
     m_linkLabel = new QLabel(this);
     m_linkLabel->setText(
-        QString("<a href=\"https://github.com/your-repo/qEmby\">%1</a> &nbsp;|&nbsp; "
-                "<a href=\"https://github.com/your-repo/qEmby/issues\">%2</a>")
+        QString("<a href=\"https://github.com/AlanHJ/qEmby\">%1</a> &nbsp;|&nbsp; "
+                "<a href=\"https://github.com/AlanHJ/qEmby/issues\">%2</a>")
             .arg(tr("GitHub Repository"))
             .arg(tr("Report an Issue"))
         );
