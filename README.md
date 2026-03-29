@@ -43,9 +43,27 @@
 - 🌗 Dark and Light theme support
 - 🌐 Internationalization support (Chinese / English)
 - 🔍 Media search with history
-- 📺 TV series, movies, and more media types
+- 📺 TV series and movies media types
 - ⚡ Asynchronous operations with C++20 coroutines (QCoro)
 - 🪟 Custom window frame with native look (QWindowKit)
+
+## 💻 Platform Support
+
+| Platform | Status |
+|---|---|
+| Windows 10/11 x64 | ✅ Supported |
+| Linux | 🚧 Planned |
+| macOS | 🚧 Planned |
+
+## 📋 Roadmap
+
+- [ ] Playlist support (add/remove items)
+- [ ] Media identification & metadata refresh
+- [ ] Metadata and image editing
+- [ ] Linux platform support
+- [ ] macOS platform support
+
+> This is a personal hobby project, developed out of interest. Contributions and feedback are welcome!
 
 ## 🛠️ Tech Stack
 
@@ -161,9 +179,27 @@ This project is licensed under the [MIT License](LICENSE).
 - 🌗 深色 / 浅色主题切换
 - 🌐 国际化支持（中文 / 英文）
 - 🔍 支持搜索历史的媒体搜索
-- 📺 电视剧、电影等多种媒体类型
+- 📺 当前电视剧、电影媒体类型
 - ⚡ 基于 C++20 协程的异步操作（QCoro）
 - 🪟 原生风格的自定义窗口边框（QWindowKit）
+
+## 💻 平台支持
+
+| 平台 | 状态 |
+|---|---|
+| Windows 10/11 x64 | ✅ 已适配 |
+| Linux | 🚧 计划中 |
+| macOS | 🚧 计划中 |
+
+## 📋 开发路线图
+
+- [ ] 支持添加到播放列表和从播放列表中移除
+- [ ] 支持识别来更新元数据
+- [ ] 支持修改元数据和图片
+- [ ] Linux 平台适配
+- [ ] macOS 平台适配
+
+> 本项目为个人兴趣开发，欢迎贡献和反馈！
 
 ## 🛠️ 技术栈
 
