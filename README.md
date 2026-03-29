@@ -27,14 +27,11 @@
 ## 📸 Screenshots
 
 <p align="center">
-  <img src="screenshots/1.png" width="45%" alt="Login"/>
   <img src="screenshots/2.png" width="45%" alt="Home"/>
-</p>
-<p align="center">
   <img src="screenshots/5.png" width="45%" alt="Detail"/>
-  <img src="screenshots/3.png" width="45%" alt="Settings"/>
 </p>
 <p align="center">
+  <img src="screenshots/3.png" width="45%" alt="Settings"/>
   <img src="screenshots/4.png" width="45%" alt="Admin Dashboard"/>
 </p>
 
@@ -148,14 +145,11 @@ This project is licensed under the [MIT License](LICENSE).
 ## 📸 应用截图
 
 <p align="center">
-  <img src="screenshots/1.png" width="45%" alt="登录"/>
   <img src="screenshots/2.png" width="45%" alt="首页"/>
-</p>
-<p align="center">
   <img src="screenshots/5.png" width="45%" alt="影片详情"/>
-  <img src="screenshots/3.png" width="45%" alt="设置"/>
 </p>
 <p align="center">
+  <img src="screenshots/3.png" width="45%" alt="设置"/>
   <img src="screenshots/4.png" width="45%" alt="管理仪表盘"/>
 </p>
 
