@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- 屏幕 -->
+  <rect x="2" y="3" width="20" height="14" rx="2"/>
+  <!-- 字幕线条（屏幕内底部） -->
+  <line x1="5" y1="11" x2="11" y2="11"/>
+  <line x1="5" y1="14" x2="19" y2="14"/>
+  <line x1="14" y1="11" x2="19" y2="11"/>
+</svg>

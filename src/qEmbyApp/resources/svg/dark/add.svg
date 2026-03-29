@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" shape-rendering="geometricPrecision">
+  <defs><style>.cls-1 { fill: none; stroke: white; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.5px; }</style></defs>
+  <line class="cls-1" x1="12" y1="5" x2="12" y2="19"/>
+  <line class="cls-1" x1="5" y1="12" x2="19" y2="12"/>
+</svg>

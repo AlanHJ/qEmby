@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- 时钟外圆 -->
+  <circle cx="12" cy="12" r="9"/>
+  <!-- 时钟指针 (表示"最近/时间") -->
+  <polyline points="12,7 12,12 15.5,14"/>
+  <!-- 右上角 "+" 号 (表示"新增") -->
+  <line x1="19" y1="2" x2="19" y2="8"/>
+  <line x1="16" y1="5" x2="22" y2="5"/>
+</svg>

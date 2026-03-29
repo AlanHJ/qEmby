@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#CBD5E1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- 服务器机架上层 -->
+  <rect x="2" y="2" width="13" height="5" rx="1"/>
+  <!-- 服务器机架下层 -->
+  <rect x="2" y="10" width="13" height="5" rx="1"/>
+  <!-- 状态灯 -->
+  <line x1="12" y1="4.5" x2="13" y2="4.5"/>
+  <line x1="12" y1="12.5" x2="13" y2="12.5"/>
+  <!-- 书签（表示"记住"，右侧独立竖向书签形状） -->
+  <path d="M18 2 L22 2 L22 22 L20 19.5 L18 22 Z"/>
+</svg>

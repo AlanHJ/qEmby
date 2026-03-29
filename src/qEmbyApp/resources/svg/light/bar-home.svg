@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <defs><style>.cls-1 { fill: none; stroke: #333333; stroke-miterlimit: 10; stroke-width: 2.5px; }</style></defs>
+  <path class="cls-1" d="M2.5,11 L12,2.5 L21.5,11 V22.5 H2.5 Z"/>
+  <polyline class="cls-1" points="9.5 22.5 9.5 12.5 14.5 12.5 14.5 22.5"/>
+</svg>

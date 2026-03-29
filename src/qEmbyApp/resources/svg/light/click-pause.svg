@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- 鼠标指针 (点击手势) -->
+  <path d="M4 4 L4 15 L7.5 12 L11 17 L13 16 L9.5 11 L14 10 Z"/>
+  <!-- 暂停符号 (右下角) -->
+  <line x1="17" y1="14" x2="17" y2="21"/>
+  <line x1="21" y1="14" x2="21" y2="21"/>
+</svg>

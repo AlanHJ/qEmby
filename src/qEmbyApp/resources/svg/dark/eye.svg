@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" shape-rendering="geometricPrecision">
+  <defs><style>.cls-1 { fill: none; stroke: white; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.5px; }</style></defs>
+  <path class="cls-1" d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+  <circle class="cls-1" cx="12" cy="12" r="3"/>
+</svg>

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- 扬声器 -->
+  <polygon points="5 9 5 15 8 15 12 19 12 5 8 9 5 9"/>
+  <!-- 语言/文字线条 -->
+  <line x1="16" y1="8" x2="22" y2="8"/>
+  <line x1="16" y1="12" x2="22" y2="12"/>
+  <line x1="17" y1="16" x2="21" y2="16"/>
+</svg>

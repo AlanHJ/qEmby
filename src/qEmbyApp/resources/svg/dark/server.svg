@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" shape-rendering="geometricPrecision">
+  <defs><style>.cls-1 { fill: none; stroke: white; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.5px; }</style></defs>
+  <rect class="cls-1" x="2" y="2" width="20" height="8" rx="2" ry="2"/>
+  <rect class="cls-1" x="2" y="14" width="20" height="8" rx="2" ry="2"/>
+  <line class="cls-1" x1="6" y1="6" x2="6.01" y2="6"/>
+  <line class="cls-1" x1="6" y1="18" x2="6.01" y2="18"/>
+</svg>

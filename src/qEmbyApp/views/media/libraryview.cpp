@@ -1,0 +1,539 @@
+#include "libraryview.h"
+#include "../../components/mediagridwidget.h"
+#include "../../components/modernsortbutton.h"
+#include <config/configstore.h>
+#include <config/config_keys.h>
+#include <services/media/mediaservice.h>
+#include <services/manager/servermanager.h>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QPushButton>
+#include <QButtonGroup>
+#include <QScrollArea>
+#include <QIcon>
+#include <QStyle>
+#include <QDebug>
+#include <QFontMetrics>
+#include "../../components/elidedlabel.h"
+#include <QPointer> 
+
+LibraryView::LibraryView(QEmbyCore* core, QWidget *parent)
+    : BaseView(core, parent),
+      m_currentMode(LibraryMode) 
+{
+    setProperty("showGlobalSearch", true);
+    setAttribute(Qt::WA_StyledBackground, true);
+    setObjectName("library-view");
+
+    auto *mainLayout = new QVBoxLayout(this);
+    mainLayout->setContentsMargins(0, 0, 0, 0);
+    mainLayout->setSpacing(0);
+
+    
+    QScrollArea* headerScrollArea = new QScrollArea(this);
+    headerScrollArea->setFrameShape(QFrame::NoFrame);
+    headerScrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    headerScrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    headerScrollArea->setWidgetResizable(true);
+
+    headerScrollArea->setStyleSheet("QScrollArea { background: transparent; border: none; } "
+                                    "QWidget#library-header-container { background: transparent; }");
+
+    headerScrollArea->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    headerScrollArea->setFixedHeight(65);
+
+    QWidget* headerContainer = new QWidget(headerScrollArea);
+    headerContainer->setObjectName("library-header-container");
+
+    auto *headerLayout = new QHBoxLayout(headerContainer);
+    headerLayout->setContentsMargins(20, 15, 20, 10);
+    headerLayout->setSpacing(20);
+    headerLayout->setAlignment(Qt::AlignVCenter);
+
+    setupTopBar(headerLayout);
+    headerScrollArea->setWidget(headerContainer);
+
+    mainLayout->addWidget(headerScrollArea);
+    
+
+    
+    m_mediaGrid = new MediaGridWidget(m_core, this);
+    mainLayout->addWidget(m_mediaGrid);
+
+    
+
+    connect(m_mediaGrid, &MediaGridWidget::itemClicked, this, [this](const MediaItem& item){
+        
+        if (item.type == "BoxSet" || item.type == "Playlist" || item.type == "Folder") {
+            Q_EMIT navigateToFolder(item.id, item.name);
+        } else if (item.type == "Person") {
+            
+            Q_EMIT navigateToPerson(item.id, item.name);
+        } else {
+            Q_EMIT navigateToDetail(item.id, item.name);
+        }
+    });
+
+    
+    
+    
+    connect(m_mediaGrid, &MediaGridWidget::playRequested, this, &BaseView::handlePlayRequested);
+    connect(m_mediaGrid, &MediaGridWidget::favoriteRequested, this, &BaseView::handleFavoriteRequested);
+    connect(m_mediaGrid, &MediaGridWidget::moreMenuRequested, this, &BaseView::handleMoreMenuRequested);
+    
+}
+
+void LibraryView::setupTopBar(QHBoxLayout* headerLayout)
+{
+    
+    
+    
+    auto* titleLayout = new QHBoxLayout();
+    titleLayout->setContentsMargins(0, 0, 0, 0);
+    titleLayout->setSpacing(8); 
+    
+
+    m_titleLabel = new ElidedLabel(this);
+    m_titleLabel->setObjectName("library-title");
+    m_titleLabel->setStyleSheet("padding: 0px;");
+    
+    m_titleLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred); 
+
+    
+    m_favBtn = new QPushButton(this);
+    m_favBtn->setObjectName("detail-fav-btn"); 
+    m_favBtn->setIcon(QIcon(":/svg/light/heart-outline.svg"));
+    m_favBtn->setIconSize(QSize(20, 20));
+    m_favBtn->setFixedSize(36, 36); 
+    m_favBtn->setCursor(Qt::PointingHandCursor);
+    m_favBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    m_favBtn->setFocusPolicy(Qt::NoFocus);
+    m_favBtn->hide(); 
+
+    
+    connect(m_favBtn, &QPushButton::clicked, this, [this]() {
+        if (!m_currentMediaItem.id.isEmpty()) {
+            handleFavoriteRequested(m_currentMediaItem);
+        }
+    });
+
+    titleLayout->addWidget(m_titleLabel);
+    titleLayout->addWidget(m_favBtn);
+    headerLayout->addLayout(titleLayout);
+
+    
+    m_tabBarWidget = new QWidget(this); 
+    auto* tabLayout = new QHBoxLayout(m_tabBarWidget);
+    tabLayout->setContentsMargins(0, 0, 0, 0);
+    tabLayout->setSpacing(8);
+
+    m_tabGroup = new QButtonGroup(this);
+    m_tabGroup->setExclusive(true);
+
+    
+    QStringList tabs = {tr("All"), tr("Recent"), tr("Playlists"), tr("Collections"), tr("Favorites"), tr("Folders")};
+    for (int i = 0; i < tabs.size(); ++i) {
+        auto* btn = new QPushButton(tabs[i], m_tabBarWidget);
+        btn->setObjectName("library-tab-btn");
+        btn->setCheckable(true);
+        m_tabGroup->addButton(btn, i);
+        tabLayout->addWidget(btn);
+    }
+    m_tabGroup->button(0)->setChecked(true);
+    connect(m_tabGroup, &QButtonGroup::idClicked, this, &LibraryView::onFilterChanged);
+
+    headerLayout->addWidget(m_tabBarWidget);
+    headerLayout->addStretch();
+
+    
+    QWidget* filterBarWidget = new QWidget(this);
+    auto* filterLayout = new QHBoxLayout(filterBarWidget);
+    filterLayout->setContentsMargins(0, 0, 0, 0);
+    filterLayout->setSpacing(10);
+
+    
+    m_sortButton = new ModernSortButton(filterBarWidget);
+    m_sortButton->setSortItems({tr("Date Added"), tr("Date Played"), tr("Title"), tr("Runtime"), tr("Premiere Date")});
+    connect(m_sortButton, &ModernSortButton::sortChanged, this, &LibraryView::onFilterChanged);
+
+    
+    m_viewSwitchBtn = new QPushButton(filterBarWidget);
+    m_viewSwitchBtn->setObjectName("icon-action-btn");
+    m_viewSwitchBtn->setCheckable(true);
+    m_viewSwitchBtn->setFixedSize(32, 32); 
+    m_viewSwitchBtn->setCursor(Qt::PointingHandCursor);
+    m_viewSwitchBtn->setToolTip(tr("Toggle View Mode"));
+    
+
+    connect(m_viewSwitchBtn, &QPushButton::clicked, this, [this](bool checked) {
+
+        m_mediaGrid->setCardStyle(checked ? MediaCardDelegate::LibraryTile : MediaCardDelegate::Poster);
+        onFilterChanged();
+    });
+
+    m_statsLabel = new QLabel(tr("0 Items"), filterBarWidget);
+    m_statsLabel->setObjectName("library-stats-label");
+    m_statsLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+
+    filterLayout->addWidget(m_sortButton);
+    filterLayout->addWidget(m_viewSwitchBtn);
+    filterLayout->addWidget(m_statsLabel);
+
+    headerLayout->addWidget(filterBarWidget);
+}
+
+
+void LibraryView::updateFavBtnState()
+{
+    m_favBtn->setProperty("isFavorite", m_isFavorite);
+    m_favBtn->setIcon(QIcon(m_isFavorite ? ":/svg/light/heart-fill.svg" : ":/svg/light/heart-outline.svg"));
+    m_favBtn->style()->unpolish(m_favBtn);
+    m_favBtn->style()->polish(m_favBtn);
+}
+
+
+QCoro::Task<void> LibraryView::loadLibrary(const QString& libraryId, const QString& libraryName)
+{
+    
+    QPointer<LibraryView> guard(this);
+
+    m_currentMode = LibraryMode;
+    m_currentLibraryId = libraryId;
+    m_currentMediaItem = MediaItem(); 
+    
+    m_titleLabel->setFullText(libraryName);
+    m_titleLabel->ensurePolished(); 
+    QFontMetrics fm(m_titleLabel->font());
+    m_titleLabel->setMaximumWidth(fm.horizontalAdvance(libraryName) + 15); 
+
+    
+    
+    
+    m_favBtn->hide();
+    m_tabBarWidget->hide();
+    m_sortButton->show();
+
+    
+    m_tabGroup->button(0)->setText(tr("All"));
+
+    m_tabGroup->blockSignals(true);
+    m_tabGroup->button(0)->setChecked(true);
+    m_tabGroup->blockSignals(false);
+
+    m_sortButton->blockSignals(true);
+    m_sortButton->setSortItems({tr("Date Added"), tr("Date Played"), tr("Title"), tr("Runtime"), tr("Premiere Date")});
+    m_sortButton->blockSignals(false);
+
+    
+    restoreSortPreference();
+
+    bool isTile = (ConfigStore::instance()->get<QString>(ConfigKeys::DefaultLibraryView, "poster") == "tile");
+    m_viewSwitchBtn->blockSignals(true);
+    m_viewSwitchBtn->setChecked(isTile);
+    m_viewSwitchBtn->blockSignals(false);
+
+    m_mediaGrid->setCardStyle(isTile ? MediaCardDelegate::LibraryTile : MediaCardDelegate::Poster);
+
+    if (!libraryId.isEmpty()) {
+        try {
+            
+            MediaItem detail = co_await m_core->mediaService()->getItemDetail(libraryId);
+            if (!guard) co_return; 
+            
+            
+            if (detail.id == m_currentLibraryId) {
+                m_currentMediaItem = detail; 
+
+                
+                
+                
+                if (detail.collectionType == "movies") {
+                    m_tabGroup->button(0)->setText(tr("Movies"));
+                } else if (detail.collectionType == "tvshows") {
+                    m_tabGroup->button(0)->setText(tr("Shows"));
+                } else if (detail.collectionType == "music") {
+                    m_tabGroup->button(0)->setText(tr("Music"));
+                } else if (detail.collectionType == "homevideos" || detail.collectionType == "photos") {
+                    m_tabGroup->button(0)->setText(tr("Videos"));
+                } else {
+                    m_tabGroup->button(0)->setText(tr("All"));
+                }
+                
+                
+                
+                
+                bool isItemFolder = (detail.type == "BoxSet" || detail.type == "Playlist" || detail.type == "Folder");
+                bool isCollectionLib = (detail.collectionType == "playlists" || detail.collectionType == "boxsets");
+                if (isItemFolder) {
+                    m_isFavorite = detail.isFavorite();
+                    updateFavBtnState();
+                    m_favBtn->show();
+                    m_tabBarWidget->hide();
+                } else if (isCollectionLib) {
+                    m_favBtn->hide();
+                    m_tabBarWidget->hide();
+                } else {
+                    m_favBtn->hide(); 
+                    if (m_currentMode == LibraryMode) {
+                        m_tabBarWidget->show();
+                    }
+                }
+            }
+        } catch (const std::exception& e) {
+            if (!guard) co_return; 
+            qDebug() << "Failed to detect library type details: " << e.what();
+        }
+    }
+
+    
+    co_await onFilterChanged();
+}
+
+
+QCoro::Task<void> LibraryView::loadPerson(const QString& personId, const QString& personName)
+{
+    
+    QPointer<LibraryView> guard(this);
+
+    m_currentMode = PersonMode;
+    m_currentPersonId = personId;
+    m_currentMediaItem = MediaItem(); 
+    
+    m_titleLabel->setFullText(personName);
+    m_titleLabel->ensurePolished(); 
+    QFontMetrics fm(m_titleLabel->font());
+    m_titleLabel->setMaximumWidth(fm.horizontalAdvance(personName) + 15);
+
+    
+    m_favBtn->hide();
+    m_tabBarWidget->hide();
+    m_sortButton->show();
+
+    m_sortButton->blockSignals(true);
+    
+    
+    m_sortButton->blockSignals(false);
+
+    
+    restoreSortPreference();
+
+    bool isTile = (ConfigStore::instance()->get<QString>(ConfigKeys::DefaultLibraryView, "poster") == "tile");
+    m_viewSwitchBtn->blockSignals(true);
+    m_viewSwitchBtn->setChecked(isTile);
+    m_viewSwitchBtn->blockSignals(false);
+
+    m_mediaGrid->setCardStyle(isTile ? MediaCardDelegate::LibraryTile : MediaCardDelegate::Poster);
+
+    
+    if (!personId.isEmpty()) {
+        try {
+            
+            MediaItem detail = co_await m_core->mediaService()->getItemDetail(personId);
+            if (!guard) co_return; 
+            
+            if (detail.id == m_currentPersonId) {
+                m_currentMediaItem = detail; 
+                m_isFavorite = detail.isFavorite();
+                updateFavBtnState();
+                m_favBtn->show();
+            }
+        } catch (const std::exception& e) {
+            if (!guard) co_return; 
+            qDebug() << "Failed to fetch person details: " << e.what();
+        }
+    }
+
+    co_await onFilterChanged();
+}
+
+
+QCoro::Task<void> LibraryView::loadFiltered(const QString& filterType, const QString& filterValue)
+{
+    QPointer<LibraryView> guard(this);
+
+    m_currentMode = FilteredMode;
+    m_filterType = filterType;
+    m_filterValue = filterValue;
+    m_currentLibraryId.clear();
+    m_currentPersonId.clear();
+    m_currentMediaItem = MediaItem();
+
+    m_titleLabel->setFullText(filterValue);
+    m_titleLabel->ensurePolished();
+    QFontMetrics fm(m_titleLabel->font());
+    m_titleLabel->setMaximumWidth(fm.horizontalAdvance(filterValue) + 15);
+
+    m_favBtn->hide();
+    m_tabBarWidget->hide();
+    m_sortButton->show();
+
+    m_sortButton->blockSignals(true);
+    m_sortButton->setSortItems({tr("Date Added"), tr("Date Played"), tr("Title"), tr("Runtime"), tr("Premiere Date")});
+    m_sortButton->blockSignals(false);
+
+    bool isTile = (ConfigStore::instance()->get<QString>(ConfigKeys::DefaultLibraryView, "poster") == "tile");
+    m_viewSwitchBtn->blockSignals(true);
+    m_viewSwitchBtn->setChecked(isTile);
+    m_viewSwitchBtn->blockSignals(false);
+
+    m_mediaGrid->setCardStyle(isTile ? MediaCardDelegate::LibraryTile : MediaCardDelegate::Poster);
+
+    co_await onFilterChanged();
+}
+
+
+QCoro::Task<void> LibraryView::onFilterChanged()
+{
+    
+    QPointer<LibraryView> guard(this);
+
+    
+    saveSortPreference();
+
+    m_mediaGrid->setItems(QList<MediaItem>());
+    m_statsLabel->setText(tr("Loading..."));
+
+    
+    QString sortBy = "SortName";
+    switch(m_sortButton->currentIndex()) {
+    case 0: sortBy = "DateCreated"; break;
+    case 1: sortBy = "DatePlayed"; break;
+    case 2: sortBy = "SortName"; break;
+    case 3: sortBy = "Runtime"; break;
+    case 4: sortBy = "PremiereDate"; break;
+    }
+    QString sortOrder = m_sortButton->isDescending() ? "Descending" : "Ascending";
+
+    try {
+        QList<MediaItem> resultItems;
+
+        
+        if (m_currentMode == PersonMode) {
+            if (m_currentPersonId.isEmpty()) co_return;
+            
+            resultItems = co_await m_core->mediaService()->getItemsByPerson(m_currentPersonId, sortBy, sortOrder);
+            
+        }
+        
+        else if (m_currentMode == FilteredMode) {
+            if (m_filterValue.isEmpty()) co_return;
+
+            QString genreFilter, tagFilter, studioFilter;
+            if (m_filterType == "Genre") genreFilter = m_filterValue;
+            else if (m_filterType == "Tag") tagFilter = m_filterValue;
+            else if (m_filterType == "Studio") studioFilter = m_filterValue;
+
+            resultItems = co_await m_core->mediaService()->getItemsByFilter(
+                genreFilter, tagFilter, studioFilter, sortBy, sortOrder);
+        } 
+        
+        else {
+            if (m_currentLibraryId.isEmpty()) co_return;
+
+            QString filters = "";
+            
+            QString includeTypes = "Movie,Series,Audio,Video";
+            bool isRecursive = true;
+
+            
+            if (m_currentMediaItem.type == "Folder") {
+                includeTypes = "";
+                sortBy = "IsFolder,SortName";
+                sortOrder = "Ascending";
+                isRecursive = false; 
+            } else if (m_currentMediaItem.type == "BoxSet" || m_currentMediaItem.type == "Playlist"
+                    || m_currentMediaItem.collectionType == "playlists" || m_currentMediaItem.collectionType == "boxsets") {
+                includeTypes = "";
+                isRecursive = false;
+            } else {
+                
+                int tabIdx = m_tabGroup->checkedId();
+                if (tabIdx == 1) { sortBy = "DateCreated"; sortOrder = "Descending"; }
+                if (tabIdx == 2) { includeTypes = "Playlist"; }
+                if (tabIdx == 3) { includeTypes = "BoxSet"; }
+                if (tabIdx == 4) { filters = "IsFavorite"; includeTypes = "Movie,Series,Audio,Video,BoxSet,Playlist"; } 
+                if (tabIdx == 5) {
+                    includeTypes = "";
+                    sortBy = "IsFolder,SortName";
+                    sortOrder = "Ascending";
+                    isRecursive = false;
+                }
+            }
+
+            resultItems = co_await m_core->mediaService()->getLibraryItems(m_currentLibraryId, sortBy, sortOrder, filters, includeTypes, 0, 0, isRecursive);
+        }
+
+        if (!guard) co_return; 
+
+        
+        m_statsLabel->setText(tr("%1 Items").arg(resultItems.size()));
+        m_mediaGrid->setItems(resultItems);
+
+    } catch (const std::exception& e) {
+        if (!guard) co_return; 
+        m_statsLabel->setText(tr("Error Loading Items"));
+        qDebug() << "Library View fetching error:" << e.what();
+    }
+}
+
+
+
+
+void LibraryView::onMediaItemUpdated(const MediaItem& item)
+{
+    
+    QString currentId = (m_currentMode == PersonMode) ? m_currentPersonId : m_currentLibraryId;
+    if (currentId == item.id) {
+        m_currentMediaItem = item; 
+        m_isFavorite = item.isFavorite();
+        updateFavBtnState();
+    }
+
+    
+    
+    if (m_mediaGrid) {
+        m_mediaGrid->updateItem(item);
+    }
+}
+
+
+
+
+void LibraryView::saveSortPreference()
+{
+    QString sid = m_core->serverManager()->activeProfile().id;
+    QString lid = (m_currentMode == PersonMode) ? m_currentPersonId : m_currentLibraryId;
+    if (sid.isEmpty() || lid.isEmpty()) return;
+
+    auto* store = ConfigStore::instance();
+    store->set(ConfigKeys::forLibrary(sid, lid, ConfigKeys::LibrarySortIndex),
+               m_sortButton->currentIndex());
+    store->set(ConfigKeys::forLibrary(sid, lid, ConfigKeys::LibrarySortDescending),
+               m_sortButton->isDescending());
+    qDebug() << "[LibraryView] Sort preference saved:"
+             << "server=" << sid << "library=" << lid
+             << "index=" << m_sortButton->currentIndex()
+             << "desc=" << m_sortButton->isDescending();
+}
+
+void LibraryView::restoreSortPreference()
+{
+    QString sid = m_core->serverManager()->activeProfile().id;
+    QString lid = (m_currentMode == PersonMode) ? m_currentPersonId : m_currentLibraryId;
+    if (sid.isEmpty() || lid.isEmpty()) return;
+
+    auto* store = ConfigStore::instance();
+    int savedIndex = store->get<int>(
+        ConfigKeys::forLibrary(sid, lid, ConfigKeys::LibrarySortIndex), 0);
+    bool savedDesc = store->get<bool>(
+        ConfigKeys::forLibrary(sid, lid, ConfigKeys::LibrarySortDescending), true);
+
+    m_sortButton->blockSignals(true);
+    m_sortButton->setCurrentIndex(savedIndex);
+    m_sortButton->setDescending(savedDesc);
+    m_sortButton->blockSignals(false);
+
+    qDebug() << "[LibraryView] Sort preference restored:"
+             << "server=" << sid << "library=" << lid
+             << "index=" << savedIndex << "desc=" << savedDesc;
+}

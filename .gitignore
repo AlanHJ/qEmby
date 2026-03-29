@@ -1,0 +1,42 @@
+# 构建目录 (最重要的！)
+/build/
+/build*/
+*.user
+
+# C++ 编译产物
+*.exe
+*.dll
+*.o
+*.obj
+*.ilk
+*.pdb
+*.suo
+
+# 库文件
+*.lib
+*.a
+*.so
+
+# MOC 和 UI 生成的文件
+moc_*.cpp
+ui_*.h
+qrc_*.cpp
+
+# 本地 IDE 设置
+.DS_Store
+.vs/
+.vscode/
+
+# clangd 缓存
+.cache/
+compile_commands.json
+
+# 预编译第三方库 (请参阅 README 中的构建说明)
+libs/libmpv/
+
+# AI 辅助工具
+.antigravityignore
+.antigravityrules
+.gemini/
+.agents/
+_agents/

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- 播放三角形 -->
+  <polygon points="6 3 20 12 6 21 6 3"/>
+  <!-- 闪电标记：快捷概念 -->
+  <polyline points="14 7 11 12 15 12 12 17" stroke-width="1.5"/>
+</svg>

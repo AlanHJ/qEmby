@@ -1,0 +1,7 @@
+// This is the complete Windows Resource file for qEmbyApp.
+
+// IDI_ICON1 是图标资源的 ID，101 是任意不冲突的整数。
+// ICON 声明资源类型为图标。
+// "qEmbyApp.ico" 是图标文件的相对路径（相对于此 .rc 文件）。
+
+IDI_ICON1 ICON DISCARDABLE "resources/qEmbyApp.ico"

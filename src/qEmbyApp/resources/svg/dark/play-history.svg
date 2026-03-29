@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#CBD5E1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- 时钟外圆 -->
+  <circle cx="12" cy="12" r="9"/>
+  <!-- 时钟指针（指向3点，表示时间进度） -->
+  <polyline points="12,7 12,12 16,12"/>
+  <!-- 左上角逆时针弯箭头（表示历史/回看） -->
+  <path d="M4 5 A9 9 0 0 0 3 12"/>
+  <polyline points="2,5 4,5 4,3"/>
+</svg>
