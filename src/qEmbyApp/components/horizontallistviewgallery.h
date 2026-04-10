@@ -4,7 +4,10 @@
 #include <QWidget>
 #include <QPoint>
 #include <QList>
+#include <QSize>
 #include <models/media/mediaitem.h>
+
+class ShimmerWidget;
 #include "../views/media/mediacarddelegate.h"
 
 class QEmbyCore;
@@ -19,7 +22,7 @@ class HorizontalListViewGallery : public QWidget
 public:
     
     explicit HorizontalListViewGallery(QEmbyCore* core, QWidget* parent = nullptr);
-    ~HorizontalListViewGallery() override = default;
+    ~HorizontalListViewGallery() override;
 
     
     QListView* listView() const { return m_listView; }
@@ -30,15 +33,22 @@ public:
     
     
     void removeItem(const QString& itemId);
+    int itemCount() const;
+    void clearImageCache();
 
     
     void setCardStyle(MediaCardDelegate::CardStyle style);
 
     
     void setTileSize(const QSize &size);
+    void setTextPixelSizes(int titlePx, int subTitlePx);
+    void setContentPadding(int padding);
 
     
     void setHighlightedItemId(const QString &id);
+
+    
+    void setLoading(bool loading);
 
     
     QSize minimumSizeHint() const override {
@@ -75,6 +85,9 @@ private:
 
     
     MediaCardDelegate::CardStyle m_cardStyle;
+
+    
+    ShimmerWidget* m_shimmer = nullptr;
 };
 
 #endif 

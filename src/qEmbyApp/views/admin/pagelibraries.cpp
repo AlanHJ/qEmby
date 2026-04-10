@@ -1,6 +1,7 @@
 #include "pagelibraries.h"
 #include "../../components/librarycreatedlg.h"
 #include "../../components/libraryeditdlg.h"
+#include "../../components/mediaimageeditdialog.h"
 #include "../../components/loadingoverlay.h"
 #include "../../components/modernmessagebox.h"
 #include "../../components/moderntoast.h"
@@ -572,10 +573,24 @@ QCoro::Task<void> PageLibraries::loadData(bool isManual) {
         card->setSelected(retainedSelectionIds.contains(m_folders[i].itemId));
         connect(card, &LibraryCard::editClicked, this,
                 [this](int idx) { m_pendingTask = onEditClicked(idx); });
+        connect(card, &LibraryCard::editImagesRequested, this,
+                [this](int idx) {
+                  m_pendingTask = onEditImagesRequested(idx);
+                });
         connect(card, &LibraryCard::scanClicked, this,
-                [this](int idx) { m_pendingTask = onScanClicked(idx); });
+                [this](int idx) {
+                  m_pendingTask = onScanLibraryFilesRequested(idx);
+                });
         connect(card, &LibraryCard::deleteClicked, this,
                 [this](int idx) { m_pendingTask = onDeleteClicked(idx); });
+        connect(card, &LibraryCard::refreshMetadataRequested, this,
+                [this](int idx) {
+                  m_pendingTask = onRefreshMetadataRequested(idx);
+                });
+        connect(card, &LibraryCard::scanLibraryFilesRequested, this,
+                [this](int idx) {
+                  m_pendingTask = onScanLibraryFilesRequested(idx);
+                });
         connect(card, &LibraryCard::selectionChanged, this,
                 [this](const QString &itemId, bool selected) {
                   onCardSelectionChanged(itemId, selected);
@@ -806,6 +821,36 @@ QCoro::Task<void> PageLibraries::onDeleteClicked(int row) {
   }
 }
 
+QCoro::Task<void> PageLibraries::onEditImagesRequested(int row) {
+  if (row < 0 || row >= m_folders.size())
+    co_return;
+
+  const VirtualFolder folder = m_folders[row];
+  MediaImageEditTarget target;
+  target.itemId = folder.itemId;
+  target.imageItemId = folder.primaryImageItemId.isEmpty()
+                           ? folder.itemId
+                           : folder.primaryImageItemId;
+  target.displayName = folder.name;
+  target.itemType = QStringLiteral("CollectionFolder");
+  target.collectionType = folder.collectionType;
+  target.isLibrary = true;
+
+  qDebug() << "[PageLibraries] Opening library image editor"
+           << "| itemId:" << folder.itemId
+           << "| imageItemId:" << target.imageItemId
+           << "| name:" << folder.name
+           << "| collectionType:" << folder.collectionType;
+
+  MediaImageEditDialog dialog(m_core, target, this);
+  dialog.exec();
+  if (!dialog.hasChanges()) {
+    co_return;
+  }
+
+  co_await loadData(false);
+}
+
 QCoro::Task<void> PageLibraries::onDeleteSelectedClicked() {
   QPointer<PageLibraries> safeThis(this);
   const int selectedCount = m_selectedLibraryIds.size();
@@ -867,26 +912,68 @@ QCoro::Task<void> PageLibraries::onDeleteSelectedClicked() {
   co_await loadData(false);
 }
 
-QCoro::Task<void> PageLibraries::onScanClicked(int row) {
-  if (row < 0 || row >= m_folders.size())
+QCoro::Task<void> PageLibraries::startLibraryRefresh(VirtualFolder folder,
+                                                     bool replaceAllMetadata,
+                                                     bool replaceAllImages,
+                                                     bool isMetadataRefresh) {
+  const QString itemId = folder.itemId.trimmed();
+  if (itemId.isEmpty()) {
     co_return;
-  const VirtualFolder folder = m_folders[row];
+  }
+
+  const QString displayName =
+      folder.name.trimmed().isEmpty() ? itemId : folder.name.trimmed();
+  const char *actionName =
+      isMetadataRefresh ? "RefreshMetadata" : "ScanLibraryFiles";
 
   try {
-    
-    m_scanningItemIds.insert(folder.itemId);
-    co_await m_core->adminService()->refreshItemMetadata(folder.itemId);
-    ModernToast::showMessage(tr("Scanning \"%1\"...").arg(folder.name), 2000);
+    qDebug() << "[PageLibraries] Starting library refresh"
+             << "| action=" << actionName
+             << "| itemId=" << itemId
+             << "| name=" << folder.name
+             << "| replaceAllMetadata=" << replaceAllMetadata
+             << "| replaceAllImages=" << replaceAllImages;
+    m_scanningItemIds.insert(itemId);
+    co_await m_core->adminService()->refreshItemMetadata(
+        itemId, replaceAllMetadata, replaceAllImages);
+    ModernToast::showMessage(
+        isMetadataRefresh
+            ? tr("Refreshing metadata for \"%1\"...").arg(displayName)
+            : tr("Scanning \"%1\"...").arg(displayName),
+        2000);
+    QTimer::singleShot(2000, this, [this]() { requestLibraryReload(true); });
   } catch (const std::exception &e) {
-    m_scanningItemIds.remove(folder.itemId);
-    clearCardScanProgress(folder.itemId);
+    qWarning() << "[PageLibraries] Library refresh failed"
+               << "| action=" << actionName
+               << "| itemId=" << itemId
+               << "| name=" << folder.name
+               << "| error=" << e.what();
+    m_scanningItemIds.remove(itemId);
+    clearCardScanProgress(itemId);
     if (!hasActiveScan()) {
       resetTotalScanUi();
       m_btnScanAll->setEnabled(true);
     }
     ModernToast::showMessage(
-        tr("Scan failed: %1").arg(QString::fromUtf8(e.what())), 3000);
+        isMetadataRefresh
+            ? tr("Metadata refresh failed: %1").arg(QString::fromUtf8(e.what()))
+            : tr("Scan failed: %1").arg(QString::fromUtf8(e.what())),
+        3000);
   }
+}
+
+QCoro::Task<void> PageLibraries::onRefreshMetadataRequested(int row) {
+  if (row < 0 || row >= m_folders.size())
+    co_return;
+
+  co_await startLibraryRefresh(m_folders[row], true, true, true);
+}
+
+QCoro::Task<void> PageLibraries::onScanLibraryFilesRequested(int row) {
+  if (row < 0 || row >= m_folders.size())
+    co_return;
+
+  co_await startLibraryRefresh(m_folders[row], false, false, false);
 }
 
 QCoro::Task<void> PageLibraries::onScanAllClicked() {

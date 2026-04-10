@@ -314,3 +314,15 @@ void FavoritesView::onMediaItemUpdated(const MediaItem& item)
     if (m_peopleGallery) m_peopleGallery->updateItem(item);
     if (m_foldersGallery) m_foldersGallery->updateItem(item);
 }
+
+void FavoritesView::onMediaItemRemoved(const QString& itemId)
+{
+    if (!m_playlistsGallery) {
+        return;
+    }
+
+    m_playlistsGallery->removeItem(itemId);
+    if (m_playlistsHeader && m_playlistsHeader->parentWidget()) {
+        m_playlistsHeader->parentWidget()->setVisible(m_playlistsGallery->itemCount() > 0);
+    }
+}

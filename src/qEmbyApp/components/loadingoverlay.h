@@ -31,6 +31,7 @@ public:
 
     void start();
     void stop();
+    void forceStop();
 
     qreal opacity() const;
     void setOpacity(qreal op);

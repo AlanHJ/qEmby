@@ -37,6 +37,7 @@ public:
 protected:
     void paintEvent(QPaintEvent* event) override;
     void nextCheckState() override;
+    void checkStateSet() override;
     void enterEvent(QEnterEvent* event) override;
     void leaveEvent(QEvent* event) override;
 

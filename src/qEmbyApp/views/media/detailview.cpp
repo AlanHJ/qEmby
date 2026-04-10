@@ -8,7 +8,10 @@
 #include "../../components/modernmenubutton.h"
 #include "../../components/moderntoast.h"
 #include "../../managers/playbackmanager.h"
+#include "../../utils/mediaitemutils.h"
+#include "../../utils/mediasourcepreferenceutils.h"
 #include "../../utils/numberextractor.h"
+#include "../../utils/playerpreferenceutils.h"
 #include "medialistmodel.h"
 #include "overviewdialog.h"
 #include <config/config_keys.h>
@@ -615,33 +618,11 @@ QCoro::Task<void> DetailView::executePlay(MediaItem targetItem,
       selectedAudioIdx = m_actionWidget->currentAudioIndex();
       selectedSubIdx = m_actionWidget->currentSubtitleIndex();
     } else {
-      
-      
-      if (actualItem.mediaSources.size() > 1) {
-        QString versionPref =
-            ConfigStore::instance()
-                ->get<QString>(ConfigKeys::PlayerPreferredVersion)
-                .trimmed();
-        if (!versionPref.isEmpty()) {
-          QStringList keywords = versionPref.split(',', Qt::SkipEmptyParts);
-          for (const QString &kw : keywords) {
-            QString keyword = kw.trimmed();
-            if (keyword.isEmpty())
-              continue;
-            bool found = false;
-            for (int i = 0; i < actualItem.mediaSources.size(); ++i) {
-              if (actualItem.mediaSources[i].name.contains(
-                      keyword, Qt::CaseInsensitive)) {
-                sourceIdx = i;
-                found = true;
-                break;
-              }
-            }
-            if (found)
-              break;
-          }
-        }
-      }
+      sourceIdx = MediaSourcePreferenceUtils::resolvePreferredMediaSourceIndex(
+          actualItem.mediaSources,
+          ConfigStore::instance()
+              ->get<QString>(ConfigKeys::PlayerPreferredVersion)
+              .trimmed());
     }
 
     if (sourceIdx >= actualItem.mediaSources.size())
@@ -659,87 +640,19 @@ QCoro::Task<void> DetailView::executePlay(MediaItem targetItem,
           stream.isDefault = (stream.index == selectedSubIdx);
       }
     } else {
-      
-      QString prefAudioLang = ConfigStore::instance()->get<QString>(
-          ConfigKeys::PlayerAudioLang, "auto");
-      QString prefSubLang = ConfigStore::instance()->get<QString>(
-          ConfigKeys::PlayerSubLang, "auto");
-
-      {
-        int bestAudioIdx = -1;
-        int bestSubIdx = -1;
-        int firstSubIdx = -1;       
-        bool hasDefaultSub = false; 
-        bool audioFound = false, subFound = false;
-
-        for (const auto &stream : modifiedSource.mediaStreams) {
-          if (stream.type == "Audio" && !audioFound &&
-              prefAudioLang != "auto" &&
-              stream.language.compare(prefAudioLang, Qt::CaseInsensitive) ==
-                  0) {
-            bestAudioIdx = stream.index;
-            audioFound = true;
-          } else if (stream.type == "Subtitle") {
-            if (firstSubIdx < 0)
-              firstSubIdx = stream.index;
-            if (stream.isDefault)
-              hasDefaultSub = true;
-            if (!subFound && prefSubLang != "auto" && prefSubLang != "none" &&
-                stream.language.compare(prefSubLang, Qt::CaseInsensitive) ==
-                    0) {
-              bestSubIdx = stream.index;
-              subFound = true;
-            }
-          }
-        }
-
-        
-        
-        if (bestAudioIdx >= 0) {
-          for (auto &stream : modifiedSource.mediaStreams) {
-            if (stream.type == "Audio")
-              stream.isDefault = (stream.index == bestAudioIdx);
-          }
-        }
-
-        
-        if (prefSubLang == "none") {
-          
-          for (auto &stream : modifiedSource.mediaStreams) {
-            if (stream.type == "Subtitle")
-              stream.isDefault = false;
-          }
-        } else if (bestSubIdx >= 0) {
-          
-          for (auto &stream : modifiedSource.mediaStreams) {
-            if (stream.type == "Subtitle")
-              stream.isDefault = (stream.index == bestSubIdx);
-          }
-        } else if (firstSubIdx >= 0 && !hasDefaultSub) {
-          
-          for (auto &stream : modifiedSource.mediaStreams) {
-            if (stream.type == "Subtitle")
-              stream.isDefault = (stream.index == firstSubIdx);
-          }
-        }
-        
-      }
+      PlayerPreferenceUtils::applyPreferredStreamRules(
+          modifiedSource,
+          ConfigStore::instance()->get<QString>(ConfigKeys::PlayerAudioLang,
+                                                "auto"),
+          ConfigStore::instance()->get<QString>(ConfigKeys::PlayerSubLang,
+                                                "auto"));
     }
 
     QString streamUrl =
         m_core->mediaService()->getStreamUrl(actualItem.id, modifiedSource.id);
 
-    QString playTitle = actualItem.name;
-    if (actualItem.type == "Episode") {
-      QString seriesName = actualItem.seriesName.isEmpty()
-                               ? m_currentMediaItem.name
-                               : actualItem.seriesName;
-      playTitle = QString("%1 - S%2:E%3 - %4")
-                      .arg(seriesName)
-                      .arg(actualItem.parentIndexNumber)
-                      .arg(actualItem.indexNumber)
-                      .arg(actualItem.name);
-    }
+    const QString playTitle =
+        MediaItemUtils::playbackTitle(actualItem, m_currentMediaItem.name);
 
     
     PlaybackManager::instance()->startInternalPlayback(
@@ -781,22 +694,20 @@ QCoro::Task<void> DetailView::executeExternalPlay(MediaItem targetItem,
         else if (stream.type == "Subtitle" && selectedSubIdx >= 0)
           stream.isDefault = (stream.index == selectedSubIdx);
       }
+    } else {
+      PlayerPreferenceUtils::applyPreferredStreamRules(
+          modifiedSource,
+          ConfigStore::instance()->get<QString>(ConfigKeys::PlayerAudioLang,
+                                                "auto"),
+          ConfigStore::instance()->get<QString>(ConfigKeys::PlayerSubLang,
+                                                "auto"));
     }
 
     QString streamUrl =
         m_core->mediaService()->getStreamUrl(actualItem.id, modifiedSource.id);
 
-    QString playTitle = actualItem.name;
-    if (actualItem.type == "Episode") {
-      QString seriesName = actualItem.seriesName.isEmpty()
-                               ? m_currentMediaItem.name
-                               : actualItem.seriesName;
-      playTitle = QString("%1 - S%2:E%3 - %4")
-                      .arg(seriesName)
-                      .arg(actualItem.parentIndexNumber)
-                      .arg(actualItem.indexNumber)
-                      .arg(actualItem.name);
-    }
+    const QString playTitle =
+        MediaItemUtils::playbackTitle(actualItem, m_currentMediaItem.name);
 
     long long startTicks = actualItem.userData.playbackPositionTicks;
     PlaybackManager::instance()->startExternalPlayback(
@@ -1442,58 +1353,10 @@ QCoro::Task<void> DetailView::executeLoadImages(QPointer<DetailView> safeThis,
 }
 
 void DetailView::onMediaItemUpdated(const MediaItem &item) {
-  if (m_currentItemId == item.id) {
-    m_currentMediaItem = item;
-    m_actionWidget->setFavoriteState(item.isFavorite());
-
-    if (item.type != "Series") {
-      m_currentPlayableItem = item;
-      m_actionWidget->setupNormalMode(item);
-    } else {
-      
-      auto refreshSeries = [](QPointer<DetailView> safeThis, QEmbyCore *core,
-                              QString targetId) -> QCoro::Task<void> {
-        co_await safeThis->fetchSeriesNextUp(targetId);
-        if (!safeThis)
-          co_return;
-
-        auto seasons = co_await core->mediaService()->getSeasons(targetId);
-        if (!safeThis)
-          co_return;
-
-        safeThis->m_seriesSeasons = seasons;
-        if (safeThis->m_seasonWidget) {
-          safeThis->m_seasonWidget->setTitle(DetailView::tr("Seasons"));
-          safeThis->m_seasonWidget->setCardStyle(MediaCardDelegate::Poster);
-          safeThis->m_seasonWidget->setGalleryHeight(300);
-          safeThis->m_seasonWidget->setItems(seasons);
-        }
-
-        if (!seasons.isEmpty() && safeThis->m_episodeWidget) {
-          if (safeThis->m_seasonSwitcher) {
-            QSignalBlocker blocker(safeThis->m_seasonSwitcher);
-            safeThis->m_seasonSwitcher->clear();
-            for (const auto &s : seasons)
-              safeThis->m_seasonSwitcher->addItem(s.name, "");
-            int idx =
-                qBound(0, safeThis->m_currentSeasonIndex, seasons.size() - 1);
-            safeThis->m_seasonSwitcher->setCurrentIndex(idx);
-            safeThis->m_seasonSwitcher->setVisible(seasons.size() > 1);
-          }
-          auto seasonId = seasons[qBound(0, safeThis->m_currentSeasonIndex,
-                                         seasons.size() - 1)]
-                              .id;
-          co_await safeThis->m_episodeWidget->loadAsync(
-              [core, targetId, seasonId,
-               safeThis]() -> QCoro::Task<QList<MediaItem>> {
-                auto episodes = co_await core->mediaService()->getEpisodes(
-                    targetId, seasonId);
-                co_return episodes;
-              });
-        }
-      };
-      refreshSeries(QPointer<DetailView>(this), m_core, item.id);
-    }
+  if (m_currentItemId == item.id && m_core) {
+    QCoro::connect(
+        executeSilentRefresh(QPointer<DetailView>(this), m_core, item.id), this,
+        []() {});
   }
 
   if (m_seasonWidget)

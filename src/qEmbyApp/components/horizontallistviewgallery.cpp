@@ -1,4 +1,5 @@
 #include "horizontallistviewgallery.h"
+#include "shimmerwidget.h"
 #include "../views/media/medialistmodel.h"
 #include <QListView>
 #include <QVBoxLayout>
@@ -11,6 +12,9 @@
 #include <QScroller>           
 #include <QScrollerProperties> 
 #include <QStyleOptionViewItem>
+#include <QTimer>
+#include <QHelpEvent>
+#include <QToolTip>
 
 HorizontalListViewGallery::HorizontalListViewGallery(QEmbyCore* core, QWidget* parent)
     : QWidget(parent), m_core(core), m_hScrollAnim(nullptr), m_hScrollTarget(0), m_cardStyle(MediaCardDelegate::Poster)
@@ -63,6 +67,10 @@ HorizontalListViewGallery::HorizontalListViewGallery(QEmbyCore* core, QWidget* p
     m_hScrollAnim->setDuration(450);
 
     mainLayout->addWidget(m_listView);
+
+    
+    m_shimmer = new ShimmerWidget(this);
+    m_shimmer->hide();
 
     
     
@@ -130,11 +138,28 @@ HorizontalListViewGallery::HorizontalListViewGallery(QEmbyCore* core, QWidget* p
     this->installEventFilter(this);
 }
 
+HorizontalListViewGallery::~HorizontalListViewGallery()
+{
+    if (m_hScrollAnim) {
+        m_hScrollAnim->stop();
+    }
+    if (m_listView && m_listView->viewport()) {
+        m_listView->viewport()->removeEventFilter(this);
+        QScroller::ungrabGesture(m_listView->viewport());
+    }
+    removeEventFilter(this);
+}
+
 
 void HorizontalListViewGallery::setItems(const QList<MediaItem>& items)
 {
     if (m_listModel) {
         m_listModel->setItems(items);
+    }
+    
+    if (m_shimmer && m_shimmer->isVisible() && !items.isEmpty()) {
+        m_shimmer->stopAnimation();
+        m_shimmer->hide();
     }
 }
 
@@ -150,7 +175,35 @@ void HorizontalListViewGallery::updateItem(const MediaItem& item)
 void HorizontalListViewGallery::removeItem(const QString& itemId)
 {
     if (m_listModel) {
+        const int previousCount = m_listModel->rowCount();
         m_listModel->removeItem(itemId);
+        if (m_listView && m_listModel->rowCount() < previousCount) {
+            m_listView->doItemsLayout();
+            m_listView->updateGeometry();
+            m_listView->update();
+            m_listView->viewport()->update();
+            QTimer::singleShot(0, this, [this]() {
+                if (!m_listView) {
+                    return;
+                }
+
+                m_listView->doItemsLayout();
+                m_listView->viewport()->update();
+                updateButtonsVisibility();
+            });
+        }
+    }
+}
+
+int HorizontalListViewGallery::itemCount() const
+{
+    return m_listModel ? m_listModel->rowCount() : 0;
+}
+
+void HorizontalListViewGallery::clearImageCache()
+{
+    if (m_listModel) {
+        m_listModel->clearImageCache();
     }
 }
 
@@ -198,6 +251,25 @@ void HorizontalListViewGallery::setTileSize(const QSize &size)
     updateButtonPositions();
 }
 
+void HorizontalListViewGallery::setTextPixelSizes(int titlePx, int subTitlePx)
+{
+    if (m_listDelegate) {
+        m_listDelegate->setTextPixelSizes(titlePx, subTitlePx);
+        m_listView->doItemsLayout();
+        m_listView->viewport()->update();
+    }
+}
+
+void HorizontalListViewGallery::setContentPadding(int padding)
+{
+    if (m_listDelegate) {
+        m_listDelegate->setContentPadding(padding);
+        m_listView->doItemsLayout();
+        m_listView->viewport()->update();
+    }
+    updateButtonPositions();
+}
+
 void HorizontalListViewGallery::setHighlightedItemId(const QString &id)
 {
     if (m_listDelegate) {
@@ -206,11 +278,40 @@ void HorizontalListViewGallery::setHighlightedItemId(const QString &id)
     }
 }
 
+void HorizontalListViewGallery::setLoading(bool loading)
+{
+    if (!m_shimmer) {
+        return;
+    }
+
+    if (loading) {
+        
+        QStyleOptionViewItem opt;
+        const QSize cardSize = m_listDelegate->sizeHint(opt, QModelIndex());
+        m_shimmer->setCardSize(cardSize);
+        m_shimmer->setShowSubtitle(
+            m_cardStyle == MediaCardDelegate::Poster ||
+            m_cardStyle == MediaCardDelegate::Cast);
+        m_shimmer->setGeometry(m_listView->geometry());
+        m_shimmer->raise();
+        m_shimmer->show();
+        m_shimmer->startAnimation();
+    } else {
+        m_shimmer->stopAnimation();
+        m_shimmer->hide();
+    }
+}
+
 void HorizontalListViewGallery::resizeEvent(QResizeEvent* event)
 {
     QWidget::resizeEvent(event);
     updateButtonPositions();
     updateButtonsVisibility();
+
+    
+    if (m_shimmer && m_shimmer->isVisible()) {
+        m_shimmer->setGeometry(m_listView->geometry());
+    }
 }
 
 void HorizontalListViewGallery::updateButtonPositions()
@@ -222,7 +323,7 @@ void HorizontalListViewGallery::updateButtonPositions()
     QModelIndex dummyIndex;
     QSize itemSize = m_listDelegate->sizeHint(dummyOption, dummyIndex);
     
-    int padding = 8; 
+    int padding = m_listDelegate ? m_listDelegate->contentPadding() : 8;
     int imgWidth = itemSize.width() - padding * 2;
     int imgHeight = 0;
     
@@ -255,11 +356,27 @@ bool HorizontalListViewGallery::eventFilter(QObject* obj, QEvent* event)
             m_btnLeft->hide();
             m_btnRight->hide();
         }
+    } else if (obj == m_listView->viewport() && event->type() == QEvent::ToolTip) {
+        auto *helpEvent = static_cast<QHelpEvent *>(event);
+        const QModelIndex index = m_listView->indexAt(helpEvent->pos());
+        const QString tooltip = index.data(Qt::ToolTipRole).toString().trimmed();
+        if (!tooltip.isEmpty()) {
+            QToolTip::showText(helpEvent->globalPos(), tooltip,
+                               m_listView->viewport(),
+                               m_listView->visualRect(index), 15000);
+        } else {
+            QToolTip::hideText();
+        }
+        return true;
     } else if (event->type() == QEvent::Wheel) {
         
         QWheelEvent* wheelEvent = static_cast<QWheelEvent*>(event);
         if (qAbs(wheelEvent->angleDelta().x()) > qAbs(wheelEvent->angleDelta().y())) {
             
+            if (!m_listView || !m_hScrollAnim || !m_hScrollAnim->targetObject()) {
+                wheelEvent->ignore();
+                return false;
+            }
             QScrollBar* hBar = m_listView->horizontalScrollBar();
             if (hBar) {
                 int currentVal = hBar->value();

@@ -44,6 +44,14 @@ void LoadingOverlay::stop() {
     m_fadeAnim->start();
 }
 
+void LoadingOverlay::forceStop() {
+    m_fadeAnim->stop();
+    m_rotateAnim->stop();
+    m_opacity = 0.0;
+    hide();
+    update();
+}
+
 qreal LoadingOverlay::opacity() const { return m_opacity; }
 void LoadingOverlay::setOpacity(qreal op) { m_opacity = op; update(); }
 

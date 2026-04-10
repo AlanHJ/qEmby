@@ -147,12 +147,19 @@ MediaItem MediaItem::fromJson(const QJsonObject& obj) {
     
     item.collectionId = obj["CollectionId"].toString();
     item.collectionName = obj["CollectionName"].toString();
+    item.playlistItemId = obj["PlaylistItemId"].toString();
 
     
     item.seriesId = obj["SeriesId"].toString();
     item.seriesName = obj["SeriesName"].toString();
     item.parentIndexNumber = obj.contains("ParentIndexNumber") ? obj["ParentIndexNumber"].toInt(-1) : -1;
     item.indexNumber = obj.contains("IndexNumber") ? obj["IndexNumber"].toInt(-1) : -1;
+    if (obj.contains("ProviderIds")) {
+        const QJsonObject providerIdsObj = obj["ProviderIds"].toObject();
+        for (auto it = providerIdsObj.constBegin(); it != providerIdsObj.constEnd(); ++it) {
+            item.providerIds.insert(it.key(), it.value().toVariant());
+        }
+    }
 
     
     item.productionYear = obj["ProductionYear"].toInt();
@@ -161,6 +168,7 @@ MediaItem MediaItem::fromJson(const QJsonObject& obj) {
     item.criticRating = obj["CriticRating"].toInt();
     item.runTimeTicks = obj["RunTimeTicks"].toVariant().toLongLong();
     item.communityRating = obj["CommunityRating"].toDouble();
+    item.canDownload = obj["CanDownload"].toBool(false);
 
     
     if (obj.contains("PremiereDate")) {

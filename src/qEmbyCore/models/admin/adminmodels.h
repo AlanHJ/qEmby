@@ -648,6 +648,177 @@ Q_DECLARE_METATYPE(VirtualFolder)
 
 
 
+struct QEMBYCORE_EXPORT ItemImageInfo {
+    Q_GADGET
+
+public:
+    QString imageType;
+    int imageIndex = -1;
+    QString path;
+    QString fileName;
+    int width = 0;
+    int height = 0;
+    qint64 size = 0;
+
+    static ItemImageInfo fromJson(const QJsonObject& obj) {
+        ItemImageInfo info;
+        info.imageType = obj.value(QStringLiteral("ImageType")).toString();
+        if (info.imageType.isEmpty()) {
+            info.imageType = obj.value(QStringLiteral("Type")).toString();
+        }
+        info.imageIndex = obj.value(QStringLiteral("ImageIndex")).toInt(-1);
+        info.path = obj.value(QStringLiteral("Path")).toString();
+        info.fileName = obj.value(QStringLiteral("Filename")).toString();
+        info.width = obj.value(QStringLiteral("Width")).toInt();
+        info.height = obj.value(QStringLiteral("Height")).toInt();
+        info.size = obj.value(QStringLiteral("Size")).toVariant().toLongLong();
+        return info;
+    }
+};
+Q_DECLARE_METATYPE(ItemImageInfo)
+
+
+
+
+struct QEMBYCORE_EXPORT RemoteSearchResult {
+    Q_GADGET
+
+public:
+    QString name;
+    int productionYear = 0;
+    int indexNumber = -1;
+    int indexNumberEnd = -1;
+    int parentIndexNumber = -1;
+    QString premiereDate;
+    QString imageUrl;
+    QString searchProviderName;
+    QString overview;
+    QString albumArtistName;
+    QStringList artistNames;
+    QJsonObject providerIds;
+    QJsonObject rawData;
+
+    QString providerIdSummary() const {
+        QStringList pairs;
+        const QStringList keys = providerIds.keys();
+        for (const QString& key : keys) {
+            const QString value = providerIds.value(key).toString().trimmed();
+            if (!key.trimmed().isEmpty() && !value.isEmpty()) {
+                pairs.append(QStringLiteral("%1=%2").arg(key.trimmed(), value));
+            }
+        }
+        return pairs.join(QStringLiteral(", "));
+    }
+
+    QString secondaryText() const {
+        QStringList parts;
+
+        if (productionYear > 0) {
+            parts.append(QString::number(productionYear));
+        }
+
+        if (parentIndexNumber >= 0 && indexNumber >= 0) {
+            parts.append(QStringLiteral("S%1E%2")
+                             .arg(parentIndexNumber, 2, 10, QChar('0'))
+                             .arg(indexNumber, 2, 10, QChar('0')));
+        } else if (indexNumber >= 0) {
+            parts.append(QStringLiteral("E%1").arg(indexNumber));
+        }
+
+        if (!searchProviderName.trimmed().isEmpty()) {
+            parts.append(searchProviderName.trimmed());
+        }
+
+        return parts.join(QStringLiteral(" | "));
+    }
+
+    QJsonObject toJson() const {
+        if (!rawData.isEmpty()) {
+            return rawData;
+        }
+
+        QJsonObject obj;
+        obj.insert(QStringLiteral("Name"), name);
+        obj.insert(QStringLiteral("ProductionYear"), productionYear);
+        obj.insert(QStringLiteral("IndexNumber"), indexNumber);
+        obj.insert(QStringLiteral("IndexNumberEnd"), indexNumberEnd);
+        obj.insert(QStringLiteral("ParentIndexNumber"), parentIndexNumber);
+        obj.insert(QStringLiteral("PremiereDate"), premiereDate);
+        obj.insert(QStringLiteral("ImageUrl"), imageUrl);
+        obj.insert(QStringLiteral("SearchProviderName"), searchProviderName);
+        obj.insert(QStringLiteral("Overview"), overview);
+        obj.insert(QStringLiteral("ProviderIds"), providerIds);
+        if (!albumArtistName.trimmed().isEmpty()) {
+            QJsonObject albumArtist;
+            albumArtist.insert(QStringLiteral("Name"), albumArtistName.trimmed());
+            obj.insert(QStringLiteral("AlbumArtist"), albumArtist);
+        }
+        if (!artistNames.isEmpty()) {
+            QJsonArray artists;
+            for (const QString& artistName : artistNames) {
+                if (artistName.trimmed().isEmpty()) {
+                    continue;
+                }
+
+                QJsonObject artist;
+                artist.insert(QStringLiteral("Name"), artistName.trimmed());
+                artists.append(artist);
+            }
+            obj.insert(QStringLiteral("Artists"), artists);
+        }
+        return obj;
+    }
+
+    static RemoteSearchResult fromJson(const QJsonObject& obj) {
+        RemoteSearchResult result;
+        result.name = obj.value(QStringLiteral("Name")).toString();
+        result.productionYear =
+            obj.value(QStringLiteral("ProductionYear")).toInt();
+        result.indexNumber = obj.value(QStringLiteral("IndexNumber")).toInt(-1);
+        result.indexNumberEnd =
+            obj.value(QStringLiteral("IndexNumberEnd")).toInt(-1);
+        result.parentIndexNumber =
+            obj.value(QStringLiteral("ParentIndexNumber")).toInt(-1);
+        result.premiereDate = obj.value(QStringLiteral("PremiereDate")).toString();
+        result.imageUrl = obj.value(QStringLiteral("ImageUrl")).toString();
+        result.searchProviderName =
+            obj.value(QStringLiteral("SearchProviderName")).toString();
+        result.overview = obj.value(QStringLiteral("Overview")).toString();
+        result.providerIds = obj.value(QStringLiteral("ProviderIds")).toObject();
+        result.rawData = obj;
+
+        const QJsonValue albumArtistValue = obj.value(QStringLiteral("AlbumArtist"));
+        if (albumArtistValue.isObject()) {
+            result.albumArtistName =
+                albumArtistValue.toObject().value(QStringLiteral("Name")).toString();
+        } else if (albumArtistValue.isString()) {
+            result.albumArtistName = albumArtistValue.toString();
+        }
+
+        const QJsonArray artists = obj.value(QStringLiteral("Artists")).toArray();
+        for (const QJsonValue& artistValue : artists) {
+            if (artistValue.isObject()) {
+                const QString artistName =
+                    artistValue.toObject().value(QStringLiteral("Name")).toString().trimmed();
+                if (!artistName.isEmpty()) {
+                    result.artistNames.append(artistName);
+                }
+            } else if (artistValue.isString()) {
+                const QString artistName = artistValue.toString().trimmed();
+                if (!artistName.isEmpty()) {
+                    result.artistNames.append(artistName);
+                }
+            }
+        }
+
+        return result;
+    }
+};
+Q_DECLARE_METATYPE(RemoteSearchResult)
+
+
+
+
 struct QEMBYCORE_EXPORT ScheduledTaskInfo {
     Q_GADGET
 

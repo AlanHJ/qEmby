@@ -18,6 +18,7 @@ struct ServerProfile {
     QString accessToken;
     QString deviceId;        
     bool isAdmin = false;    
+    bool canDownloadMedia = false;
 
     QString iconBase64;
 

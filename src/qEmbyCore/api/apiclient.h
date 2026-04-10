@@ -4,6 +4,7 @@
 #include "../qEmbyCore_global.h"
 #include "networkmanager.h"
 #include "../models/profile/serverprofile.h"
+#include <QByteArray>
 #include <qcorotask.h>
 #include <QJsonArray>
 #include <QUrlQuery>
@@ -18,6 +19,8 @@ public:
     QCoro::Task<QString> getText(const QString& path);
     QCoro::Task<QJsonObject> post(const QString& path, const QJsonObject& payload);
     QCoro::Task<QJsonObject> postArray(const QString& path, const QJsonArray& payload);
+    QCoro::Task<QJsonObject> postBytes(const QString& path, QByteArray payload,
+                                       QString contentType);
     QCoro::Task<QJsonObject> postForm(const QString& path, const QUrlQuery& formData);
     QCoro::Task<QJsonObject> deleteResource(const QString& path);
 

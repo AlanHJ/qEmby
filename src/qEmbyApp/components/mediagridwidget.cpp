@@ -1,4 +1,5 @@
 #include "mediagridwidget.h"
+#include "shimmerwidget.h"
 #include "../views/media/medialistmodel.h"
 #include <QVBoxLayout>
 #include <QListView>
@@ -10,6 +11,7 @@
 #include <QPropertyAnimation>
 #include <QWheelEvent>
 #include <QScrollBar>
+#include <QStyleOptionViewItem>
 
 MediaGridWidget::MediaGridWidget(QEmbyCore* core, QWidget* parent)
     : QWidget(parent), m_core(core), m_basePadding(20), m_currentStyle(MediaCardDelegate::Poster),
@@ -67,6 +69,10 @@ MediaGridWidget::MediaGridWidget(QEmbyCore* core, QWidget* parent)
     m_listView->setItemDelegate(m_listDelegate);
     layout->addWidget(m_listView);
 
+    
+    m_shimmer = new ShimmerWidget(this);
+    m_shimmer->hide();
+
     connect(m_listView, &QListView::clicked, this, [this](const QModelIndex& index) {
         Q_EMIT itemClicked(m_listModel->getItem(index));
     });
@@ -110,9 +116,37 @@ void MediaGridWidget::setCardStyle(MediaCardDelegate::CardStyle style) {
     adjustGrid();
 }
 
+void MediaGridWidget::setLoading(bool loading)
+{
+    if (!m_shimmer) {
+        return;
+    }
+
+    if (loading) {
+        
+        QStyleOptionViewItem opt;
+        const QSize cardSize = m_listDelegate->sizeHint(opt, QModelIndex());
+        m_shimmer->setCardSize(cardSize);
+        m_shimmer->setShowSubtitle(false);
+        m_shimmer->setGeometry(m_listView->geometry());
+        m_shimmer->raise();
+        m_shimmer->show();
+        m_shimmer->startAnimation();
+    } else {
+        m_shimmer->stopAnimation();
+        m_shimmer->hide();
+    }
+}
+
 void MediaGridWidget::setItems(const QList<MediaItem>& items) {
     m_listModel->setItems(items);
     adjustGrid();
+    
+    
+    if (m_shimmer && m_shimmer->isVisible() && !items.isEmpty()) {
+        m_shimmer->stopAnimation();
+        m_shimmer->hide();
+    }
 }
 
 
@@ -154,6 +188,10 @@ void MediaGridWidget::restoreScrollPosition(int pos) {
 void MediaGridWidget::resizeEvent(QResizeEvent *event) {
     QWidget::resizeEvent(event);
     adjustGrid();
+    
+    if (m_shimmer && m_shimmer->isVisible()) {
+        m_shimmer->setGeometry(m_listView->geometry());
+    }
 }
 
 bool MediaGridWidget::eventFilter(QObject* obj, QEvent* event) {

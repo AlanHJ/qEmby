@@ -40,13 +40,19 @@ private:
                                     quint64 imageLoadGeneration);
     QCoro::Task<void> onCreateClicked();
     QCoro::Task<void> onEditClicked(int row);
+    QCoro::Task<void> onEditImagesRequested(int row);
     QCoro::Task<void> onDeleteClicked(int row);
     QCoro::Task<void> onDeleteSelectedClicked();
-    QCoro::Task<void> onScanClicked(int row);
+    QCoro::Task<void> onRefreshMetadataRequested(int row);
+    QCoro::Task<void> onScanLibraryFilesRequested(int row);
     QCoro::Task<void> onScanAllClicked();
     QCoro::Task<void> onOrderChanged(QStringList newOrderIds);
     QCoro::Task<void> onCancelScanClicked();
     QCoro::Task<void> pollScanProgress();
+    QCoro::Task<void> startLibraryRefresh(VirtualFolder folder,
+                                          bool replaceAllMetadata,
+                                          bool replaceAllImages,
+                                          bool isMetadataRefresh);
 
     
     void onWsRefreshProgress(const QString& itemId, int progress);

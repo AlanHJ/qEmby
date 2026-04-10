@@ -1,8 +1,10 @@
 #include "homeview.h"
 #include "../../components/searchcompleterpopup.h"
+#include "../../components/downloadmanagerdialog.h"
 #include "../../components/elidedlabel.h"
 #include "../../components/moderntoast.h"
 #include "../../components/slidingstackedwidget.h"
+#include "../../managers/thememanager.h"
 #include "../../managers/searchhistorymanager.h"
 #include "../../managers/playbackmanager.h"
 #include "../admin/manageview.h" 
@@ -36,6 +38,7 @@
 #include <QPointer> 
 #include <QPropertyAnimation>
 #include <QPushButton>
+#include <QSize>
 #include <QShowEvent>
 #include <QStringListModel>
 #include <QTimer>
@@ -52,6 +55,7 @@ constexpr int kPinnedSidebarWidth = 136;
 constexpr int kSidebarHiddenOffset = 30;
 constexpr int kLeftEdgeTriggerWidth = 15;
 constexpr int kRightEdgeTriggerWidth = 20;
+constexpr int kSidebarLibraryNameRole = Qt::UserRole + 1;
 } 
 
 HomeView::HomeView(QEmbyCore *core, QWidget *parent) : QWidget(parent), m_core(core)
@@ -69,6 +73,9 @@ HomeView::HomeView(QEmbyCore *core, QWidget *parent) : QWidget(parent), m_core(c
     {
         hideSidebar();
     }
+
+    connect(ThemeManager::instance(), &ThemeManager::themeChanged, this,
+            [this](ThemeManager::Theme) { applySidebarIcons(); });
 
     
     PlaybackManager::instance()->init(m_core);
@@ -580,8 +587,9 @@ void HomeView::setupSidebar()
     m_searchBox = new QLineEdit(m_sidebar);
     m_searchBox->setObjectName("sidebar-search");
     m_searchBox->setPlaceholderText(tr("Search..."));
-    auto *searchAction = new QAction(QIcon(":/svg/light/search.svg"), tr("Search"), this);
-    m_searchBox->addAction(searchAction, QLineEdit::LeadingPosition);
+    m_searchAction = new QAction(this);
+    m_searchAction->setText(tr("Search"));
+    m_searchBox->addAction(m_searchAction, QLineEdit::LeadingPosition);
     layout->addWidget(m_searchBox);
     layout->addSpacing(10);
 
@@ -604,10 +612,8 @@ void HomeView::setupSidebar()
     m_btnFavorites = new QPushButton(tr("Favorites"), m_sidebar);
 
     m_btnHome->setObjectName("sidebar-btn");
-    m_btnHome->setIcon(QIcon(":/svg/light/home.svg"));
 
     m_btnFavorites->setObjectName("sidebar-btn");
-    m_btnFavorites->setIcon(QIcon(":/svg/light/heart.svg"));
 
     layout->addWidget(m_btnHome);
     layout->addWidget(m_btnFavorites);
@@ -626,6 +632,9 @@ void HomeView::setupSidebar()
     m_libraryList = new QListWidget(m_sidebar);
     m_libraryList->setObjectName("sidebar-list");
     m_libraryList->setFocusPolicy(Qt::NoFocus);
+    m_libraryList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_libraryList->setTextElideMode(Qt::ElideRight);
+    m_libraryList->setWordWrap(false);
     layout->addWidget(m_libraryList, 1);
 
     
@@ -656,19 +665,20 @@ void HomeView::setupSidebar()
 
     m_btnSettings = new QPushButton(tr("Settings"), m_sidebar);
     m_btnManage = new QPushButton(tr("Manage"), m_sidebar);
+    m_btnDownloads = new QPushButton(tr("Downloads"), m_sidebar);
     m_btnLogout = new QPushButton(tr("Logout"), m_sidebar);
 
     m_btnSettings->setObjectName("sidebar-btn");
-    m_btnSettings->setIcon(QIcon(":/svg/light/settings.svg"));
 
     m_btnManage->setObjectName("sidebar-btn");
-    m_btnManage->setIcon(QIcon(":/svg/light/server.svg"));
+
+    m_btnDownloads->setObjectName("sidebar-btn");
 
     m_btnLogout->setObjectName("sidebar-btn-danger");
-    m_btnLogout->setIcon(QIcon(":/svg/light/logout.svg"));
 
     layout->addWidget(m_btnSettings);
     layout->addWidget(m_btnManage);
+    layout->addWidget(m_btnDownloads);
     layout->addWidget(m_btnLogout);
 
     
@@ -733,12 +743,26 @@ void HomeView::setupSidebar()
 
                 pushView(createManageView());
             });
+    connect(m_btnDownloads, &QPushButton::clicked, this,
+            [this]()
+            {
+                m_libraryList->clearSelection();
+                DownloadManagerDialog::showManager(m_core, this);
+            });
 
     connect(m_libraryList, &QListWidget::itemClicked, this,
             [this](QListWidgetItem *item)
             {
                 QString viewId = item->data(Qt::UserRole).toString();
-                QString cleanName = item->text().mid(3);
+                QString cleanName = item->data(kSidebarLibraryNameRole).toString();
+                if (cleanName.isEmpty())
+                {
+                    cleanName = item->data(Qt::ToolTipRole).toString();
+                }
+                if (cleanName.isEmpty())
+                {
+                    cleanName = item->text();
+                }
 
                 QWidget *current = m_contentSwitcher->currentWidget();
                 
@@ -795,6 +819,7 @@ void HomeView::setupSidebar()
             });
 
     applySidebarMetrics(m_sidebarPinned);
+    applySidebarIcons();
 }
 
 
@@ -972,13 +997,22 @@ void HomeView::navigateBack()
 
     
     
-    bool consumed = false;
-    if (current)
+    
+    if (auto *baseView = qobject_cast<BaseView *>(current))
     {
-        QMetaObject::invokeMethod(current, "navigateBack", Qt::DirectConnection, Q_RETURN_ARG(bool, consumed));
+        if (baseView->handleBackNavigation())
+        {
+            qDebug() << "[HomeView] Back navigation consumed by current view"
+                     << "| routeType="
+                     << current->property("routeType").toString();
+            return;
+        }
+
+        qDebug() << "[HomeView] Preparing current view for back navigation"
+                 << "| routeType="
+                 << current->property("routeType").toString();
+        baseView->prepareForStackLeave();
     }
-    if (consumed)
-        return;
 
     if (!m_navStack.isEmpty())
     {
@@ -1049,16 +1083,7 @@ void HomeView::navigateBack()
         
         if (current && current->property("isDynamic").toBool())
         {
-            QPointer<QWidget> safeCurrent(current);
-            QTimer::singleShot(500, this,
-                               [this, safeCurrent]()
-                               {
-                                   if (safeCurrent)
-                                   {
-                                       m_contentSwitcher->removeWidget(safeCurrent);
-                                       safeCurrent->deleteLater();
-                                   }
-                               });
+            m_contentSwitcher->disposeWidgetWhenSafe(current);
         }
     }
 }
@@ -1105,6 +1130,14 @@ void HomeView::resetToView(QWidget *view)
     }
 
     QWidget *current = m_contentSwitcher->currentWidget();
+    if (auto *baseView = qobject_cast<BaseView *>(current))
+    {
+        qDebug() << "[HomeView] Preparing current view for reset navigation"
+                 << "| routeType="
+                 << current->property("routeType").toString();
+        baseView->prepareForStackLeave();
+    }
+
     if (m_contentSwitcher->indexOf(view) == -1)
     {
         m_contentSwitcher->addWidget(view);
@@ -1117,27 +1150,20 @@ void HomeView::resetToView(QWidget *view)
     Q_EMIT canNavigateBackChanged(false);
 
     
-    
     if (current && current->property("isDynamic").toBool() && current != view)
     {
         widgetsToDelete.append(QPointer<QWidget>(current));
     }
 
-    
     if (!widgetsToDelete.isEmpty())
     {
-        QTimer::singleShot(500, this,
-                           [this, widgetsToDelete]()
-                           {
-                               for (auto &w : widgetsToDelete)
-                               {
-                                   if (w)
-                                   {
-                                       m_contentSwitcher->removeWidget(w);
-                                       w->deleteLater();
-                                   }
-                               }
-                           });
+        for (const QPointer<QWidget> &widget : widgetsToDelete)
+        {
+            if (widget)
+            {
+                m_contentSwitcher->disposeWidgetWhenSafe(widget);
+            }
+        }
     }
 }
 
@@ -1170,8 +1196,24 @@ QCoro::Task<void> HomeView::refreshProfile()
 {
     
     QPointer<HomeView> guard(this);
+    const int refreshGeneration = ++m_profileRefreshGeneration;
 
     ServerProfile activeProfile = m_core->serverManager()->activeProfile();
+    const bool canReuseExistingLibraries =
+        !m_sidebarLibraryServerId.isEmpty() &&
+        m_sidebarLibraryServerId == activeProfile.id &&
+        m_sidebarLibraryUserId == activeProfile.userId;
+    const int previousLibraryCount = m_libraryList ? m_libraryList->count() : 0;
+    auto isRefreshStillCurrent = [this, guard, refreshGeneration, activeProfile]()
+    {
+        if (!guard)
+            return false;
+
+        const ServerProfile currentProfile = m_core->serverManager()->activeProfile();
+        return refreshGeneration == m_profileRefreshGeneration &&
+               currentProfile.id == activeProfile.id &&
+               currentProfile.userId == activeProfile.userId;
+    };
 
     if (activeProfile.type == ServerProfile::Jellyfin)
     {
@@ -1195,18 +1237,11 @@ QCoro::Task<void> HomeView::refreshProfile()
     m_serverNameLabel->setFullText(displayName);
     m_serverAddressLabel->setFullText(activeProfile.url);
 
-    
-    if (activeProfile.isAdmin)
-    {
-        m_userAvatarLabel->setPixmap(QIcon(":/svg/light/user-admin.svg").pixmap(20, 20));
-    }
-    else
-    {
-        m_userAvatarLabel->setPixmap(QIcon(":/svg/light/user.svg").pixmap(20, 20));
-    }
+    applySidebarIcons();
 
     
     m_btnManage->setVisible(activeProfile.isAdmin);
+    m_btnDownloads->setVisible(activeProfile.canDownloadMedia);
 
     const QString userRoleText = activeProfile.isAdmin ? tr("Administrator") : tr("User");
     QString displayUserName = activeProfile.userName.isEmpty() ? userRoleText : activeProfile.userName;
@@ -1217,34 +1252,92 @@ QCoro::Task<void> HomeView::refreshProfile()
     try
     {
         QList<MediaItem> views = co_await m_core->mediaService()->getUserViews();
-        if (!guard)
-            co_return; 
+        if (!isRefreshStillCurrent())
+        {
+            qDebug() << "[HomeView] Ignoring stale sidebar library refresh after initial fetch"
+                     << "| generation=" << refreshGeneration
+                     << "| previousLibraryCount=" << previousLibraryCount;
+            co_return;
+        }
+
+        if (views.isEmpty())
+        {
+            qDebug() << "[HomeView] Sidebar library refresh returned empty views, clearing cache and retrying"
+                     << "| generation=" << refreshGeneration
+                     << "| previousLibraryCount=" << previousLibraryCount
+                     << "| canReuseExistingLibraries=" << canReuseExistingLibraries;
+            m_core->mediaService()->clearUserViewsCache();
+            views = co_await m_core->mediaService()->getUserViews();
+
+            if (!isRefreshStillCurrent())
+            {
+                qDebug() << "[HomeView] Ignoring stale sidebar library refresh after retry"
+                         << "| generation=" << refreshGeneration
+                         << "| previousLibraryCount=" << previousLibraryCount;
+                co_return;
+            }
+
+            qDebug() << "[HomeView] Sidebar library retry completed"
+                     << "| generation=" << refreshGeneration
+                     << "| retriedViewCount=" << views.size();
+        }
 
         QWidget *currentView = m_contentSwitcher ? m_contentSwitcher->currentWidget() : nullptr;
         const QString currentRouteType = currentView ? currentView->property("routeType").toString() : QString();
         const QString currentRouteId = currentView ? currentView->property("routeId").toString() : QString();
         QListWidgetItem *selectedLibraryItem = nullptr;
+        const bool shouldKeepExistingLibraries =
+            views.isEmpty() && previousLibraryCount > 0 && canReuseExistingLibraries;
 
-        m_libraryList->clear();
-        for (const auto &view : views)
+        if (!shouldKeepExistingLibraries)
         {
-            QString iconStr = "📁 ";
-            if (view.collectionType == "movies")
-                iconStr = "🎬 ";
-            else if (view.collectionType == "tvshows")
-                iconStr = "📺 ";
-            else if (view.collectionType == "music")
-                iconStr = "🎵 ";
-            else if (view.collectionType == "homevideos" || view.collectionType == "photos")
-                iconStr = "🎞️ ";
-
-            auto *item = new QListWidgetItem(iconStr + view.name);
-            item->setData(Qt::UserRole, view.id);
-            m_libraryList->addItem(item);
-
-            if (currentRouteType == "LibraryView" && view.id == currentRouteId)
+            m_libraryList->clear();
+            for (const auto &view : views)
             {
-                selectedLibraryItem = item;
+                QString iconStr = "📁 ";
+                if (view.collectionType == "movies")
+                    iconStr = "🎬 ";
+                else if (view.collectionType == "tvshows")
+                    iconStr = "📺 ";
+                else if (view.collectionType == "music")
+                    iconStr = "🎵 ";
+                else if (view.collectionType == "homevideos" || view.collectionType == "photos")
+                    iconStr = "🎞️ ";
+
+                auto *item = new QListWidgetItem(iconStr + view.name);
+                item->setData(Qt::UserRole, view.id);
+                item->setData(kSidebarLibraryNameRole, view.name);
+                item->setData(Qt::ToolTipRole, view.name);
+                m_libraryList->addItem(item);
+
+                if (currentRouteType == "LibraryView" && view.id == currentRouteId)
+                {
+                    selectedLibraryItem = item;
+                }
+            }
+
+            m_sidebarLibraryServerId = activeProfile.id;
+            m_sidebarLibraryUserId = activeProfile.userId;
+        }
+        else
+        {
+            qDebug() << "[HomeView] Keeping existing sidebar library list because refreshed views are unexpectedly empty"
+                     << "| generation=" << refreshGeneration
+                     << "| previousLibraryCount=" << previousLibraryCount
+                     << "| routeType=" << currentRouteType
+                     << "| routeId=" << currentRouteId;
+        }
+
+        if (!selectedLibraryItem && currentRouteType == "LibraryView")
+        {
+            for (int i = 0; i < m_libraryList->count(); ++i)
+            {
+                QListWidgetItem *item = m_libraryList->item(i);
+                if (item && item->data(Qt::UserRole).toString() == currentRouteId)
+                {
+                    selectedLibraryItem = item;
+                    break;
+                }
             }
         }
 
@@ -1257,12 +1350,29 @@ QCoro::Task<void> HomeView::refreshProfile()
         {
             m_libraryList->clearSelection();
         }
+
+        qDebug() << "[HomeView] Sidebar library refresh applied"
+                 << "| generation=" << refreshGeneration
+                 << "| fetchedViewCount=" << views.size()
+                 << "| sidebarCount=" << m_libraryList->count()
+                 << "| preservedExisting=" << shouldKeepExistingLibraries
+                 << "| routeType=" << currentRouteType
+                 << "| routeId=" << currentRouteId;
     }
     catch (const std::exception &e)
     {
-        if (!guard)
-            co_return; 
-        qDebug() << "Failed to load library views for sidebar:" << e.what();
+        if (!isRefreshStillCurrent())
+        {
+            qDebug() << "[HomeView] Ignoring stale sidebar library refresh failure"
+                     << "| generation=" << refreshGeneration
+                     << "| previousLibraryCount=" << previousLibraryCount
+                     << "| error=" << e.what();
+            co_return;
+        }
+        qDebug() << "[HomeView] Failed to load library views for sidebar"
+                 << "| generation=" << refreshGeneration
+                 << "| previousLibraryCount=" << previousLibraryCount
+                 << "| error=" << e.what();
     }
 }
 
@@ -1559,6 +1669,21 @@ void HomeView::applySidebarMetrics(bool pinned)
         m_userAvatarLabel->setVisible(true);
     }
 
+    const int sidebarActionIconSize = pinned ? 19 : 22;
+    auto applySidebarActionIconSize = [sidebarActionIconSize](QPushButton* button)
+    {
+        if (button)
+        {
+            button->setIconSize(QSize(sidebarActionIconSize, sidebarActionIconSize));
+        }
+    };
+    applySidebarActionIconSize(m_btnHome);
+    applySidebarActionIconSize(m_btnFavorites);
+    applySidebarActionIconSize(m_btnSettings);
+    applySidebarActionIconSize(m_btnManage);
+    applySidebarActionIconSize(m_btnDownloads);
+    applySidebarActionIconSize(m_btnLogout);
+
     if (m_userNameLabel)
     {
         m_userNameLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
@@ -1572,6 +1697,54 @@ void HomeView::applySidebarMetrics(bool pinned)
         {
             m_userNameLabel->setToolTip(userName);
         }
+    }
+}
+
+void HomeView::applySidebarIcons()
+{
+    if (m_searchAction)
+    {
+        m_searchAction->setIcon(
+            ThemeManager::getAdaptiveIcon(":/svg/light/search.svg"));
+    }
+    if (m_btnHome)
+    {
+        m_btnHome->setIcon(
+            ThemeManager::getAdaptiveIcon(":/svg/light/home.svg"));
+    }
+    if (m_btnFavorites)
+    {
+        m_btnFavorites->setIcon(
+            ThemeManager::getAdaptiveIcon(":/svg/light/heart.svg"));
+    }
+    if (m_btnSettings)
+    {
+        m_btnSettings->setIcon(
+            ThemeManager::getAdaptiveIcon(":/svg/light/settings.svg"));
+    }
+    if (m_btnManage)
+    {
+        m_btnManage->setIcon(
+            ThemeManager::getAdaptiveIcon(":/svg/light/server.svg"));
+    }
+    if (m_btnDownloads)
+    {
+        m_btnDownloads->setIcon(
+            ThemeManager::getAdaptiveIcon(":/svg/light/download-sidebar.svg"));
+    }
+    if (m_btnLogout)
+    {
+        m_btnLogout->setIcon(
+            ThemeManager::getAdaptiveIcon(":/svg/light/logout.svg"));
+    }
+    if (m_userAvatarLabel && m_core && m_core->serverManager())
+    {
+        const ServerProfile activeProfile = m_core->serverManager()->activeProfile();
+        const QString avatarIconPath = activeProfile.isAdmin
+                                           ? QStringLiteral(":/svg/light/user-admin.svg")
+                                           : QStringLiteral(":/svg/light/user.svg");
+        m_userAvatarLabel->setPixmap(
+            ThemeManager::getAdaptiveIcon(avatarIconPath).pixmap(20, 20));
     }
 }
 

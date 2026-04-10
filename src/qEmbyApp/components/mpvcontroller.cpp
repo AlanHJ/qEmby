@@ -1,4 +1,6 @@
 #include "mpvcontroller.h"
+#include "../utils/subtitlestyleutils.h"
+#include "../utils/playerpreferenceutils.h"
 #include <QDebug>
 #include <QMetaType>
 #include <clocale>
@@ -98,16 +100,32 @@ bool MpvController::init() {
     
     
     
-    QString audioLang = ConfigStore::instance()->get<QString>(ConfigKeys::PlayerAudioLang, "auto");
-    if (audioLang != "auto" && !audioLang.isEmpty()) {
-        mpv_set_option_string(m_mpv, "alang", audioLang.toUtf8().constData());
+    const QString audioRules =
+        ConfigStore::instance()->get<QString>(ConfigKeys::PlayerAudioLang, "auto");
+    const QStringList audioLangCodes =
+        PlayerPreferenceUtils::mpvLanguageCodesForRules(audioRules);
+    if (!audioLangCodes.isEmpty()) {
+        const QByteArray alangValue = audioLangCodes.join(',').toUtf8();
+        mpv_set_option_string(m_mpv, "alang", alangValue.constData());
+        qDebug() << "[MpvController] Applied audio language rules to MPV"
+                 << "| rules=" << audioRules << "| alang=" << alangValue;
     }
 
-    QString subLang = ConfigStore::instance()->get<QString>(ConfigKeys::PlayerSubLang, "auto");
-    if (subLang == "none") {
+    const QString subtitleRules =
+        ConfigStore::instance()->get<QString>(ConfigKeys::PlayerSubLang, "auto");
+    if (PlayerPreferenceUtils::isSubtitleDisabled(subtitleRules)) {
         mpv_set_option_string(m_mpv, "sid", "no");
-    } else if (subLang != "auto" && !subLang.isEmpty()) {
-        mpv_set_option_string(m_mpv, "slang", subLang.toUtf8().constData());
+        qDebug() << "[MpvController] Subtitle rules disable subtitles"
+                 << "| rules=" << subtitleRules;
+    } else {
+        const QStringList subtitleLangCodes =
+            PlayerPreferenceUtils::mpvLanguageCodesForRules(subtitleRules);
+        if (!subtitleLangCodes.isEmpty()) {
+            const QByteArray slangValue = subtitleLangCodes.join(',').toUtf8();
+            mpv_set_option_string(m_mpv, "slang", slangValue.constData());
+            qDebug() << "[MpvController] Applied subtitle language rules to MPV"
+                     << "| rules=" << subtitleRules << "| slang=" << slangValue;
+        }
     }
 
     
@@ -134,6 +152,8 @@ bool MpvController::init() {
         return false;
     }
 
+    SubtitleStyleUtils::applyToController(this);
+
     mpv_set_wakeup_callback(m_mpv, MpvController::onMpvEvents, this);
 
     
@@ -144,6 +164,7 @@ bool MpvController::init() {
     observeProperty("cache-speed", MPV_FORMAT_INT64);
     observeProperty("volume", MPV_FORMAT_DOUBLE);
     observeProperty("mute", MPV_FORMAT_FLAG);
+    observeProperty("track-list", MPV_FORMAT_NODE);
     
     
     observeProperty("paused-for-cache", MPV_FORMAT_FLAG);

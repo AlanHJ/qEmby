@@ -24,10 +24,9 @@ void ModernSlider::mousePressEvent(QMouseEvent *ev) {
     if (ev->button() == Qt::LeftButton) {
         m_isPressed = true;
 
-        
-        int handleRadius = 6;
-        double trackLeft = handleRadius;
-        double trackWidth = width() - 2 * handleRadius;
+        const int edgePadding = qMax(m_normalHandleRadius, m_activeHandleRadius);
+        const double trackLeft = edgePadding;
+        const double trackWidth = width() - 2 * edgePadding;
 
         if (orientation() == Qt::Horizontal) {
             double pos = (ev->pos().x() - trackLeft) / trackWidth;
@@ -35,8 +34,8 @@ void ModernSlider::mousePressEvent(QMouseEvent *ev) {
             setValue(pos * (maximum() - minimum()) + minimum());
             emit sliderMoved(value());
         } else {
-            double trackTop = handleRadius;
-            double trackHeight = height() - 2 * handleRadius;
+            const double trackTop = edgePadding;
+            const double trackHeight = height() - 2 * edgePadding;
             double pos = 1.0 - ((ev->pos().y() - trackTop) / trackHeight);
             pos = qBound(0.0, pos, 1.0);
             setValue(pos * (maximum() - minimum()) + minimum());
@@ -78,29 +77,34 @@ void ModernSlider::paintEvent(QPaintEvent *ev) {
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
 
-    
-    int trackHeight = m_isHovered ? 4 : 2;
-    int handleRadius = (m_isHovered || m_isPressed) ? 6 : 4;
+    const int trackHeight =
+        (m_isHovered || m_isPressed) ? m_hoverTrackHeight : m_normalTrackHeight;
+    const int handleRadius =
+        (m_isHovered || m_isPressed) ? m_activeHandleRadius : m_normalHandleRadius;
+    const int edgePadding = qMax(m_normalHandleRadius, m_activeHandleRadius);
 
-    
     QRectF trackRect;
     if (orientation() == Qt::Horizontal) {
-        trackRect = QRectF(handleRadius, (height() - trackHeight) / 2.0, width() - 2 * handleRadius, trackHeight);
+        trackRect = QRectF(edgePadding, (height() - trackHeight) / 2.0,
+                           width() - 2 * edgePadding, trackHeight);
     } else {
-        trackRect = QRectF((width() - trackHeight) / 2.0, handleRadius, trackHeight, height() - 2 * handleRadius);
+        trackRect = QRectF((width() - trackHeight) / 2.0, edgePadding,
+                           trackHeight, height() - 2 * edgePadding);
     }
 
-    
     painter.setPen(Qt::NoPen);
     painter.setBrush(m_trackColor);
     painter.drawRoundedRect(trackRect, trackHeight / 2.0, trackHeight / 2.0);
 
     double range = maximum() - minimum();
-    double valueRatio = range > 0 ? static_cast<double>(value() - minimum()) / range : 0.0;
-    double bufferRatio = range > 0 ? static_cast<double>(m_bufferValue - minimum()) / range : 0.0;
-    if (bufferRatio > 1.0) bufferRatio = 1.0;
+    double valueRatio =
+        range > 0 ? static_cast<double>(value() - minimum()) / range : 0.0;
+    double bufferRatio = range > 0
+                             ? static_cast<double>(m_bufferValue - minimum()) / range
+                             : 0.0;
+    valueRatio = qBound(0.0, valueRatio, 1.0);
+    bufferRatio = qBound(0.0, bufferRatio, 1.0);
 
-    
     if (bufferRatio > 0) {
         QRectF bufferRect = trackRect;
         if (orientation() == Qt::Horizontal) {
@@ -112,7 +116,6 @@ void ModernSlider::paintEvent(QPaintEvent *ev) {
         painter.drawRoundedRect(bufferRect, trackHeight / 2.0, trackHeight / 2.0);
     }
 
-    
     if (valueRatio > 0) {
         QRectF playedRect = trackRect;
         if (orientation() == Qt::Horizontal) {
@@ -124,12 +127,14 @@ void ModernSlider::paintEvent(QPaintEvent *ev) {
         painter.drawRoundedRect(playedRect, trackHeight / 2.0, trackHeight / 2.0);
     }
 
-    
     QPointF handleCenter;
     if (orientation() == Qt::Horizontal) {
-        handleCenter = QPointF(trackRect.left() + trackRect.width() * valueRatio, height() / 2.0);
+        handleCenter = QPointF(trackRect.left() + trackRect.width() * valueRatio,
+                               height() / 2.0);
     } else {
-        handleCenter = QPointF(width() / 2.0, trackRect.bottom() - trackRect.height() * valueRatio);
+        handleCenter =
+            QPointF(width() / 2.0,
+                    trackRect.bottom() - trackRect.height() * valueRatio);
     }
 
     painter.setBrush(m_handleColor);

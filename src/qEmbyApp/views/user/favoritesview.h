@@ -22,6 +22,7 @@ public:
 protected:
     
     void onMediaItemUpdated(const MediaItem& item) override;
+    void onMediaItemRemoved(const QString& itemId) override;
 
     void showEvent(QShowEvent* event) override;
     

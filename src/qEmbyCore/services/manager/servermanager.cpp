@@ -126,6 +126,7 @@ void ServerManager::saveSettings() {
         obj["accessToken"] = p.accessToken;
         obj["deviceId"] = p.deviceId;
         obj["isAdmin"] = p.isAdmin;
+        obj["canDownloadMedia"] = p.canDownloadMedia;
         obj["iconBase64"] = p.iconBase64;
         array.append(obj);
     }
@@ -158,6 +159,7 @@ void ServerManager::loadSettings() {
         p.accessToken = obj["accessToken"].toString();
         p.deviceId = obj["deviceId"].toString();
         p.isAdmin = obj["isAdmin"].toBool();
+        p.canDownloadMedia = obj["canDownloadMedia"].toBool(false);
         p.iconBase64 = obj["iconBase64"].toString();
         m_servers.append(p);
     }

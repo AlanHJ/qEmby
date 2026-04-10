@@ -56,8 +56,8 @@ void ModernSwitch::paintEvent(QPaintEvent* ) {
     painter.setPen(Qt::NoPen);
 
     
-    QRect trackRect(0, 0, width(), height());
-    int radius = height() / 2;
+    const QRectF trackRect(0.5, 0.5, width() - 1.0, height() - 1.0);
+    const qreal radius = trackRect.height() / 2.0;
 
     
     QColor trackColor = isChecked() ? m_trackColorActive : m_trackColorInactive;
@@ -71,17 +71,29 @@ void ModernSwitch::paintEvent(QPaintEvent* ) {
     painter.drawRoundedRect(trackRect, radius, radius);
 
     
-    int thumbMargin = 3;
-    int thumbRadius = radius - thumbMargin;
-    int thumbX = thumbMargin + m_offset * (width() - 2 * radius);
-    int thumbY = thumbMargin;
+    constexpr qreal thumbMargin = 3.0;
+    const qreal thumbDiameter = trackRect.height() - thumbMargin * 2.0;
+    const qreal thumbTravel = trackRect.width() - thumbDiameter - thumbMargin * 2.0;
+    const qreal thumbX = trackRect.left() + thumbMargin + m_offset * thumbTravel;
+    const qreal thumbY = trackRect.top() + thumbMargin;
 
     painter.setBrush(m_thumbColor);
-    painter.drawEllipse(thumbX, thumbY, thumbRadius * 2, thumbRadius * 2);
+    painter.drawEllipse(QRectF(thumbX, thumbY, thumbDiameter, thumbDiameter));
 }
 
 void ModernSwitch::nextCheckState() {
     QAbstractButton::nextCheckState();
+}
+
+void ModernSwitch::checkStateSet() {
+    QAbstractButton::checkStateSet();
+
+    
+    
+    if (signalsBlocked()) {
+        m_animation->stop();
+        setOffset(isChecked() ? 1.0 : 0.0);
+    }
 }
 
 void ModernSwitch::enterEvent(QEnterEvent* event) {

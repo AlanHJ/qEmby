@@ -14,6 +14,7 @@ class QEmbyCore;
 class SlidingStackedWidget;
 class QLabel;
 class QPushButton;
+class QAction;
 class QLineEdit;
 class QListWidget;
 class QCompleter;
@@ -93,6 +94,7 @@ private:
     bool isCurrentViewImmersive() const;
     int sidebarWidthForMode(bool pinned) const;
     void applySidebarMetrics(bool pinned);
+    void applySidebarIcons();
     void syncSidebarVisibility();
     void setupSearchHistory();
     void updateSearchCompleter(const QString &text = QString());
@@ -141,6 +143,7 @@ private:
     ElidedLabel* m_serverNameLabel = nullptr;
     ElidedLabel* m_serverAddressLabel = nullptr;
     QLineEdit* m_searchBox = nullptr;
+    QAction* m_searchAction = nullptr;
     QCompleter* m_searchCompleter = nullptr;
     QStringListModel* m_searchHistoryModel = nullptr;
 
@@ -153,9 +156,13 @@ private:
     ElidedLabel* m_userNameLabel = nullptr;
     QPushButton* m_btnSettings = nullptr;
     QPushButton* m_btnManage = nullptr;
+    QPushButton* m_btnDownloads = nullptr;
     QPushButton* m_btnLogout = nullptr;
 
     std::optional<QCoro::Task<void>> m_pendingProfileRefreshTask;
+    int m_profileRefreshGeneration = 0;
+    QString m_sidebarLibraryServerId;
+    QString m_sidebarLibraryUserId;
     QString m_lastRouteType;
 };
 

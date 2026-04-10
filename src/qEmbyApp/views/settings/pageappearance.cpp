@@ -59,6 +59,11 @@ PageAppearance::PageAppearance(QEmbyCore *core, QWidget *parent) : SettingsPageB
                                              new ModernSwitch(this), ConfigKeys::UiAnimations, this));
 
     
+    m_mainLayout->addWidget(new SettingsCard(":/svg/dark/appearance-animations.svg", tr("Snapshot Navigation"),
+                                             tr("Use static screenshots during page transitions for smoother animation on complex views"),
+                                             new ModernSwitch(this), ConfigKeys::SnapshotNavigation, this));
+
+    
     auto *searchHistorySwitch = new ModernSwitch(this);
     m_mainLayout->addWidget(new SettingsCard(":/svg/dark/search.svg", tr("Enable Search History"),
                                              tr("Save recent searches locally for quick reuse"), searchHistorySwitch,

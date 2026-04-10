@@ -1,6 +1,31 @@
 #include "playbackinfo.h"
 #include <QJsonArray>
+#include <QStringList>
 #include <QVariant>
+
+namespace {
+
+QDateTime parseOptionalDateTime(const QJsonObject& json, const QStringList& keys)
+{
+    for (const QString& key : keys) {
+        const QString rawValue = json.value(key).toString().trimmed();
+        if (rawValue.isEmpty()) {
+            continue;
+        }
+
+        QDateTime parsed = QDateTime::fromString(rawValue, Qt::ISODateWithMs);
+        if (!parsed.isValid()) {
+            parsed = QDateTime::fromString(rawValue, Qt::ISODate);
+        }
+        if (parsed.isValid()) {
+            return parsed;
+        }
+    }
+
+    return {};
+}
+
+} 
 
 MediaStreamInfo MediaStreamInfo::fromJson(const QJsonObject& json) {
     MediaStreamInfo info;
@@ -64,6 +89,12 @@ MediaSourceInfo MediaSourceInfo::fromJson(const QJsonObject& json) {
     if (json.contains("RunTimeTicks")) {
         info.runTimeTicks = json["RunTimeTicks"].toVariant().toLongLong();
     }
+
+    info.dateCreated = parseOptionalDateTime(
+        json, {QStringLiteral("DateCreated"), QStringLiteral("CreatedAt")});
+    info.dateModified = parseOptionalDateTime(
+        json, {QStringLiteral("DateModified"), QStringLiteral("ModifiedAt"),
+               QStringLiteral("LastModified"), QStringLiteral("UpdatedAt")});
 
     if (json.contains("MediaStreams")) {
         QJsonArray streamsArr = json["MediaStreams"].toArray();

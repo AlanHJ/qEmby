@@ -34,6 +34,7 @@ public:
 protected:
     
     void onMediaItemUpdated(const MediaItem& item) override;
+    void onMediaItemRemoved(const QString& itemId) override;
 
 private slots:
     
@@ -43,6 +44,7 @@ private:
     void setupTopBar(class QHBoxLayout* headerLayout);
     
     void updateFavBtnState();
+    QCoro::Task<QList<MediaItem>> enrichPlaylistItemsForRemoval(QList<MediaItem> items);
     
     void saveSortPreference();
     void restoreSortPreference();

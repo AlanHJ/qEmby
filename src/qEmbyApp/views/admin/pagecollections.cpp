@@ -40,6 +40,24 @@ QDateTime parsePlaylistDateCreated(QString rawDateCreated) {
   return parsed;
 }
 
+QString findPlaylistViewId(const QList<MediaItem> &views, QString *viewName = nullptr) {
+  for (const MediaItem &view : views) {
+    if (view.collectionType.compare(QStringLiteral("playlists"),
+                                    Qt::CaseInsensitive) == 0 &&
+        !view.id.isEmpty()) {
+      if (viewName) {
+        *viewName = view.name;
+      }
+      return view.id;
+    }
+  }
+
+  if (viewName) {
+    viewName->clear();
+  }
+  return {};
+}
+
 } 
 
 
@@ -375,13 +393,13 @@ QCoro::Task<void> PageCollections::loadData(bool isManual) {
     const QList<MediaItem> views = co_await m_core->mediaService()->getUserViews();
     if (!safeThis) co_return;
 
-    for (const MediaItem &view : views) {
-      if (view.collectionType.compare(QStringLiteral("playlists"),
-                                      Qt::CaseInsensitive) == 0) {
-        playlistViewId = view.id;
-        playlistViewName = view.name;
-        break;
-      }
+    playlistViewId = findPlaylistViewId(views, &playlistViewName);
+    if (playlistViewId.isEmpty()) {
+      const QList<MediaItem> hiddenViews =
+          co_await m_core->mediaService()->getUserViews(true);
+      if (!safeThis) co_return;
+
+      playlistViewId = findPlaylistViewId(hiddenViews, &playlistViewName);
     }
 
     if (!playlistViewId.isEmpty()) {

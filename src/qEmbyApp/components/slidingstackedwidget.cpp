@@ -1,5 +1,6 @@
 #include "slidingstackedwidget.h"
 #include <QWidget>
+#include <QLabel>
 #include "../../qEmbyCore/config/configstore.h"
 #include "config/config_keys.h"
 
@@ -44,7 +45,22 @@ void SlidingStackedWidget::slideInIdx(int idx, SlideDirection direction)
     
     
     if (m_isAnimating) {
-        m_animGroup->stop();           
+        
+        
+        
+        bool allTargetsAlive = true;
+        for (int i = 0; i < m_animGroup->animationCount(); ++i) {
+            auto *anim = qobject_cast<QPropertyAnimation *>(m_animGroup->animationAt(i));
+            if (anim && !anim->targetObject()) {
+                allTargetsAlive = false;
+                break;
+            }
+        }
+
+        if (allTargetsAlive) {
+            m_animGroup->stop();       
+        }
+        
         animationDoneSlot();           
     }
 
@@ -55,6 +71,7 @@ void SlidingStackedWidget::slideInIdx(int idx, SlideDirection direction)
         setCurrentIndex(idx);
         QWidget *w = widget(idx);
         if (w) w->raise();
+        flushPendingWidgetDisposals();
         return;
     }
 
@@ -109,12 +126,28 @@ void SlidingStackedWidget::slideInIdx(int idx, SlideDirection direction)
     QPoint pNow = widgetNow->pos();
 
     
+    
+    const bool useSnapshot =
+        ConfigStore::instance()->get<bool>(ConfigKeys::SnapshotNavigation, false);
+
+    if (useSnapshot) {
+        QPixmap snapshot = widgetNow->grab();
+        m_snapshotLabel = new QLabel(this);
+        m_snapshotLabel->setPixmap(snapshot);
+        m_snapshotLabel->setGeometry(widgetNow->geometry());
+        m_snapshotLabel->show();
+        widgetNow->hide();
+    }
+
+    
     widgetNext->move(pNext.x() + offsetX, pNext.y() + offsetY);
     widgetNext->show();
     widgetNext->raise(); 
 
     
-    QPropertyAnimation *animNow = new QPropertyAnimation(widgetNow, "pos");
+    QObject *animTarget = useSnapshot ? static_cast<QObject*>(m_snapshotLabel)
+                                      : static_cast<QObject*>(widgetNow);
+    QPropertyAnimation *animNow = new QPropertyAnimation(animTarget, "pos");
     animNow->setDuration(m_speed);
     animNow->setEasingCurve(m_animationType);
     animNow->setStartValue(pNow);
@@ -133,8 +166,34 @@ void SlidingStackedWidget::slideInIdx(int idx, SlideDirection direction)
     m_animGroup->start();
 }
 
+void SlidingStackedWidget::disposeWidgetWhenSafe(QWidget *widget)
+{
+    if (!widget)
+    {
+        return;
+    }
+
+    const QPointer<QWidget> safeWidget(widget);
+    if (!m_pendingWidgetDisposals.contains(safeWidget))
+    {
+        m_pendingWidgetDisposals.append(safeWidget);
+    }
+
+    if (!m_isAnimating)
+    {
+        flushPendingWidgetDisposals();
+    }
+}
+
 void SlidingStackedWidget::animationDoneSlot()
 {
+    
+    if (m_snapshotLabel) {
+        m_snapshotLabel->hide();
+        m_snapshotLabel->deleteLater();
+        m_snapshotLabel = nullptr;
+    }
+
     
     if (m_nextIndex >= 0 && m_nextIndex < count()) {
         setCurrentIndex(m_nextIndex);
@@ -144,4 +203,30 @@ void SlidingStackedWidget::animationDoneSlot()
         }
     }
     m_isAnimating = false;
+    flushPendingWidgetDisposals();
+}
+
+void SlidingStackedWidget::flushPendingWidgetDisposals()
+{
+    if (m_isAnimating || m_pendingWidgetDisposals.isEmpty())
+    {
+        return;
+    }
+
+    const auto widgetsToDispose = m_pendingWidgetDisposals;
+    m_pendingWidgetDisposals.clear();
+
+    for (const QPointer<QWidget> &widget : widgetsToDispose)
+    {
+        if (!widget)
+        {
+            continue;
+        }
+
+        if (indexOf(widget) != -1)
+        {
+            removeWidget(widget);
+        }
+        widget->deleteLater();
+    }
 }

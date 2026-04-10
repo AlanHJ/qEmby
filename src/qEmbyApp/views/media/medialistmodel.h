@@ -43,6 +43,8 @@ public:
     void clearImageCache() { m_imageCache.clear(); m_loadingImages.clear(); }
 
 private:
+    QString buildTooltipText(const MediaItem &item) const;
+
     
     static QCoro::Task<void> executeImageFetch(QPointer<MediaListModel> safeThis, QString itemId, QString targetImageId, QString imgType, QString imgTag, int maxWidth, QEmbyCore* core);
 

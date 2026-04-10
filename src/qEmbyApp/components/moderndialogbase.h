@@ -11,7 +11,8 @@ class QWidget;
 class ModernDialogBase : public QDialog {
     Q_OBJECT
 public:
-    explicit ModernDialogBase(QWidget *parent = nullptr);
+    explicit ModernDialogBase(QWidget *parent = nullptr,
+                              bool disableNativeTransitions = false);
     void setTitle(const QString &title);
 
 protected:

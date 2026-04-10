@@ -2,6 +2,7 @@
 #define MODERNCOMBOBOX_H
 
 #include <QComboBox>
+#include <QPointer>
 #include <QStyledItemDelegate>
 
 
@@ -36,10 +37,15 @@ protected:
   
   void paintEvent(QPaintEvent *event) override;
   void showPopup() override;
+  void hidePopup() override;
+  bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
   void polishPopupView();
+  void showEmbeddedPopup();
+  void closeEmbeddedPopup();
   int m_maxTextWidth = 0;
+  QPointer<QWidget> m_embeddedPopup;
 };
 
 #endif 

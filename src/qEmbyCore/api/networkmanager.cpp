@@ -120,7 +120,7 @@ void NetworkManager::attachReplyHandlers(QNetworkReply* reply,
                                          const QString& requestKind) {
     reply->setProperty("ignoreSslErrors", options.ignoreSslErrors);
 
-    connect(reply, &QNetworkReply::sslErrors, this,
+    connect(reply, &QNetworkReply::sslErrors, reply,
             [reply, options, requestKind](const QList<QSslError>& errors) {
                 QStringList errorMessages;
                 for (const QSslError& error : errors) {
@@ -152,18 +152,21 @@ void NetworkManager::attachReplyHandlers(QNetworkReply* reply,
 }
 
 QString NetworkManager::buildReplyErrorMessage(QNetworkReply* reply,
-                                               int httpStatus) const {
+                                               int httpStatus) {
     QString errorMsg =
-        QString(tr("请求失败(HTTP %1): %2")).arg(httpStatus).arg(reply->errorString());
+        QString(NetworkManager::tr("请求失败(HTTP %1): %2"))
+            .arg(httpStatus)
+            .arg(reply->errorString());
 
     const QString sslSummary = reply->property("sslErrorsSummary").toString();
     if (!sslSummary.isEmpty() &&
         !reply->property("sslErrorsIgnored").toBool()) {
         errorMsg +=
-            QStringLiteral("\n") + tr("TLS/SSL 证书错误: %1").arg(sslSummary);
+            QStringLiteral("\n") +
+            NetworkManager::tr("TLS/SSL 证书错误: %1").arg(sslSummary);
         errorMsg += QStringLiteral("\n") +
-                    tr("如果这是可信任的自签名 HTTPS 服务器，请启用“忽略 SSL "
-                       "证书验证”。");
+                    NetworkManager::tr("如果这是可信任的自签名 HTTPS 服务器，请启用“忽略 SSL "
+                                       "证书验证”。");
     }
 
     return errorMsg;
@@ -291,6 +294,7 @@ QCoro::Task<QJsonObject> NetworkManager::get(
     QNetworkRequest request((QUrl(url)));
     applyHeaders(request, headers);
     applyRequestOptions(request, options);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, QVariant());
 
     QNetworkReply* reply = m_networkManager->get(request);
     attachReplyHandlers(reply, options, QStringLiteral("GET"));
@@ -426,6 +430,28 @@ QCoro::Task<QJsonObject> NetworkManager::postArray(
 
     QNetworkReply* reply = m_networkManager->post(request, data);
     attachReplyHandlers(reply, options, QStringLiteral("POST_ARRAY"));
+    co_await reply;
+
+    co_return parseReply(reply);
+}
+
+QCoro::Task<QJsonObject> NetworkManager::postBytes(
+    const QString& url, const QMap<QString, QString>& headers,
+    QByteArray payload, QString contentType,
+    const NetworkRequestOptions& options)
+{
+    QNetworkRequest request((QUrl(url)));
+    applyHeaders(request, headers);
+    applyRequestOptions(request, options);
+
+    if (contentType.trimmed().isEmpty()) {
+        request.setHeader(QNetworkRequest::ContentTypeHeader, QVariant());
+    } else {
+        request.setHeader(QNetworkRequest::ContentTypeHeader, contentType.trimmed());
+    }
+
+    QNetworkReply* reply = m_networkManager->post(request, payload);
+    attachReplyHandlers(reply, options, QStringLiteral("POST_BYTES"));
     co_await reply;
 
     co_return parseReply(reply);

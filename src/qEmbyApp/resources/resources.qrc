@@ -22,6 +22,8 @@
         <file>svg/light/delete.svg</file>
         <file>svg/light/edit.svg</file>
         <file>svg/light/download.svg</file>
+        <file>svg/light/download-sidebar.svg</file>
+        <file>svg/light/download-menu.svg</file>
         <file>svg/light/context-copy.svg</file>
         <file>svg/light/context-cut.svg</file>
         <file>svg/light/context-paste.svg</file>
@@ -45,6 +47,7 @@
         <file>svg/light/search-autocomplete.svg</file>
         <file>svg/light/view-tile.svg</file>
         <file>svg/light/view-poster.svg</file>
+        <file>svg/light/edit-images.svg</file>
         <file>svg/light/arrow-left.svg</file>
         <file>svg/light/heart-fill.svg</file>
         <file>svg/light/heart-outline.svg</file>
@@ -56,6 +59,8 @@
         <file>svg/dark/delete.svg</file>
         <file>svg/dark/edit.svg</file>
         <file>svg/dark/download.svg</file>
+        <file>svg/dark/download-sidebar.svg</file>
+        <file>svg/dark/download-menu.svg</file>
         <file>svg/dark/context-copy.svg</file>
         <file>svg/dark/context-cut.svg</file>
         <file>svg/dark/context-paste.svg</file>
@@ -79,6 +84,7 @@
         <file>svg/dark/search-autocomplete.svg</file>
         <file>svg/dark/view-tile.svg</file>
         <file>svg/dark/view-poster.svg</file>
+        <file>svg/dark/edit-images.svg</file>
         <file>svg/dark/heart-fill.svg</file>
         <file>svg/dark/heart-outline.svg</file>
         <file>svg/dark/bar-heart.svg</file>
@@ -87,6 +93,8 @@
         <file>svg/sun.svg</file>
         <file>svg/player/audio.svg</file>
         <file>svg/player/back.svg</file>
+        <file>svg/player/fast-forward.svg</file>
+        <file>svg/player/fast-rewind.svg</file>
         <file>svg/player/forward.svg</file>
         <file>svg/player/fullscreen.svg</file>
         <file>svg/player/info.svg</file>
@@ -97,6 +105,7 @@
         <file>svg/player/rewind.svg</file>
         <file>svg/player/speed.svg</file>
         <file>svg/player/subtitle.svg</file>
+        <file>svg/player/danmaku.svg</file>
         <file>svg/player/volume.svg</file>
         <file>svg/player/close.svg</file>
         <file>svg/player/max.svg</file>
@@ -108,6 +117,8 @@
         <file>svg/player/scale-fit.svg</file>
         <file>svg/player/volume-mute.svg</file>
         <file>svg/player/restore.svg</file>
+        <file>svg/player/playlist-add.svg</file>
+        <file>svg/player/media-switcher.svg</file>
         <file>svg/jellyfin.svg</file>
         <file>svg/emby.svg</file>
         <file>svg/player/remove.svg</file>
@@ -132,7 +143,32 @@
         <file>svg/dark/star-filled.svg</file>
         <file>svg/dark/refresh.svg</file>
         <file>svg/dark/scan-library.svg</file>
+        <file>svg/dark/danmaku.svg</file>
+        <file>svg/dark/danmaku-server.svg</file>
+        <file>svg/dark/danmaku-auto-load.svg</file>
+        <file>svg/dark/danmaku-auto-match.svg</file>
+        <file>svg/dark/danmaku-related.svg</file>
+        <file>svg/dark/danmaku-dual-subtitle.svg</file>
+        <file>svg/dark/danmaku-opacity.svg</file>
+        <file>svg/dark/danmaku-size.svg</file>
+        <file>svg/dark/danmaku-area.svg</file>
+        <file>svg/dark/danmaku-density.svg</file>
+        <file>svg/dark/danmaku-speed.svg</file>
+        <file>svg/dark/danmaku-offset.svg</file>
+        <file>svg/dark/danmaku-hide-scroll.svg</file>
+        <file>svg/dark/danmaku-hide-top.svg</file>
+        <file>svg/dark/danmaku-hide-bottom.svg</file>
+        <file>svg/dark/danmaku-blocked.svg</file>
+        <file>svg/dark/danmaku-cache-duration.svg</file>
+        <file>svg/dark/danmaku-cache-clear.svg</file>
         <file>svg/dark/play-history.svg</file>
+        <file>svg/dark/player-long-press.svg</file>
+        <file>svg/dark/player-long-press-trigger.svg</file>
+        <file>svg/dark/player-long-press-mode.svg</file>
+        <file>svg/dark/player-mouse-edge-long-press.svg</file>
+        <file>svg/dark/player-seek-step.svg</file>
+        <file>svg/dark/home-section-order.svg</file>
+        <file>svg/dark/home-section-drag.svg</file>
         <file>svg/dark/search-history-recent.svg</file>
         <file>svg/dark/search-history-hot.svg</file>
         <file>svg/dark/click-pause.svg</file>
@@ -152,7 +188,32 @@
         <file>svg/light/star-filled.svg</file>
         <file>svg/light/refresh.svg</file>
         <file>svg/light/scan-library.svg</file>
+        <file>svg/light/danmaku.svg</file>
+        <file>svg/light/danmaku-server.svg</file>
+        <file>svg/light/danmaku-auto-load.svg</file>
+        <file>svg/light/danmaku-auto-match.svg</file>
+        <file>svg/light/danmaku-related.svg</file>
+        <file>svg/light/danmaku-dual-subtitle.svg</file>
+        <file>svg/light/danmaku-opacity.svg</file>
+        <file>svg/light/danmaku-size.svg</file>
+        <file>svg/light/danmaku-area.svg</file>
+        <file>svg/light/danmaku-density.svg</file>
+        <file>svg/light/danmaku-speed.svg</file>
+        <file>svg/light/danmaku-offset.svg</file>
+        <file>svg/light/danmaku-hide-scroll.svg</file>
+        <file>svg/light/danmaku-hide-top.svg</file>
+        <file>svg/light/danmaku-hide-bottom.svg</file>
+        <file>svg/light/danmaku-blocked.svg</file>
+        <file>svg/light/danmaku-cache-duration.svg</file>
+        <file>svg/light/danmaku-cache-clear.svg</file>
         <file>svg/light/play-history.svg</file>
+        <file>svg/light/player-long-press.svg</file>
+        <file>svg/light/player-long-press-trigger.svg</file>
+        <file>svg/light/player-long-press-mode.svg</file>
+        <file>svg/light/player-mouse-edge-long-press.svg</file>
+        <file>svg/light/player-seek-step.svg</file>
+        <file>svg/light/home-section-order.svg</file>
+        <file>svg/light/home-section-drag.svg</file>
         <file>svg/light/search-history-recent.svg</file>
         <file>svg/light/search-history-hot.svg</file>
         <file>svg/light/click-pause.svg</file>
@@ -238,4 +299,4 @@
         <file>svg/light/task-stop.svg</file>
         <file>html/licenses.html</file>
     </qresource>
-</RCC>
+</RCC> 

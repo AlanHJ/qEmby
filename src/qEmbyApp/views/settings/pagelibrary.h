@@ -3,7 +3,9 @@
 
 #include "settingspagebase.h"
 
+class DashboardSectionOrderWidget;
 class QLabel;
+class SettingsSubPanel;
 
 class PageLibrary : public SettingsPageBase {
     Q_OBJECT
@@ -15,6 +17,8 @@ private:
 
     QLabel *m_dataCacheSizeLabel = nullptr;
     QLabel *m_imgCacheSizeLabel = nullptr;
+    SettingsSubPanel* m_homeSectionOrderPanel = nullptr;
+    DashboardSectionOrderWidget* m_homeSectionOrderWidget = nullptr;
 };
 
 #endif 

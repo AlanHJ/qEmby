@@ -6,6 +6,7 @@
 #include <QPaintEvent>
 #include <QEvent>
 #include <QColor>
+#include <QtGlobal>
 
 class ModernSlider : public QSlider {
     Q_OBJECT
@@ -14,6 +15,10 @@ class ModernSlider : public QSlider {
     Q_PROPERTY(QColor trackColor READ trackColor WRITE setTrackColor)
     Q_PROPERTY(QColor bufferColor READ bufferColor WRITE setBufferColor)
     Q_PROPERTY(QColor handleColor READ handleColor WRITE setHandleColor)
+    Q_PROPERTY(int normalTrackHeight READ normalTrackHeight WRITE setNormalTrackHeight)
+    Q_PROPERTY(int hoverTrackHeight READ hoverTrackHeight WRITE setHoverTrackHeight)
+    Q_PROPERTY(int normalHandleRadius READ normalHandleRadius WRITE setNormalHandleRadius)
+    Q_PROPERTY(int activeHandleRadius READ activeHandleRadius WRITE setActiveHandleRadius)
 
 public:
     explicit ModernSlider(Qt::Orientation orientation, QWidget *parent = nullptr);
@@ -33,6 +38,30 @@ public:
     QColor handleColor() const { return m_handleColor; }
     void setHandleColor(const QColor &c) { m_handleColor = c; update(); }
 
+    int normalTrackHeight() const { return m_normalTrackHeight; }
+    void setNormalTrackHeight(int value) {
+        m_normalTrackHeight = qMax(1, value);
+        update();
+    }
+
+    int hoverTrackHeight() const { return m_hoverTrackHeight; }
+    void setHoverTrackHeight(int value) {
+        m_hoverTrackHeight = qMax(1, value);
+        update();
+    }
+
+    int normalHandleRadius() const { return m_normalHandleRadius; }
+    void setNormalHandleRadius(int value) {
+        m_normalHandleRadius = qMax(1, value);
+        update();
+    }
+
+    int activeHandleRadius() const { return m_activeHandleRadius; }
+    void setActiveHandleRadius(int value) {
+        m_activeHandleRadius = qMax(1, value);
+        update();
+    }
+
 protected:
     void mousePressEvent(QMouseEvent *ev) override;
     void mouseReleaseEvent(QMouseEvent *ev) override;
@@ -50,6 +79,10 @@ private:
     QColor m_trackColor = QColor(255, 255, 255, 30);
     QColor m_bufferColor = QColor(255, 255, 255, 80);
     QColor m_handleColor = QColor("#FFFFFF");
+    int m_normalTrackHeight = 2;
+    int m_hoverTrackHeight = 4;
+    int m_normalHandleRadius = 4;
+    int m_activeHandleRadius = 6;
 };
 
 #endif 

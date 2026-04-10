@@ -4,6 +4,7 @@
 #include "../../qEmbyCore_global.h"
 #include "../../models/media/mediaitem.h"
 #include "../../models/media/playbackinfo.h"
+#include <QHash>
 #include <QObject>
 #include <QList>
 #include <QPixmap>
@@ -31,6 +32,36 @@ struct RecommendCache {
     static QString cacheFilePath(const QString& serverId);
 };
 
+struct UserViewsCache {
+    QList<MediaItem> views;
+    QString userId;
+    QString serverId;
+    bool includesHidden = false;
+
+    bool isValid(const QString& currentServerId, const QString& currentUserId,
+                 bool requireHidden = false) const {
+        return serverId == currentServerId
+            && userId == currentUserId
+            && (!requireHidden || includesHidden);
+    }
+
+    void clear() {
+        views.clear();
+        userId.clear();
+        serverId.clear();
+        includesHidden = false;
+    }
+};
+
+struct QEMBYCORE_EXPORT DownloadedImageData {
+    QByteArray data;
+    QString mimeType;
+
+    bool isValid() const {
+        return !data.isEmpty();
+    }
+};
+
 class ServerManager;
 class QNetworkAccessManager;
 
@@ -43,7 +74,8 @@ public:
     
     
     
-    QCoro::Task<QList<MediaItem>> getUserViews();
+    QCoro::Task<QList<MediaItem>> getUserViews(bool includeHidden = false);
+    void clearUserViewsCache();
     
     QCoro::Task<QList<MediaItem>> getLibraryItems(const QString& parentId, const QString& sortBy = "IsFolder,SortName", const QString& sortOrder = "Ascending", const QString& filters = "", const QString& includeItemTypes = "", int startIndex = 0, int limit = 50, bool recursive = false, bool includeChildCount = false);
     
@@ -78,6 +110,7 @@ public:
 
     
     void clearRecommendCache();
+    void removeRecommendCacheItem(const QString& itemId);
 
     QCoro::Task<QList<MediaItem>> getSimilarItems(const QString& itemId, int limit = 15);
     QCoro::Task<QList<MediaItem>> getItemCollections(const QString& itemId);
@@ -85,7 +118,13 @@ public:
     QCoro::Task<QList<MediaItem>> getItemsByPerson(const QString& personId, const QString& sortBy = "SortName", const QString& sortOrder = "Ascending");
     QCoro::Task<QList<MediaItem>> getItemsByFilter(const QString& genreFilter = "", const QString& tagFilter = "", const QString& studioFilter = "", const QString& sortBy = "SortName", const QString& sortOrder = "Ascending", int limit = 0);
 
-    QCoro::Task<QPixmap> fetchImage(const QString& itemId, const QString& imageType, const QString& imageTag, int maxWidth);
+    QCoro::Task<QPixmap> fetchImage(const QString& itemId, const QString& imageType,
+                                    const QString& imageTag, int maxWidth,
+                                    int imageIndex = -1);
+    QCoro::Task<QPixmap> fetchImageByUrl(QString imageUrl);
+    QCoro::Task<DownloadedImageData> downloadImageByUrl(QString imageUrl);
+    void invalidateImageCache(QString itemId, QString imageType,
+                              int imageIndex = -1);
     
     QCoro::Task<QList<MediaItem>> getFavoriteMovies(int limit = 50, const QString& sortBy = "SortName", const QString& sortOrder = "Ascending");
     QCoro::Task<QList<MediaItem>> getFavoriteSeries(int limit = 50, const QString& sortBy = "SortName", const QString& sortOrder = "Ascending");
@@ -112,9 +151,16 @@ private:
     ServerManager* m_serverManager;
     QNetworkAccessManager* m_imageManager;
     RecommendCache m_recommendCache; 
+    UserViewsCache m_userViewsCache;
+    QHash<QString, quint64> m_invalidatedImageRequestVersions;
+    quint64 m_nextImageRequestVersion = 0;
     
     
     void ensureValidProfile() const;
+    void updateUserViewsCache(QList<MediaItem> views, QString serverId,
+                              QString userId, bool includesHidden);
+    void updateUserViewsCache(MediaItem view, QString serverId,
+                              QString userId);
 };
 
 #endif 

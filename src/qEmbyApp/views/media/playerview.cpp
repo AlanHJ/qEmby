@@ -1,10 +1,26 @@
 #include "playerview.h"
+#include "../../components/playerdanmakuidentifydialog.h"
+#include "../../components/playerdanmakusettingsdialog.h"
+#include "../../components/playersubtitlesettingsdialog.h"
+#include "../../components/playermediaswitcherpanel.h"
 #include "../../components/modernscrollpanel.h"
+#include "../../components/playerosdlayer.h"
+#include "../../components/playerlongpresshandler.h"
+#include "../../components/playerstatisticsoverlay.h"
+#include "../../utils/mediaitemutils.h"
+#include "../../utils/mediasourcepreferenceutils.h"
+#include "../../utils/playerpreferenceutils.h"
+#include "../../utils/subtitlestyleutils.h"
+#include <fileutils.h>
 #include "qembycore.h"
 #include <QApplication>
+#include <QAbstractAnimation>
 #include <QCursor>
 #include <QDebug>
+#include <QDir>
 #include <QEvent>
+#include <QFileDialog>
+#include <QFileInfo>
 #include <QFontMetrics>
 #include <QGraphicsDropShadowEffect>
 #include <QHBoxLayout>
@@ -13,7 +29,10 @@
 #include <QMouseEvent>
 #include <QPalette>
 #include <QPointer> 
+#include <QEasingCurve>
 #include <QSettings>
+#include <QSignalBlocker>
+#include <QStyle>
 #include <QTime>
 #include <QUrl>
 #include <QUrlQuery>
@@ -23,10 +42,320 @@
 #include <cmath>
 #include <config/config_keys.h>
 #include <config/configstore.h>
+#include <models/media/playerlaunchcontext.h>
 #include <models/media/playbackinfo.h>
 #include <models/profile/serverprofile.h>
+#include <services/danmaku/danmakuservice.h>
 #include <services/manager/servermanager.h>
 #include <services/media/mediaservice.h>
+
+namespace
+{
+QString trimOrDash(QString value)
+{
+    value = value.trimmed();
+    return value.isEmpty() ? QStringLiteral("-") : value;
+}
+
+QString firstNonEmpty(const QStringList &values)
+{
+    for (QString value : values)
+    {
+        value = value.trimmed();
+        if (!value.isEmpty())
+        {
+            return value;
+        }
+    }
+    return {};
+}
+
+QString joinNonEmpty(const QStringList &values, const QString &separator)
+{
+    QStringList filtered;
+    for (QString value : values)
+    {
+        value = value.trimmed();
+        if (!value.isEmpty())
+        {
+            filtered.append(value);
+        }
+    }
+    return filtered.join(separator);
+}
+
+QString stripTrailingZeros(QString text)
+{
+    if (!text.contains(QLatin1Char('.')))
+    {
+        return text;
+    }
+
+    while (text.endsWith(QLatin1Char('0')))
+    {
+        text.chop(1);
+    }
+    if (text.endsWith(QLatin1Char('.')))
+    {
+        text.chop(1);
+    }
+    return text;
+}
+
+QString formatBitrateValue(qint64 bitsPerSecond)
+{
+    if (bitsPerSecond <= 0)
+    {
+        return {};
+    }
+
+    if (bitsPerSecond < 1000000)
+    {
+        return QStringLiteral("%1 kbps")
+            .arg(stripTrailingZeros(QString::number(bitsPerSecond / 1000.0, 'f', 1)));
+    }
+
+    return QStringLiteral("%1 Mbps")
+        .arg(stripTrailingZeros(QString::number(bitsPerSecond / 1000000.0, 'f', 2)));
+}
+
+QString formatDataRateValue(qint64 bytesPerSecond)
+{
+    if (bytesPerSecond <= 0)
+    {
+        return QStringLiteral("0.0 KB/s");
+    }
+
+    if (bytesPerSecond < 1024 * 1024)
+    {
+        return QStringLiteral("%1 KB/s")
+            .arg(stripTrailingZeros(QString::number(bytesPerSecond / 1024.0, 'f', 1)));
+    }
+
+    return QStringLiteral("%1 MB/s")
+        .arg(stripTrailingZeros(QString::number(bytesPerSecond / 1048576.0, 'f', 1)));
+}
+
+QString formatFrameRateValue(double fps)
+{
+    if (!std::isfinite(fps) || fps <= 0.0)
+    {
+        return {};
+    }
+
+    return QStringLiteral("%1 fps")
+        .arg(stripTrailingZeros(QString::number(fps, 'f', fps >= 100.0 ? 1 : 3)));
+}
+
+QString formatDurationValue(double seconds)
+{
+    if (!std::isfinite(seconds) || seconds <= 0.0)
+    {
+        return {};
+    }
+
+    return QStringLiteral("%1 s")
+        .arg(stripTrailingZeros(QString::number(seconds, 'f', seconds >= 100.0 ? 0 : 1)));
+}
+
+QString formatAvSyncValue(double seconds)
+{
+    if (!std::isfinite(seconds))
+    {
+        return {};
+    }
+
+    const double milliseconds = seconds * 1000.0;
+    return QStringLiteral("%1%2 ms")
+        .arg(milliseconds >= 0.0 ? QStringLiteral("+") : QString())
+        .arg(stripTrailingZeros(QString::number(milliseconds, 'f', 1)));
+}
+
+QString formatLevelValue(int level)
+{
+    if (level <= 0)
+    {
+        return {};
+    }
+
+    if (level % 10 == 0)
+    {
+        return QString::number(level / 10);
+    }
+
+    return QStringLiteral("%1.%2").arg(level / 10).arg(level % 10);
+}
+
+QString formatDimensionValue(int width, int height)
+{
+    if (width <= 0 || height <= 0)
+    {
+        return {};
+    }
+
+    return QStringLiteral("%1 x %2").arg(width).arg(height);
+}
+
+QString formatAspectValue(double width, double height, QString explicitAspect = {})
+{
+    explicitAspect = explicitAspect.trimmed();
+    if (!explicitAspect.isEmpty())
+    {
+        return explicitAspect;
+    }
+
+    if (!std::isfinite(width) || !std::isfinite(height) || width <= 0.0 || height <= 0.0)
+    {
+        return {};
+    }
+
+    const double ratio = width / height;
+    struct KnownRatio
+    {
+        double value;
+        const char *label;
+    };
+
+    static const KnownRatio knownRatios[] = {
+        {4.0 / 3.0, "4:3"},
+        {16.0 / 9.0, "16:9"},
+        {21.0 / 9.0, "21:9"},
+        {1.0, "1:1"}};
+
+    for (const KnownRatio &known : knownRatios)
+    {
+        if (std::fabs(ratio - known.value) < 0.03)
+        {
+            return QString::fromLatin1(known.label);
+        }
+    }
+
+    return QStringLiteral("%1:1")
+        .arg(stripTrailingZeros(QString::number(ratio, 'f', 2)));
+}
+
+qint64 variantToLongLong(const QVariant &value)
+{
+    bool ok = false;
+    const qint64 result = value.toLongLong(&ok);
+    return ok ? result : 0;
+}
+
+double variantToDouble(const QVariant &value)
+{
+    bool ok = false;
+    const double result = value.toDouble(&ok);
+    return ok ? result : 0.0;
+}
+
+const MediaStreamInfo *findFirstStreamByType(const MediaSourceInfo &source, const QString &type)
+{
+    for (const MediaStreamInfo &stream : source.mediaStreams)
+    {
+        if (stream.type.compare(type, Qt::CaseInsensitive) == 0)
+        {
+            return &stream;
+        }
+    }
+    return nullptr;
+}
+
+QVariantMap findSelectedTrackByType(const QVariantList &tracks, const QString &type)
+{
+    for (const QVariant &trackValue : tracks)
+    {
+        const QVariantMap track = trackValue.toMap();
+        if (track.value(QStringLiteral("type")).toString() == type &&
+            track.value(QStringLiteral("selected")).toBool())
+        {
+            return track;
+        }
+    }
+    return {};
+}
+
+bool hasValidAnimationTarget(const QPropertyAnimation *animation)
+{
+    return animation && animation->targetObject();
+}
+
+bool fadeGroupHasValidTargets(const QParallelAnimationGroup *group)
+{
+    if (!group)
+    {
+        return false;
+    }
+
+    for (int i = 0; i < group->animationCount(); ++i)
+    {
+        const auto *animation =
+            qobject_cast<QPropertyAnimation *>(group->animationAt(i));
+        if (!hasValidAnimationTarget(animation))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+void stopPropertyAnimationSafely(QPropertyAnimation *animation)
+{
+    if (!hasValidAnimationTarget(animation) ||
+        animation->state() == QAbstractAnimation::Stopped)
+    {
+        return;
+    }
+
+    animation->stop();
+}
+
+void stopFadeGroupSafely(QParallelAnimationGroup *group)
+{
+    if (!group || group->state() == QAbstractAnimation::Stopped ||
+        !fadeGroupHasValidTargets(group))
+    {
+        return;
+    }
+
+    group->stop();
+}
+
+void detachPropertyAnimationTarget(QPropertyAnimation *animation)
+{
+    if (!animation)
+    {
+        return;
+    }
+
+    if (animation->state() != QAbstractAnimation::Stopped)
+    {
+        animation->stop();
+    }
+
+    animation->setTargetObject(nullptr);
+}
+
+void detachFadeGroupTargets(QParallelAnimationGroup *group)
+{
+    if (!group)
+    {
+        return;
+    }
+
+    if (group->state() != QAbstractAnimation::Stopped)
+    {
+        group->stop();
+    }
+
+    for (int i = 0; i < group->animationCount(); ++i)
+    {
+        auto *animation =
+            qobject_cast<QPropertyAnimation *>(group->animationAt(i));
+        detachPropertyAnimationTarget(animation);
+    }
+}
+} 
 
 PlayerView::PlayerView(QEmbyCore *core, QWidget *parent)
     : BaseView(core, parent), m_isPlaying(false), m_currentPosition(0.0), m_totalDuration(0.0), m_activePopup(nullptr)
@@ -48,19 +377,11 @@ PlayerView::PlayerView(QEmbyCore *core, QWidget *parent)
     connect(m_reportTimer, &QTimer::timeout, this, &PlayerView::reportProgressToServer);
 
     
-    m_seekTimer = new QTimer(this);
-    connect(m_seekTimer, &QTimer::timeout, this,
-            [this]()
-            {
-                m_seekTimer->setInterval(100); 
-                bool isHudVisible = (m_topOpacity->opacity() > 0.0);
-                seekRelative(m_seekDirection * m_seekRate, !isHudVisible); 
-                m_seekRate *= 1.15;                                        
-                if (m_seekRate > 30.0)
-                {
-                    m_seekRate = 30.0; 
-                }
-            });
+    m_longPressHandler = new PlayerLongPressHandler(this);
+    connect(m_longPressHandler, &PlayerLongPressHandler::seekRequested, this,
+            &PlayerView::seekRelative);
+    connect(m_longPressHandler, &PlayerLongPressHandler::toastRequested, this,
+            &PlayerView::showToast);
 
     
     m_bufferTimer = new QTimer(this);
@@ -102,6 +423,11 @@ PlayerView::PlayerView(QEmbyCore *core, QWidget *parent)
                     
                     m_progressSlider->setBufferValue(static_cast<int>(bufferedPos));
                 }
+
+                if (m_showStatisticsOverlay && m_statisticsOverlay)
+                {
+                    updateStatisticsDisplay();
+                }
             });
 
     
@@ -116,6 +442,14 @@ PlayerView::PlayerView(QEmbyCore *core, QWidget *parent)
                     {
                         showControls();
                     }
+                    return;
+                }
+
+                if (areControlsFullyVisible() &&
+                    this->cursor().shape() != Qt::BlankCursor &&
+                    (!m_mpvWidget ||
+                     m_mpvWidget->cursor().shape() != Qt::BlankCursor))
+                {
                     return;
                 }
 
@@ -139,7 +473,7 @@ PlayerView::PlayerView(QEmbyCore *core, QWidget *parent)
                 
                 if (isMouseInside)
                 {
-                    showControls();
+                    handlePointerActivity(currentPos);
                 }
             });
 
@@ -154,13 +488,196 @@ PlayerView::PlayerView(QEmbyCore *core, QWidget *parent)
     connect(m_singleClickTimer, &QTimer::timeout, this, &PlayerView::togglePlayPause);
 
     setupUi();
+    connect(ConfigStore::instance(), &ConfigStore::valueChanged, this,
+            [this](const QString &key, const QVariant &value)
+            {
+                Q_UNUSED(value);
+                if (key == ConfigKeys::PlayerDanmakuEnabled)
+                {
+                    updateDanmakuButtonState();
+                }
+                if (key == ConfigKeys::PlayerMediaSwitcherMode)
+                {
+                    applyMediaSwitcherMode();
+                }
+                if (SubtitleStyleUtils::isSubtitleStyleKey(key))
+                {
+                    applySubtitleStyleSettings();
+                }
+            });
+    applyMediaSwitcherMode();
+    applySubtitleStyleSettings();
     this->installEventFilter(this);
 }
 
 
 PlayerView::~PlayerView()
 {
+    beginViewTeardown();
     stopAndReport();
+}
+
+void PlayerView::prepareForStackLeave()
+{
+    if (m_isViewTearingDown && m_hasReportedStop)
+    {
+        return;
+    }
+
+    qDebug() << "[PlayerView] Prepare for stack leave"
+             << "| mediaId=" << m_currentMediaId
+             << "| isTearingDown=" << m_isViewTearingDown
+             << "| hasReportedStop=" << m_hasReportedStop;
+
+    beginViewTeardown();
+    stopAndReport();
+}
+
+void PlayerView::clearMediaSwitcherCache()
+{
+    m_switcherCacheMediaId.clear();
+    m_switcherCacheReady = false;
+    m_switcherResumeItems.clear();
+    m_switcherSeriesSeasons.clear();
+    m_switcherSeasonEpisodes.clear();
+}
+
+bool PlayerView::useHudMediaSwitcher() const
+{
+    return ConfigStore::instance()->get<QString>(
+               ConfigKeys::PlayerMediaSwitcherMode, "sidebar") ==
+           QStringLiteral("hud");
+}
+
+void PlayerView::applyMediaSwitcherMode()
+{
+    const bool hudMode = useHudMediaSwitcher();
+
+    if (m_mediaSwitchBtn)
+    {
+        m_mediaSwitchBtn->setVisible(hudMode);
+    }
+    if (m_rightTrigger)
+    {
+        m_rightTrigger->setVisible(!hudMode);
+    }
+    if (hudMode)
+    {
+        hideRightSidebar();
+    }
+    if (!hudMode)
+    {
+        hideHudMediaSwitcher();
+    }
+
+    updateMediaSwitcherButton();
+}
+
+void PlayerView::updateMediaSwitcherButton()
+{
+    if (!m_mediaSwitchBtn)
+    {
+        return;
+    }
+
+    m_mediaSwitchBtn->setProperty(
+        "drawerActive",
+        m_mediaSwitchDrawer && m_mediaSwitchDrawer->isVisible() &&
+            useHudMediaSwitcher());
+    m_mediaSwitchBtn->style()->unpolish(m_mediaSwitchBtn);
+    m_mediaSwitchBtn->style()->polish(m_mediaSwitchBtn);
+    m_mediaSwitchBtn->update();
+
+    const QString tooltip =
+        m_isSeriesMode ? tr("Switch season and episode")
+                       : tr("Switch media");
+    m_mediaSwitchBtn->setToolTip(tooltip);
+}
+
+QString PlayerView::formatMediaSwitcherPlaybackTitle(const MediaItem &item) const
+{
+    return MediaItemUtils::playbackTitle(item, m_seriesName);
+}
+
+void PlayerView::showHudMediaSwitcher()
+{
+    if (m_isViewTearingDown || !useHudMediaSwitcher() || !m_mediaSwitchDrawer)
+    {
+        return;
+    }
+
+    if (m_activePopup)
+    {
+        m_activePopup->deleteLater();
+        m_activePopup = nullptr;
+    }
+    closeActivePlayerDialog();
+
+    if (m_switcherCacheReady && m_switcherCacheMediaId == m_currentMediaId)
+    {
+        m_mediaSwitchDrawer->show();
+        syncHudMediaSwitcherContent();
+        updateMediaSwitcherButton();
+        updateOverlayLayout();
+        showControls();
+        return;
+    }
+
+    m_mediaSwitchDrawer->setLoadingState(
+        m_isSeriesMode
+            ? (m_seriesName.isEmpty() ? tr("Episodes") : m_seriesName)
+            : tr("Continue Watching"),
+        tr("Loading..."), m_isSeriesMode);
+    m_mediaSwitchDrawer->show();
+    updateMediaSwitcherButton();
+    updateOverlayLayout();
+    showControls();
+    ensureMediaSwitcherDataLoaded();
+}
+
+void PlayerView::hideHudMediaSwitcher()
+{
+    if (m_isViewTearingDown)
+    {
+        if (m_mediaSwitchDrawer)
+        {
+            m_mediaSwitchDrawer->hide();
+        }
+        return;
+    }
+
+    if (!m_mediaSwitchDrawer || !m_mediaSwitchDrawer->isVisible())
+    {
+        return;
+    }
+
+    m_mediaSwitchDrawer->hide();
+    updateMediaSwitcherButton();
+    updateOverlayLayout();
+}
+
+void PlayerView::syncHudMediaSwitcherContent()
+{
+    if (!m_mediaSwitchDrawer)
+    {
+        return;
+    }
+
+    if (m_isSeriesMode && !m_seriesId.isEmpty())
+    {
+        m_mediaSwitchDrawer->setSeriesData(m_seriesName,
+                                           m_switcherSeriesSeasons,
+                                           m_switcherSeasonEpisodes,
+                                           m_currentMediaId);
+    }
+    else
+    {
+        m_mediaSwitchDrawer->setMovieItems(m_switcherResumeItems,
+                                           m_currentMediaId);
+    }
+
+    updateMediaSwitcherButton();
+    updateOverlayLayout();
 }
 
 
@@ -185,9 +702,18 @@ void PlayerView::resumePlayback()
 
     
     QString newStreamUrl = m_originalStreamUrl;
-    if (m_currentSourceInfoVar.isValid() && m_currentSourceInfoVar.canConvert<MediaSourceInfo>())
+    if (m_currentSourceInfoVar.isValid())
     {
-        MediaSourceInfo sourceInfo = m_currentSourceInfoVar.value<MediaSourceInfo>();
+        MediaSourceInfo sourceInfo;
+        if (m_currentSourceInfoVar.canConvert<PlayerLaunchContext>())
+        {
+            sourceInfo = m_currentSourceInfoVar.value<PlayerLaunchContext>().selectedSource;
+        }
+        else if (m_currentSourceInfoVar.canConvert<MediaSourceInfo>())
+        {
+            sourceInfo = m_currentSourceInfoVar.value<MediaSourceInfo>();
+        }
+
         QString directUrl = m_core->mediaService()->getStreamUrl(m_currentMediaId, sourceInfo);
         if (!directUrl.isEmpty())
         {
@@ -222,6 +748,11 @@ void PlayerView::setupUi()
     m_mpvWidget->setAutoFillBackground(true);
     m_mpvWidget->installEventFilter(this); 
     m_mpvWidget->setMouseTracking(true);
+    m_danmakuController = new PlayerDanmakuController(m_core, m_mpvWidget, this);
+    connect(m_danmakuController, &PlayerDanmakuController::toastRequested, this,
+            [this](const QString &message) { showToast(message); });
+    connect(m_danmakuController, &PlayerDanmakuController::stateChanged, this,
+            &PlayerView::updateDanmakuButtonState);
 
     
     m_loadingOverlay = new LoadingOverlay(this);
@@ -237,38 +768,14 @@ void PlayerView::setupUi()
             {
                 m_isBuffering = false;
                 updateLoadingState();
+                applySubtitleStyleSettings();
             });
     
 
     
-    m_osdContainer = new QWidget(this);
-    m_osdContainer->setObjectName("osdContainer");
-    m_osdContainer->setAttribute(Qt::WA_TransparentForMouseEvents); 
-    m_osdContainer->hide();
+    m_osdLayer = new PlayerOsdLayer(this);
 
-    m_osdOpacity = new QGraphicsOpacityEffect(m_osdContainer);
-    m_osdOpacity->setOpacity(0.0);
-    m_osdContainer->setGraphicsEffect(m_osdOpacity);
-
-    m_osdAnim = new QPropertyAnimation(m_osdOpacity, "opacity", this);
-    m_osdAnim->setDuration(250);
-
-    m_osdHideTimer = new QTimer(this);
-    m_osdHideTimer->setSingleShot(true);
-    connect(m_osdHideTimer, &QTimer::timeout, this, &PlayerView::hideMiniOsd);
-
-    m_osdSeekLine = new QProgressBar(m_osdContainer);
-    m_osdSeekLine->setObjectName("osdSeekLine");
-    m_osdSeekLine->setTextVisible(false);
-    m_osdSeekLine->setFixedHeight(3);
-
-    m_osdSeekTimeLabel = new QLabel(m_osdContainer);
-    m_osdSeekTimeLabel->setObjectName("osdSeekTimeLabel");
-    m_osdSeekTimeLabel->setAlignment(Qt::AlignCenter);
-
-    m_osdVolumeLabel = new QLabel(m_osdContainer);
-    m_osdVolumeLabel->setObjectName("osdVolumeLabel");
-    m_osdVolumeLabel->setAlignment(Qt::AlignCenter);
+    
 
     
 
@@ -371,6 +878,7 @@ void PlayerView::setupUi()
     connect(m_closeBtn, &QPushButton::clicked, this,
             [this]()
             {
+                beginViewTeardown();
                 stopAndReport();
                 window()->close();
             });
@@ -387,7 +895,7 @@ void PlayerView::setupUi()
     
     m_bottomHUD = new QWidget(this);
     m_bottomHUD->setObjectName("playerBottomHUD");
-    m_bottomHUD->setFixedHeight(110);
+    m_bottomHUD->setFixedHeight(m_bottomHudBaseHeight);
 
     
     m_bottomHUD->installEventFilter(this);
@@ -395,6 +903,17 @@ void PlayerView::setupUi()
     auto *bottomLayout = new QVBoxLayout(m_bottomHUD);
     bottomLayout->setContentsMargins(32, 10, 32, 16);
     bottomLayout->setSpacing(8);
+
+    m_mediaSwitchDrawer = new PlayerMediaSwitcherPanel(m_core, m_bottomHUD);
+    m_mediaSwitchDrawer->hide();
+    connect(m_mediaSwitchDrawer, &PlayerMediaSwitcherPanel::playRequested, this,
+            [this](QString mediaId, QString title,
+                   long long startPositionTicks) -> QCoro::Task<void>
+            {
+                co_await switchFromMediaSwitcher(mediaId, title,
+                                                 startPositionTicks);
+            });
+    bottomLayout->addWidget(m_mediaSwitchDrawer);
 
     
     auto *progressLayout = new QHBoxLayout();
@@ -422,11 +941,11 @@ void PlayerView::setupUi()
     auto *controlLayout = new QHBoxLayout();
     controlLayout->setSpacing(12);
 
-    m_rewindBtn = createHudButton(":/svg/player/rewind.svg");
+    m_rewindBtn = createHudButton(":/svg/player/fast-rewind.svg");
     m_rewindBtn->setToolTip(tr("Rewind"));
     m_playPauseBtn = createHudButton(":/svg/player/pause.svg", QSize(36, 36));
     m_playPauseBtn->setToolTip(tr("Play/Pause"));
-    m_forwardBtn = createHudButton(":/svg/player/forward.svg");
+    m_forwardBtn = createHudButton(":/svg/player/fast-forward.svg");
     m_forwardBtn->setToolTip(tr("Forward"));
 
     
@@ -450,10 +969,16 @@ void PlayerView::setupUi()
     m_speedBtn->setFixedHeight(40);
     m_speedBtn->setToolTip(tr("Playback Speed"));
 
+    m_mediaSwitchBtn = createHudButton(":/svg/player/media-switcher.svg");
+    m_mediaSwitchBtn->setObjectName("playerMediaSwitchBtn");
+    m_mediaSwitchBtn->setToolTip(tr("Media Switcher"));
+
     m_audioBtn = createHudButton(":/svg/player/audio.svg");
     m_audioBtn->setToolTip(tr("Audio Track"));
     m_subtitleBtn = createHudButton(":/svg/player/subtitle.svg");
     m_subtitleBtn->setToolTip(tr("Subtitles"));
+    m_danmakuBtn = createHudButton(":/svg/player/danmaku.svg");
+    m_danmakuBtn->setToolTip(tr("Danmaku"));
     m_settingsBtn = createHudButton(":/svg/player/settings.svg");
     m_settingsBtn->setToolTip(tr("Settings"));
 
@@ -483,9 +1008,11 @@ void PlayerView::setupUi()
     controlLayout->addWidget(m_toastLabel);
     controlLayout->addStretch();
 
+    controlLayout->addWidget(m_mediaSwitchBtn);
     controlLayout->addWidget(m_speedBtn);
     controlLayout->addWidget(m_audioBtn);
     controlLayout->addWidget(m_subtitleBtn);
+    controlLayout->addWidget(m_danmakuBtn);
     controlLayout->addWidget(m_settingsBtn);
     controlLayout->addWidget(m_scaleBtn);
     controlLayout->addWidget(m_fullscreenBtn);
@@ -494,11 +1021,9 @@ void PlayerView::setupUi()
     bottomLayout->addLayout(controlLayout);
 
     
-    m_infoOverlay = new QLabel(this);
-    m_infoOverlay->setObjectName("playerInfoOverlay");
-    m_infoOverlay->hide();
-    m_infoOverlay->setAttribute(Qt::WA_TransparentForMouseEvents);
-    m_infoOverlay->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+    m_statisticsOverlay = new PlayerStatisticsOverlay(this);
+    m_statisticsOverlay->setObjectName("playerStatisticsOverlay");
+    m_statisticsOverlay->hide();
 
     
     m_topOpacity = new QGraphicsOpacityEffect(m_topHUD);
@@ -553,8 +1078,19 @@ void PlayerView::setupUi()
     connect(m_volumeSlider, &QSlider::valueChanged, this, &PlayerView::onVolumeSliderMoved);
 
     connect(m_speedBtn, &QPushButton::clicked, this, &PlayerView::showSpeedMenu);
+    connect(m_mediaSwitchBtn, &QPushButton::clicked, this,
+            [this]()
+            {
+                if (m_mediaSwitchDrawer && m_mediaSwitchDrawer->isVisible())
+                {
+                    hideHudMediaSwitcher();
+                    return;
+                }
+                showHudMediaSwitcher();
+            });
     connect(m_audioBtn, &QPushButton::clicked, this, &PlayerView::showAudioMenu);
     connect(m_subtitleBtn, &QPushButton::clicked, this, &PlayerView::showSubtitleMenu);
+    connect(m_danmakuBtn, &QPushButton::clicked, this, &PlayerView::showDanmakuMenu);
     connect(m_settingsBtn, &QPushButton::clicked, this, &PlayerView::showSettingsMenu);
     connect(m_scaleBtn, &QPushButton::clicked, this, &PlayerView::cycleVideoScale);             
     connect(m_fullscreenBtn, &QPushButton::clicked, this, &PlayerView::toggleFullscreenWindow); 
@@ -567,12 +1103,23 @@ void PlayerView::setupUi()
     connect(m_mpvWidget->controller(), &MpvController::propertyChanged, this, &PlayerView::onMpvPropertyChanged);
 
     setScaleIcon();
+    updateDanmakuButtonState();
+    updateMediaSwitcherButton();
     m_rightSidebar->raise();
 }
 
 
 void PlayerView::updateLoadingState()
 {
+    if (m_isViewTearingDown)
+    {
+        if (m_loadingOverlay)
+        {
+            m_loadingOverlay->forceStop();
+        }
+        return;
+    }
+
     if (m_isBuffering || m_isSeeking)
     {
         m_loadingOverlay->start();
@@ -594,16 +1141,197 @@ void PlayerView::updateLoadingState()
     }
 }
 
+QString PlayerView::formatDanmakuProviderLabel(QString provider) const
+{
+    provider = provider.trimmed();
+    if (provider == QLatin1String("local-file"))
+    {
+        return tr("Local File");
+    }
+    if (provider == QLatin1String("dandanplay"))
+    {
+        return tr("DandanPlay");
+    }
+    return provider.isEmpty() ? tr("Unknown Source") : provider;
+}
+
+QString PlayerView::buildDanmakuSummaryText() const
+{
+    if (!m_danmakuController)
+    {
+        return tr("No danmaku loaded");
+    }
+
+    if (m_danmakuController->isLoading())
+    {
+        return tr("Loading danmaku...");
+    }
+
+    if (!m_danmakuController->hasPreparedDanmaku())
+    {
+        return tr("No danmaku loaded");
+    }
+
+    const QString sourceTitle = m_danmakuController->sourceTitle().trimmed().isEmpty()
+                                    ? tr("Unknown Danmaku")
+                                    : m_danmakuController->sourceTitle().trimmed();
+    const QString countText =
+        m_danmakuController->commentCount() > 0
+            ? tr("%1 comments").arg(m_danmakuController->commentCount())
+            : tr("Comment count unavailable");
+    return tr("Current: %1 | %2 | %3")
+        .arg(sourceTitle, countText,
+             formatDanmakuProviderLabel(m_danmakuController->sourceProvider()));
+}
+
+QString PlayerView::buildDanmakuTooltipText() const
+{
+    if (!m_danmakuController)
+    {
+        return tr("Danmaku");
+    }
+
+    if (m_danmakuController->isLoading())
+    {
+        return tr("Danmaku (Loading...)");
+    }
+
+    if (!m_danmakuController->isDanmakuVisible())
+    {
+        return tr("Danmaku (Hidden)");
+    }
+
+    if (!m_danmakuController->hasPreparedDanmaku())
+    {
+        return tr("Danmaku");
+    }
+
+    const QString sourceTitle = m_danmakuController->sourceTitle().trimmed().isEmpty()
+                                    ? tr("Unknown Danmaku")
+                                    : m_danmakuController->sourceTitle().trimmed();
+    const QString countText =
+        m_danmakuController->commentCount() > 0
+            ? tr("%1 comments").arg(m_danmakuController->commentCount())
+            : tr("Comment count unavailable");
+    return tr("Danmaku\nSource: %1\nProvider: %2\nComments: %3")
+        .arg(sourceTitle,
+             formatDanmakuProviderLabel(m_danmakuController->sourceProvider()),
+             countText);
+}
+
+void PlayerView::closeActivePlayerDialog()
+{
+    if (m_activePlayerDialog)
+    {
+        m_activePlayerDialog->close();
+        m_activePlayerDialog = nullptr;
+    }
+}
+
+void PlayerView::trackPlayerDialog(PlayerOverlayDialog *dialog)
+{
+    if (!dialog)
+    {
+        return;
+    }
+
+    closeActivePlayerDialog();
+    m_activePlayerDialog = dialog;
+
+    connect(dialog, &PlayerOverlayDialog::finished, this,
+            [this, dialog](int)
+            {
+                if (m_activePlayerDialog == dialog)
+                {
+                    m_activePlayerDialog = nullptr;
+                    if (!m_isViewTearingDown)
+                    {
+                        showControls();
+                    }
+                }
+            });
+
+    showControls();
+    dialog->open();
+}
+
+bool PlayerView::shouldShowDanmakuHudControls() const
+{
+    return ConfigStore::instance()->get<bool>(ConfigKeys::PlayerDanmakuEnabled,
+                                              false);
+}
+
+void PlayerView::updateDanmakuButtonState()
+{
+    if (m_isViewTearingDown || !m_danmakuBtn)
+    {
+        return;
+    }
+
+    const bool showDanmakuControls = shouldShowDanmakuHudControls();
+    m_danmakuBtn->setVisible(showDanmakuControls);
+    if (!showDanmakuControls || !m_danmakuController)
+    {
+        return;
+    }
+
+    const bool visible = m_danmakuController->isDanmakuVisible();
+    const bool loading = m_danmakuController->isLoading();
+    const bool loaded = m_danmakuController->hasDanmakuTrack() ||
+                        m_danmakuController->hasPreparedDanmaku();
+
+    m_danmakuBtn->setEnabled(!loading);
+    if (loading)
+    {
+        m_danmakuBtn->setToolTip(tr("Danmaku (Loading...)"));
+    }
+    else if (!visible)
+    {
+        m_danmakuBtn->setToolTip(tr("Danmaku (Hidden)"));
+    }
+    else if (loaded && !m_danmakuController->sourceTitle().isEmpty())
+    {
+        m_danmakuBtn->setToolTip(buildDanmakuTooltipText());
+    }
+    else if (loaded)
+    {
+        m_danmakuBtn->setToolTip(buildDanmakuTooltipText());
+    }
+    else
+    {
+        m_danmakuBtn->setToolTip(tr("Danmaku"));
+    }
+}
+
 
 void PlayerView::showCenteredPopup(QWidget *popup, QPushButton *btn)
 {
+    if (m_isViewTearingDown)
+    {
+        if (popup)
+        {
+            popup->deleteLater();
+        }
+        return;
+    }
+
+    hideHudMediaSwitcher();
+
     if (m_activePopup)
     {
+        m_activePopup->hide();
+        m_activePopup->close();
         m_activePopup->deleteLater();
         m_activePopup = nullptr;
     }
 
     m_activePopup = popup;
+    connect(popup, &QObject::destroyed, this, [this, popup]() {
+        if (m_activePopup == popup)
+        {
+            m_activePopup = nullptr;
+        }
+    });
     popup->adjustSize();
 
     QPoint btnPos = btn->mapTo(this, QPoint(btn->width() / 2, 0));
@@ -614,6 +1342,11 @@ void PlayerView::showCenteredPopup(QWidget *popup, QPushButton *btn)
     if (mx < 10)
     {
         mx = 10;
+    }
+    const int maxX = width() - popup->sizeHint().width() - 10;
+    if (mx > maxX)
+    {
+        mx = qMax(10, maxX);
     }
     if (my < 10)
     {
@@ -627,6 +1360,357 @@ void PlayerView::showCenteredPopup(QWidget *popup, QPushButton *btn)
     showControls(); 
 }
 
+void PlayerView::populateRightSidebarFromCache()
+{
+    if (!m_resumeList || !m_sidebarTitleLabel)
+    {
+        return;
+    }
+
+    m_resumeList->clear();
+
+    if (m_isSeriesMode && !m_seriesId.isEmpty())
+    {
+        m_sidebarTitleLabel->setText(
+            m_seriesName.isEmpty() ? tr("Episodes") : m_seriesName);
+
+        QListWidgetItem *scrollTarget = nullptr;
+        for (const MediaItem &season : m_switcherSeriesSeasons)
+        {
+            auto *seasonHeader = new QListWidgetItem(season.name);
+            seasonHeader->setFlags(Qt::NoItemFlags);
+            QFont headerFont = m_resumeList->font();
+            headerFont.setBold(true);
+            headerFont.setPixelSize(13);
+            seasonHeader->setFont(headerFont);
+            seasonHeader->setForeground(QColor(140, 140, 140));
+            m_resumeList->addItem(seasonHeader);
+
+            const auto episodes = m_switcherSeasonEpisodes.value(season.id);
+            for (const MediaItem &episode : episodes)
+            {
+                QString label =
+                    tr("  S%1E%2  %3")
+                        .arg(episode.parentIndexNumber, 2, 10, QChar('0'))
+                        .arg(episode.indexNumber, 2, 10, QChar('0'))
+                        .arg(episode.name);
+                auto *epItem = new QListWidgetItem(label);
+                epItem->setData(Qt::UserRole, episode.id);
+                epItem->setData(Qt::UserRole + 1,
+                                episode.userData.playbackPositionTicks);
+                epItem->setData(Qt::UserRole + 2,
+                                formatMediaSwitcherPlaybackTitle(episode));
+                epItem->setToolTip(formatMediaSwitcherPlaybackTitle(episode));
+
+                if (episode.id == m_currentMediaId)
+                {
+                    QFont boldFont = m_resumeList->font();
+                    boldFont.setBold(true);
+                    epItem->setFont(boldFont);
+                    epItem->setForeground(QColor(100, 180, 255));
+                    scrollTarget = epItem;
+                }
+
+                m_resumeList->addItem(epItem);
+            }
+        }
+
+        if (m_resumeList->count() == 0)
+        {
+            auto *empty = new QListWidgetItem(tr("No episodes found."));
+            empty->setFlags(Qt::NoItemFlags);
+            m_resumeList->addItem(empty);
+            return;
+        }
+
+        if (scrollTarget)
+        {
+            m_resumeList->setCurrentItem(scrollTarget);
+            m_resumeList->scrollToItem(scrollTarget,
+                                       QAbstractItemView::PositionAtCenter);
+        }
+        return;
+    }
+
+    m_sidebarTitleLabel->setText(tr("Continue Watching"));
+    for (const MediaItem &item : m_switcherResumeItems)
+    {
+        const QString displayTitle = formatMediaSwitcherPlaybackTitle(item);
+        auto *listItem = new QListWidgetItem(displayTitle);
+        listItem->setData(Qt::UserRole, item.id);
+        listItem->setData(Qt::UserRole + 1, item.userData.playbackPositionTicks);
+        listItem->setData(Qt::UserRole + 2, displayTitle);
+        listItem->setToolTip(displayTitle);
+        m_resumeList->addItem(listItem);
+    }
+
+    if (m_switcherResumeItems.isEmpty())
+    {
+        auto *empty = new QListWidgetItem(tr("No active media found."));
+        empty->setFlags(Qt::NoItemFlags);
+        m_resumeList->addItem(empty);
+    }
+}
+
+QCoro::Task<void> PlayerView::ensureMediaSwitcherDataLoaded()
+{
+    if (m_currentMediaId.isEmpty())
+    {
+        co_return;
+    }
+
+    if (m_switcherCacheReady && m_switcherCacheMediaId == m_currentMediaId)
+    {
+        qDebug().noquote()
+            << "[PlayerView] Reuse cached media switcher data"
+            << "| mediaId:" << m_currentMediaId
+            << "| seriesMode:" << m_isSeriesMode;
+        if (useHudMediaSwitcher() && m_mediaSwitchDrawer &&
+            m_mediaSwitchDrawer->isVisible())
+        {
+            syncHudMediaSwitcherContent();
+        }
+        if (!useHudMediaSwitcher() && m_isRightSidebarVisible)
+        {
+            populateRightSidebarFromCache();
+        }
+        co_return;
+    }
+
+    QPointer<PlayerView> guard(this);
+    const QString currentMediaId = m_currentMediaId;
+    const bool seriesMode = m_isSeriesMode && !m_seriesId.isEmpty();
+    const QString seriesId = m_seriesId;
+
+    clearMediaSwitcherCache();
+
+    qDebug().noquote()
+        << "[PlayerView] Loading media switcher data"
+        << "| mediaId:" << currentMediaId
+        << "| seriesMode:" << seriesMode
+        << "| seriesId:" << seriesId;
+
+    try
+    {
+        if (seriesMode)
+        {
+            const QList<MediaItem> seasons =
+                co_await m_core->mediaService()->getSeasons(seriesId);
+            if (!guard || guard->m_currentMediaId != currentMediaId)
+            {
+                co_return;
+            }
+
+            guard->m_switcherSeriesSeasons = seasons;
+            for (const MediaItem &season : seasons)
+            {
+                const QList<MediaItem> episodes =
+                    co_await m_core->mediaService()->getEpisodes(seriesId,
+                                                                 season.id);
+                if (!guard || guard->m_currentMediaId != currentMediaId)
+                {
+                    co_return;
+                }
+
+                guard->m_switcherSeasonEpisodes.insert(season.id, episodes);
+            }
+        }
+        else
+        {
+            const QList<MediaItem> items =
+                co_await m_core->mediaService()->getResumeItems(30);
+            if (!guard || guard->m_currentMediaId != currentMediaId)
+            {
+                co_return;
+            }
+
+            guard->m_switcherResumeItems = items;
+        }
+
+        if (!guard || guard->m_currentMediaId != currentMediaId)
+        {
+            co_return;
+        }
+
+        guard->m_switcherCacheMediaId = currentMediaId;
+        guard->m_switcherCacheReady = true;
+        qDebug().noquote()
+            << "[PlayerView] Media switcher data ready"
+            << "| mediaId:" << currentMediaId
+            << "| resumeItems:" << guard->m_switcherResumeItems.size()
+            << "| seasons:" << guard->m_switcherSeriesSeasons.size();
+        if (guard->useHudMediaSwitcher() && guard->m_mediaSwitchDrawer &&
+            guard->m_mediaSwitchDrawer->isVisible())
+        {
+            guard->syncHudMediaSwitcherContent();
+        }
+        if (!guard->useHudMediaSwitcher() && guard->m_isRightSidebarVisible)
+        {
+            guard->populateRightSidebarFromCache();
+        }
+    }
+    catch (const std::exception &e)
+    {
+        if (!guard || guard->m_currentMediaId != currentMediaId)
+        {
+            co_return;
+        }
+
+        guard->clearMediaSwitcherCache();
+        qDebug() << "[PlayerView] Media switcher data fetch failed:"
+                 << e.what();
+        if (guard->useHudMediaSwitcher() && guard->m_mediaSwitchDrawer &&
+            guard->m_mediaSwitchDrawer->isVisible())
+        {
+            guard->syncHudMediaSwitcherContent();
+        }
+        if (!guard->useHudMediaSwitcher() && guard->m_isRightSidebarVisible)
+        {
+            guard->populateRightSidebarFromCache();
+        }
+    }
+}
+
+QCoro::Task<void> PlayerView::switchFromMediaSwitcher(
+    QString mediaId, QString title, long long startPositionTicks)
+{
+    QPointer<PlayerView> guard(this);
+    if (mediaId.isEmpty())
+    {
+        co_return;
+    }
+
+    if (mediaId == m_currentMediaId)
+    {
+        hideRightSidebar();
+        hideHudMediaSwitcher();
+        if (m_activePopup)
+        {
+            m_activePopup->deleteLater();
+            m_activePopup = nullptr;
+        }
+        co_return;
+    }
+
+    m_switcherPendingItemId = mediaId;
+    m_switcherPendingTitle = title;
+    m_switcherPendingTicks = startPositionTicks;
+
+    try
+    {
+        MediaItem detail = co_await m_core->mediaService()->getItemDetail(mediaId);
+
+        if (!guard)
+        {
+            co_return;
+        }
+        if (m_switcherPendingItemId.isEmpty() || detail.id != m_switcherPendingItemId)
+        {
+            co_return;
+        }
+
+        if (detail.mediaSources.isEmpty())
+        {
+            PlaybackInfo playbackInfo =
+                co_await m_core->mediaService()->getPlaybackInfo(detail.id);
+
+            if (!guard)
+            {
+                co_return;
+            }
+            if (m_switcherPendingItemId.isEmpty() ||
+                detail.id != m_switcherPendingItemId)
+            {
+                co_return;
+            }
+
+            detail.mediaSources = playbackInfo.mediaSources;
+        }
+
+        MediaSourceInfo selectedSource;
+        QString mediaSourceId = detail.id;
+        if (!detail.mediaSources.isEmpty())
+        {
+            int sourceIdx =
+                MediaSourcePreferenceUtils::resolvePreferredMediaSourceIndex(
+                    detail.mediaSources,
+                    ConfigStore::instance()
+                        ->get<QString>(ConfigKeys::PlayerPreferredVersion)
+                        .trimmed());
+            if (sourceIdx < 0 || sourceIdx >= detail.mediaSources.size())
+            {
+                sourceIdx = 0;
+            }
+
+            selectedSource = detail.mediaSources.at(sourceIdx);
+            PlayerPreferenceUtils::applyPreferredStreamRules(
+                selectedSource,
+                ConfigStore::instance()->get<QString>(
+                    ConfigKeys::PlayerAudioLang, "auto"),
+                ConfigStore::instance()->get<QString>(
+                    ConfigKeys::PlayerSubLang, "auto"));
+            mediaSourceId = selectedSource.id;
+        }
+
+        QString streamUrl = selectedSource.id.isEmpty()
+                                ? m_core->mediaService()->getStreamUrl(
+                                      detail.id, mediaSourceId)
+                                : m_core->mediaService()->getStreamUrl(
+                                      detail.id, selectedSource);
+        QString resolvedTitle =
+            MediaItemUtils::playbackTitle(detail, m_seriesName);
+        if (resolvedTitle.isEmpty())
+        {
+            resolvedTitle = m_switcherPendingTitle.trimmed();
+        }
+
+        qDebug().noquote()
+            << "[PlayerView] Switching playback item"
+            << "| mediaId:" << detail.id
+            << "| sourceId:" << mediaSourceId
+            << "| title:" << resolvedTitle
+            << "| startTicks:" << m_switcherPendingTicks;
+
+        hideRightSidebar();
+        hideHudMediaSwitcher();
+        if (m_activePopup)
+        {
+            m_activePopup->deleteLater();
+            m_activePopup = nullptr;
+        }
+
+        stopAndReport();
+        m_toastLabel->hide();
+
+        PlayerLaunchContext launchContext;
+        launchContext.mediaItem = detail;
+        launchContext.selectedSource = selectedSource;
+        const QVariant sourceInfoVar = QVariant::fromValue(launchContext);
+
+        QTimer::singleShot(250, this,
+                           [this, id = detail.id, resolvedTitle, streamUrl,
+                            startTicks = m_switcherPendingTicks, sourceInfoVar]()
+                           {
+                               playMedia(id, resolvedTitle, streamUrl,
+                                         startTicks, sourceInfoVar);
+                           });
+
+        m_switcherPendingItemId.clear();
+        m_switcherPendingTitle.clear();
+        m_switcherPendingTicks = 0;
+    }
+    catch (const std::exception &e)
+    {
+        if (!guard)
+        {
+            co_return;
+        }
+        qDebug() << "[PlayerView] Media switch failed:" << e.what();
+        m_switcherPendingItemId.clear();
+        m_switcherPendingTitle.clear();
+        m_switcherPendingTicks = 0;
+    }
+}
 
 void PlayerView::setupRightSidebar()
 {
@@ -634,7 +1718,6 @@ void PlayerView::setupRightSidebar()
     m_rightSidebar->setObjectName("playerRightSidebar"); 
 
     m_rightSidebar->setFixedWidth(220);
-    
     m_rightSidebar->setGeometry(20000, 0, 220, 100);
 
     auto *shadow = new QGraphicsDropShadowEffect(this);
@@ -654,94 +1737,23 @@ void PlayerView::setupRightSidebar()
     m_resumeList = new QListWidget(m_rightSidebar);
     m_resumeList->setObjectName("playerResumeList"); 
     m_resumeList->setFocusPolicy(Qt::NoFocus);
-
     m_resumeList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_resumeList->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     m_resumeList->setTextElideMode(Qt::ElideRight);
-
     layout->addWidget(m_resumeList);
 
-    
     connect(m_resumeList, &QListWidget::itemDoubleClicked, this,
             [this](QListWidgetItem *item) -> QCoro::Task<void>
             {
-                
-                QPointer<PlayerView> guard(this);
-                if (item->flags() == Qt::NoItemFlags)
+                if (!item || item->flags() == Qt::NoItemFlags)
                 {
                     co_return;
                 }
 
-                QString mediaId = item->data(Qt::UserRole).toString();
-                
-                if (mediaId == m_currentMediaId)
-                {
-                    hideRightSidebar();
-                    co_return;
-                }
-
-                
-                
-                if (m_isSeriesMode && !m_seriesName.isEmpty())
-                {
-                    
-                    QString rawText = item->text().trimmed();
-                    int spacePos = rawText.indexOf("  ");
-                    QString seInfo = (spacePos > 0) ? rawText.left(spacePos) : rawText;
-                    m_sidebarPendingTitle = QString("%1 - %2 - %3").arg(m_seriesName, seInfo, item->toolTip());
-                }
-                else
-                {
-                    m_sidebarPendingTitle = item->toolTip();
-                }
-                m_sidebarPendingTicks = item->data(Qt::UserRole + 1).toLongLong();
-                m_sidebarPendingItemId = mediaId;
-
-                try
-                {
-                    MediaItem detail = co_await m_core->mediaService()->getItemDetail(mediaId);
-
-                    if (!guard)
-                        co_return; 
-
-                    if (m_sidebarPendingItemId.isEmpty() || detail.id != m_sidebarPendingItemId)
-                    {
-                        co_return;
-                    }
-
-                    QString mediaSourceId = detail.id;
-                    MediaSourceInfo selectedSource;
-
-                    if (!detail.mediaSources.isEmpty())
-                    {
-                        selectedSource = detail.mediaSources.first();
-                        mediaSourceId = selectedSource.id;
-                    }
-
-                    QString streamUrl = m_core->mediaService()->getStreamUrl(detail.id, mediaSourceId);
-
-                    hideRightSidebar();
-                    stopAndReport();
-                    m_toastLabel->hide();
-
-                    
-                    QVariant sourceInfoVar = QVariant::fromValue(selectedSource);
-
-                    
-                    QTimer::singleShot(250, this,
-                                       [this, id = detail.id, title = m_sidebarPendingTitle, url = streamUrl,
-                                        ticks = m_sidebarPendingTicks, sourceInfoVar]()
-                                       { playMedia(id, title, url, ticks, sourceInfoVar); });
-
-                    m_sidebarPendingItemId.clear();
-                }
-                catch (const std::exception &e)
-                {
-                    if (!guard)
-                        co_return; 
-                    qDebug() << "Sidebar detail fetch failed: " << e.what();
-                    m_sidebarPendingItemId.clear();
-                }
+                co_await switchFromMediaSwitcher(
+                    item->data(Qt::UserRole).toString(),
+                    item->data(Qt::UserRole + 2).toString(),
+                    item->data(Qt::UserRole + 1).toLongLong());
             });
 
     m_rightSidebarAnim = new QPropertyAnimation(m_rightSidebar, "pos", this);
@@ -751,178 +1763,89 @@ void PlayerView::setupRightSidebar()
     m_rightSidebar->installEventFilter(this);
 }
 
-
 QCoro::Task<void> PlayerView::showRightSidebar()
 {
-    
-    QPointer<PlayerView> guard(this);
+    if (m_isViewTearingDown || useHudMediaSwitcher() || m_hasReportedStop)
+    {
+        co_return;
+    }
 
     m_isRightSidebarVisible = true;
-    int sidebarY = m_topHUD->height();
+    const int sidebarY = m_topHUD->height();
 
-    if (m_rightSidebarAnim->state() == QAbstractAnimation::Running)
+    if (!m_rightSidebar || !m_rightSidebarAnim || !m_rightSidebarAnim->targetObject())
     {
-        m_rightSidebarAnim->stop();
-    }
-    m_rightSidebarAnim->setStartValue(m_rightSidebar->pos());
-    m_rightSidebarAnim->setEndValue(QPoint(width() - m_rightSidebar->width(), sidebarY));
-    m_rightSidebarAnim->start();
-
-    showControls();
-
-    
-    
-    
-    if (m_sidebarCachedForMediaId == m_currentMediaId && m_resumeList->count() > 0)
-    {
-        co_return; 
-    }
-
-    
-    
-    
-    m_resumeList->clear();
-    auto *loadingItem = new QListWidgetItem(tr("⏳  Loading..."));
-    loadingItem->setFlags(Qt::NoItemFlags);
-    loadingItem->setForeground(QColor(140, 140, 140));
-    m_resumeList->addItem(loadingItem);
-
-    
-    
-    
-    if (m_isSeriesMode && !m_seriesId.isEmpty())
-    {
-        
-        m_sidebarTitleLabel->setText(m_seriesName.isEmpty() ? tr("Episodes") : m_seriesName);
-
-        try
+        if (m_rightSidebar)
         {
-            auto seasons = co_await m_core->mediaService()->getSeasons(m_seriesId);
-            if (!guard)
-                co_return;
-
-            m_resumeList->clear();
-            QListWidgetItem *scrollTarget = nullptr;
-
-            for (const auto &season : seasons)
-            {
-                
-                auto *seasonHeader = new QListWidgetItem(season.name);
-                seasonHeader->setFlags(Qt::NoItemFlags);
-                QFont headerFont = m_resumeList->font();
-                headerFont.setBold(true);
-                headerFont.setPixelSize(13);
-                seasonHeader->setFont(headerFont);
-                seasonHeader->setForeground(QColor(140, 140, 140));
-                m_resumeList->addItem(seasonHeader);
-
-                
-                auto episodes = co_await m_core->mediaService()->getEpisodes(m_seriesId, season.id);
-                if (!guard)
-                    co_return;
-
-                for (const auto &ep : episodes)
-                {
-                    QString label = QString("  S%1E%2  %3")
-                                        .arg(ep.parentIndexNumber, 2, 10, QChar('0'))
-                                        .arg(ep.indexNumber, 2, 10, QChar('0'))
-                                        .arg(ep.name);
-                    auto *epItem = new QListWidgetItem(label);
-                    epItem->setData(Qt::UserRole, ep.id);
-                    epItem->setData(Qt::UserRole + 1, ep.userData.playbackPositionTicks);
-                    epItem->setToolTip(ep.name);
-
-                    
-                    if (ep.id == m_currentMediaId)
-                    {
-                        QFont boldFont = m_resumeList->font();
-                        boldFont.setBold(true);
-                        epItem->setFont(boldFont);
-                        epItem->setForeground(QColor(100, 180, 255));
-                        scrollTarget = epItem;
-                    }
-
-                    m_resumeList->addItem(epItem);
-                }
-            }
-
-            
-            if (guard && scrollTarget)
-            {
-                m_resumeList->setCurrentItem(scrollTarget);
-                m_resumeList->scrollToItem(scrollTarget, QAbstractItemView::PositionAtCenter);
-            }
-
-            if (guard && m_resumeList->count() == 0)
-            {
-                auto *empty = new QListWidgetItem(tr("No episodes found."));
-                empty->setFlags(Qt::NoItemFlags);
-                m_resumeList->addItem(empty);
-            }
-
-            
-            if (guard)
-                m_sidebarCachedForMediaId = m_currentMediaId;
-        }
-        catch (const std::exception &e)
-        {
-            if (!guard)
-                co_return;
-            qDebug() << "Sidebar series episodes fetch failed: " << e.what();
+            m_rightSidebar->move(width() - m_rightSidebar->width(), sidebarY);
         }
     }
     else
     {
-        
-        m_sidebarTitleLabel->setText(tr("Continue Watching"));
-
-        try
+        if (m_rightSidebarAnim->state() == QAbstractAnimation::Running)
         {
-            QList<MediaItem> items = co_await m_core->mediaService()->getResumeItems(30);
-
-            if (!guard)
-                co_return;
-
-            m_resumeList->clear();
-            for (const auto &item : items)
-            {
-                QString iconStr = item.type == "Episode" ? "📺 " : "🎬 ";
-                QListWidgetItem *listItem = new QListWidgetItem(iconStr + item.name);
-                listItem->setData(Qt::UserRole, item.id);
-                listItem->setData(Qt::UserRole + 1, item.userData.playbackPositionTicks);
-                listItem->setToolTip(item.name);
-                m_resumeList->addItem(listItem);
-            }
-            if (items.isEmpty())
-            {
-                m_resumeList->addItem(new QListWidgetItem(tr("No active media found.")));
-                m_resumeList->item(0)->setFlags(Qt::NoItemFlags);
-            }
-
-            
-            if (guard)
-                m_sidebarCachedForMediaId = m_currentMediaId;
+            stopPropertyAnimationSafely(m_rightSidebarAnim);
         }
-        catch (const std::exception &e)
-        {
-            if (!guard)
-                co_return;
-            qDebug() << "Sidebar resume items fetch failed: " << e.what();
-        }
+        m_rightSidebarAnim->setStartValue(m_rightSidebar->pos());
+        m_rightSidebarAnim->setEndValue(
+            QPoint(width() - m_rightSidebar->width(), sidebarY));
+        m_rightSidebarAnim->start();
     }
+
+    showControls();
+
+    if (m_switcherCacheReady && m_switcherCacheMediaId == m_currentMediaId)
+    {
+        populateRightSidebarFromCache();
+        co_return;
+    }
+
+    m_sidebarTitleLabel->setText(
+        m_isSeriesMode ? (m_seriesName.isEmpty() ? tr("Episodes") : m_seriesName)
+                       : tr("Continue Watching"));
+    m_resumeList->clear();
+    auto *loadingItem = new QListWidgetItem(tr("Loading..."));
+    loadingItem->setFlags(Qt::NoItemFlags);
+    loadingItem->setForeground(QColor(140, 140, 140));
+    m_resumeList->addItem(loadingItem);
+
+    co_await ensureMediaSwitcherDataLoaded();
+    if (!m_switcherCacheReady || m_switcherCacheMediaId != m_currentMediaId)
+    {
+        co_return;
+    }
+
+    populateRightSidebarFromCache();
 }
 
-void PlayerView::hideRightSidebar()
+void PlayerView::hideRightSidebar(bool immediate)
 {
+    immediate = immediate || m_isViewTearingDown;
     m_isRightSidebarVisible = false;
-    int sidebarY = m_topHUD->height();
+    if (!m_rightSidebar)
+    {
+        return;
+    }
+
+    const int sidebarY = m_topHUD ? m_topHUD->height() : 0;
+    const QPoint hiddenPos(width() + 30, sidebarY);
+
+    if (immediate || m_hasReportedStop || !m_rightSidebarAnim || !m_rightSidebarAnim->targetObject())
+    {
+        if (m_rightSidebarAnim)
+        {
+            stopPropertyAnimationSafely(m_rightSidebarAnim);
+        }
+        m_rightSidebar->move(hiddenPos);
+        return;
+    }
 
     if (m_rightSidebarAnim->state() == QAbstractAnimation::Running)
     {
-        m_rightSidebarAnim->stop();
+        stopPropertyAnimationSafely(m_rightSidebarAnim);
     }
     m_rightSidebarAnim->setStartValue(m_rightSidebar->pos());
-    m_rightSidebarAnim->setEndValue(QPoint(width() + 30, sidebarY));
+    m_rightSidebarAnim->setEndValue(hiddenPos);
     m_rightSidebarAnim->start();
 }
 
@@ -936,24 +1859,35 @@ void PlayerView::stopAndReport()
         return;
     }
     m_hasReportedStop = true;
+    m_longPressHandler->setTeardown(true);
+    stopTransientUiAnimations(m_isViewTearingDown);
 
     
     if (m_reportTimer)
         m_reportTimer->stop();
     if (m_mousePollTimer)
         m_mousePollTimer->stop();
-    if (m_seekTimer)
-        m_seekTimer->stop();
+    m_longPressHandler->stopKeyLongPress(false);
+    m_longPressHandler->stopMouseEdgeLongPress();
     if (m_bufferTimer)
         m_bufferTimer->stop();
     if (m_hideTimer)
         m_hideTimer->stop();
-    if (m_osdHideTimer)
-        m_osdHideTimer->stop();
+    if (m_osdLayer)
+        m_osdLayer->forceHide();
     if (m_toastTimer)
         m_toastTimer->stop();
     if (m_singleClickTimer)
         m_singleClickTimer->stop();
+
+    hideRightSidebar(true);
+    hideHudMediaSwitcher();
+    if (m_activePopup)
+    {
+        m_activePopup->deleteLater();
+        m_activePopup = nullptr;
+    }
+    closeActivePlayerDialog();
 
     if (!m_currentMediaId.isEmpty() && m_core && m_core->mediaService())
     {
@@ -1000,14 +1934,119 @@ void PlayerView::stopAndReport()
 
     if (m_mpvWidget)
     {
+        if (m_danmakuController)
+        {
+            m_danmakuController->clearPlaybackContext();
+        }
         
         disconnect(m_mpvWidget, &MpvWidget::positionChanged, this, &PlayerView::onPositionChanged);
         m_mpvWidget->controller()->command(QVariantList{"stop"});
     }
 }
 
+void PlayerView::beginViewTeardown()
+{
+    if (m_isViewTearingDown)
+    {
+        return;
+    }
+
+    m_isViewTearingDown = true;
+    qDebug() << "[PlayerView] Begin teardown: stop timers, disconnect late signals, detach animations";
+
+    if (m_reportTimer)
+        m_reportTimer->stop();
+    if (m_mousePollTimer)
+        m_mousePollTimer->stop();
+    if (m_bufferTimer)
+        m_bufferTimer->stop();
+    if (m_hideTimer)
+        m_hideTimer->stop();
+    if (m_toastTimer)
+        m_toastTimer->stop();
+    if (m_singleClickTimer)
+        m_singleClickTimer->stop();
+
+    if (m_longPressHandler)
+    {
+        m_longPressHandler->setTeardown(true);
+        m_longPressHandler->stopKeyLongPress(false);
+        m_longPressHandler->stopMouseEdgeLongPress();
+    }
+
+    disconnect(ConfigStore::instance(), nullptr, this, nullptr);
+    if (m_danmakuController)
+    {
+        disconnect(m_danmakuController, nullptr, this, nullptr);
+    }
+    if (m_mpvWidget)
+    {
+        disconnect(m_mpvWidget, nullptr, this, nullptr);
+        if (m_mpvWidget->controller())
+        {
+            disconnect(m_mpvWidget->controller(), nullptr, this, nullptr);
+        }
+    }
+
+    stopTransientUiAnimations(true);
+    detachFadeGroupTargets(m_fadeGroup);
+    detachPropertyAnimationTarget(m_rightSidebarAnim);
+
+    m_isRightSidebarVisible = false;
+    if (m_mediaSwitchDrawer)
+    {
+        m_mediaSwitchDrawer->hide();
+    }
+    if (m_topHUD)
+    {
+        m_topHUD->hide();
+    }
+    if (m_bottomHUD)
+    {
+        m_bottomHUD->hide();
+    }
+    if (m_rightTrigger)
+    {
+        m_rightTrigger->hide();
+    }
+    if (m_rightSidebar)
+    {
+        m_rightSidebar->hide();
+    }
+    if (m_logoLabel)
+    {
+        m_logoLabel->hide();
+    }
+    if (m_networkSpeedLabel)
+    {
+        m_networkSpeedLabel->hide();
+    }
+    if (m_statisticsOverlay)
+    {
+        m_statisticsOverlay->hide();
+    }
+    if (m_toastLabel)
+    {
+        m_toastLabel->hide();
+    }
+    if (m_activePopup)
+    {
+        m_activePopup->deleteLater();
+        m_activePopup = nullptr;
+    }
+    closeActivePlayerDialog();
+
+    setCursorHidden(false);
+}
+
 void PlayerView::keyPressEvent(QKeyEvent *event)
 {
+    if (m_isViewTearingDown)
+    {
+        event->ignore();
+        return;
+    }
+
     bool isHudVisible = (m_topOpacity->opacity() > 0.0);
 
     if (event->key() == Qt::Key_Escape)
@@ -1041,12 +2080,7 @@ void PlayerView::keyPressEvent(QKeyEvent *event)
     {
         if (!event->isAutoRepeat())
         {
-            double step = ConfigStore::instance()->get<QString>(ConfigKeys::PlayerSeekStep, "10").toDouble();
-            m_seekDirection = -1;
-            seekRelative(-step, !isHudVisible); 
-            m_seekRate = 2.0;
-            if (ConfigStore::instance()->get<bool>(ConfigKeys::PlayerLongPressSeek, true))
-                m_seekTimer->start(500);
+            m_longPressHandler->startKeyLongPress(-1, !isHudVisible);
         }
         event->accept();
     }
@@ -1054,12 +2088,7 @@ void PlayerView::keyPressEvent(QKeyEvent *event)
     {
         if (!event->isAutoRepeat())
         {
-            double step = ConfigStore::instance()->get<QString>(ConfigKeys::PlayerSeekStep, "10").toDouble();
-            m_seekDirection = 1;
-            seekRelative(step, !isHudVisible);
-            m_seekRate = 2.0;
-            if (ConfigStore::instance()->get<bool>(ConfigKeys::PlayerLongPressSeek, true))
-                m_seekTimer->start(500);
+            m_longPressHandler->startKeyLongPress(1, !isHudVisible);
         }
         event->accept();
     }
@@ -1082,11 +2111,17 @@ void PlayerView::keyPressEvent(QKeyEvent *event)
 
 void PlayerView::keyReleaseEvent(QKeyEvent *event)
 {
+    if (m_isViewTearingDown)
+    {
+        event->ignore();
+        return;
+    }
+
     if (event->key() == Qt::Key_Left || event->key() == Qt::Key_Right)
     {
         if (!event->isAutoRepeat())
         {
-            m_seekTimer->stop();
+            m_longPressHandler->stopKeyLongPress();
         }
         event->accept();
     }
@@ -1096,9 +2131,154 @@ void PlayerView::keyReleaseEvent(QKeyEvent *event)
     }
 }
 
+
+
+void PlayerView::setEffectivePlaybackSpeed(double speed)
+{
+    if (!m_mpvWidget || !m_mpvWidget->controller())
+    {
+        return;
+    }
+
+    m_mpvWidget->controller()->setProperty("speed", speed);
+    if (m_speedBtn)
+    {
+        m_speedBtn->setText(PlayerLongPressHandler::formatSpeedText(speed));
+    }
+}
+
+void PlayerView::stopTransientUiAnimations(bool immediate)
+{
+    if (m_longPressHandler)
+    {
+        m_longPressHandler->stopAllAnimations();
+    }
+
+    if (m_loadingOverlay)
+    {
+        if (immediate)
+        {
+            m_loadingOverlay->forceStop();
+        }
+        else
+        {
+            m_loadingOverlay->stop();
+        }
+    }
+    if (m_rightSidebarAnim)
+    {
+        stopPropertyAnimationSafely(m_rightSidebarAnim);
+    }
+    if (m_osdLayer)
+    {
+        m_osdLayer->stopAnimations();
+    }
+    if (m_fadeGroup)
+    {
+        stopFadeGroupSafely(m_fadeGroup);
+    }
+}
+
+void PlayerView::updateOverlayLayout()
+{
+    if (m_isViewTearingDown)
+    {
+        return;
+    }
+
+    if (!m_mpvWidget || !m_topHUD || !m_bottomHUD)
+    {
+        return;
+    }
+
+    const int drawerHeight =
+        (m_mediaSwitchDrawer && m_mediaSwitchDrawer->isVisible() &&
+         useHudMediaSwitcher())
+            ? m_mediaSwitchDrawer->preferredDrawerHeight()
+            : 0;
+    const int targetBottomHudHeight =
+        m_bottomHudBaseHeight + (drawerHeight > 0 ? drawerHeight + 8 : 0);
+
+    m_mpvWidget->setGeometry(0, 0, width(), height());
+    m_loadingOverlay->setGeometry(0, 0, width(), height());
+    m_topHUD->setGeometry(0, 0, width(), m_topHUD->height());
+    m_bottomHUD->setFixedHeight(targetBottomHudHeight);
+    m_bottomHUD->setGeometry(0, height() - m_bottomHUD->height(), width(),
+                             m_bottomHUD->height());
+
+    if (m_mediaSwitchDrawer)
+    {
+        m_mediaSwitchDrawer->setVisible(drawerHeight > 0 && useHudMediaSwitcher());
+    }
+
+    if (m_logoLabel)
+    {
+        m_logoLabel->move(24, m_topHUD->height());
+    }
+
+    if (m_networkSpeedLabel)
+    {
+        m_networkSpeedLabel->setGeometry(width() - 210, m_topHUD->height(), 200,
+                                         30);
+    }
+
+    if (m_statisticsOverlay)
+    {
+        int statisticsY = m_topHUD->height() + 10;
+        if (m_logoLabel && m_logoLabel->isVisible())
+        {
+            statisticsY = qMax(statisticsY, m_logoLabel->y() + m_logoLabel->height() + 8);
+        }
+
+        const int statisticsWidth = qMax(280, qMin(width() - 24, 620));
+        m_statisticsOverlay->setFixedWidth(statisticsWidth);
+        m_statisticsOverlay->setFixedHeight(m_statisticsOverlay->sizeHint().height());
+        m_statisticsOverlay->move(12, statisticsY);
+    }
+
+    const int sidebarY = m_topHUD->height();
+    const int sidebarH = height() - m_topHUD->height() - m_bottomHUD->height();
+
+    m_rightTrigger->setGeometry(width() - 15, sidebarY, 15, sidebarH);
+
+    if (!m_isRightSidebarVisible)
+    {
+        m_rightSidebar->setGeometry(width() + 30, sidebarY,
+                                    m_rightSidebar->width(), sidebarH);
+    }
+    else
+    {
+        m_rightSidebar->setGeometry(width() - m_rightSidebar->width(), sidebarY,
+                                    m_rightSidebar->width(), sidebarH);
+    }
+
+    if (m_osdLayer)
+    {
+        m_osdLayer->updateGeometry(width(), height());
+    }
+
+    if (m_longPressHandler)
+    {
+        m_longPressHandler->updateGeometry(width(), height(),
+                                            m_topHUD ? m_topHUD->height() : 0);
+    }
+
+    if (m_activePopup)
+    {
+        m_activePopup->raise();
+    }
+
+    updateTitleElision();
+}
+
 void PlayerView::resizeEvent(QResizeEvent *event)
 {
     BaseView::resizeEvent(event);
+
+    if (m_isViewTearingDown)
+    {
+        return;
+    }
 
     
     
@@ -1118,60 +2298,7 @@ void PlayerView::resizeEvent(QResizeEvent *event)
                 }
             }
         });
-
-    m_mpvWidget->setGeometry(0, 0, width(), height());
-    m_loadingOverlay->setGeometry(0, 0, width(), height()); 
-    m_topHUD->setGeometry(0, 0, width(), m_topHUD->height());
-    m_bottomHUD->setGeometry(0, height() - m_bottomHUD->height(), width(), m_bottomHUD->height());
-
-    
-    
-    
-    if (m_logoLabel)
-    {
-        
-        m_logoLabel->move(24, m_topHUD->height());
-    }
-
-    
-    
-    if (m_networkSpeedLabel)
-    {
-        m_networkSpeedLabel->setGeometry(width() - 210, m_topHUD->height(), 200, 30);
-    }
-
-    
-    m_infoOverlay->move(24, m_topHUD->height() + 60);
-
-    
-    int sidebarY = m_topHUD->height();
-    int sidebarH = height() - m_topHUD->height() - m_bottomHUD->height();
-
-    m_rightTrigger->setGeometry(width() - 15, sidebarY, 15, sidebarH);
-
-    if (!m_isRightSidebarVisible)
-    {
-        m_rightSidebar->setGeometry(width() + 30, sidebarY, m_rightSidebar->width(), sidebarH);
-    }
-    else
-    {
-        m_rightSidebar->setGeometry(width() - m_rightSidebar->width(), sidebarY, m_rightSidebar->width(), sidebarH);
-    }
-
-    
-    m_osdContainer->setGeometry(0, 0, width(), height());
-    m_osdSeekLine->setGeometry(0, height() - 3, width(), 3);
-    m_osdSeekTimeLabel->setGeometry((width() - 200) / 2, height() - 45, 200, 36);
-    m_osdVolumeLabel->setGeometry((width() - 160) / 2, height() - 45, 160, 36);
-
-    
-    if (m_activePopup)
-    {
-        m_activePopup->deleteLater();
-        m_activePopup = nullptr;
-    }
-
-    updateTitleElision();
+    updateOverlayLayout();
 }
 
 
@@ -1199,13 +2326,37 @@ void PlayerView::updateTitleElision()
 
 bool PlayerView::eventFilter(QObject *watched, QEvent *event)
 {
+    if (m_isViewTearingDown)
+    {
+        return BaseView::eventFilter(watched, event);
+    }
 
     if (watched == m_mpvWidget || watched == this || watched == m_topHUD || watched == m_titleLabel ||
         watched == m_bottomHUD)
     {
+        
+        
+        if (m_activePlayerDialog && m_activePlayerDialog->isVisible())
+        {
+            const auto type = event->type();
+            if (type == QEvent::MouseButtonPress ||
+                type == QEvent::MouseButtonRelease ||
+                type == QEvent::MouseButtonDblClick ||
+                type == QEvent::MouseMove ||
+                type == QEvent::Wheel)
+            {
+                return true;
+            }
+        }
+
         if (event->type() == QEvent::MouseButtonPress)
         {
             auto *me = static_cast<QMouseEvent *>(event);
+            const QPoint clickPos =
+                this->mapFromGlobal(me->globalPosition().toPoint());
+            const bool isOnHud =
+                m_topHUD->geometry().contains(clickPos) ||
+                m_bottomHUD->geometry().contains(clickPos);
 
             
             
@@ -1222,6 +2373,8 @@ bool PlayerView::eventFilter(QObject *watched, QEvent *event)
                 QPoint localPos = this->mapFromGlobal(me->globalPosition().toPoint());
                 if (!m_activePopup->geometry().contains(localPos))
                 {
+                    m_activePopup->hide();
+                    m_activePopup->close();
                     m_activePopup->deleteLater();
                     m_activePopup = nullptr;
                     return true;
@@ -1231,6 +2384,13 @@ bool PlayerView::eventFilter(QObject *watched, QEvent *event)
             showControls();
             if (me->button() == Qt::LeftButton && watched != m_bottomHUD)
             {
+                m_singleClickTimer->stop();
+
+                if (!isOnHud)
+                {
+                    m_longPressHandler->startMouseEdgeLongPress(clickPos.x() < width() / 2 ? -1 : 1);
+                }
+
                 
                 m_dragPos = me->globalPosition().toPoint();
                 m_didDrag = false; 
@@ -1238,8 +2398,24 @@ bool PlayerView::eventFilter(QObject *watched, QEvent *event)
         }
         else if (event->type() == QEvent::MouseMove)
         {
-            showControls(); 
             auto *me = static_cast<QMouseEvent *>(event);
+            m_lastMousePos = me->globalPosition().toPoint();
+            handlePointerActivity(m_lastMousePos);
+            const QPoint localPos =
+                this->mapFromGlobal(me->globalPosition().toPoint());
+            const bool isOnHud =
+                m_topHUD->geometry().contains(localPos) ||
+                m_bottomHUD->geometry().contains(localPos);
+            const bool movedEnough =
+                (me->globalPosition().toPoint() - m_dragPos).manhattanLength() >
+                QApplication::startDragDistance();
+
+            if (m_longPressHandler->mouseEdgeLongPressDirection() != 0 &&
+                (movedEnough || isOnHud))
+            {
+                m_longPressHandler->stopMouseEdgeLongPress();
+            }
+
             if ((me->buttons() & Qt::LeftButton) && watched != m_bottomHUD)
             {
 
@@ -1247,8 +2423,7 @@ bool PlayerView::eventFilter(QObject *watched, QEvent *event)
                 if (!window()->isFullScreen())
                 {
                     
-                    if ((me->globalPosition().toPoint() - m_dragPos).manhattanLength() >
-                        QApplication::startDragDistance())
+                    if (movedEnough)
                     {
                         m_didDrag = true; 
                         if (window() && window()->windowHandle())
@@ -1264,6 +2439,15 @@ bool PlayerView::eventFilter(QObject *watched, QEvent *event)
         else if (event->type() == QEvent::MouseButtonRelease)
         {
             auto *me = static_cast<QMouseEvent *>(event);
+            const bool consumedByMouseEdge =
+                me->button() == Qt::LeftButton && m_longPressHandler->stopMouseEdgeLongPress();
+            if (consumedByMouseEdge)
+            {
+                m_singleClickTimer->stop();
+                m_didDrag = true;
+                return true;
+            }
+
             
             QPoint clickPos = this->mapFromGlobal(me->globalPosition().toPoint());
             bool isOnHud = m_topHUD->geometry().contains(clickPos) || m_bottomHUD->geometry().contains(clickPos);
@@ -1276,6 +2460,10 @@ bool PlayerView::eventFilter(QObject *watched, QEvent *event)
         else if (event->type() == QEvent::MouseButtonDblClick)
         {
             auto *me = static_cast<QMouseEvent *>(event);
+            if (me->button() == Qt::LeftButton)
+            {
+                m_longPressHandler->stopMouseEdgeLongPress();
+            }
             QPoint clickPos = this->mapFromGlobal(me->globalPosition().toPoint());
             bool isOnHud = m_topHUD->geometry().contains(clickPos) || m_bottomHUD->geometry().contains(clickPos);
             if (me->button() == Qt::LeftButton && !isOnHud)
@@ -1308,6 +2496,11 @@ bool PlayerView::eventFilter(QObject *watched, QEvent *event)
 
     if (event->type() == QEvent::Wheel)
     {
+        
+        if (m_activePlayerDialog && m_activePlayerDialog->isVisible())
+        {
+            return true;
+        }
         if (watched == m_volumeBtn || watched == m_volumeSlider || watched == m_bottomHUD || watched == m_mpvWidget ||
             watched == this)
         {
@@ -1321,73 +2514,81 @@ bool PlayerView::eventFilter(QObject *watched, QEvent *event)
     return BaseView::eventFilter(watched, event);
 }
 
-
-
-
-void PlayerView::showMiniOsd(const QString &type)
+void PlayerView::handlePointerActivity(const QPoint &globalPos)
 {
-    if (m_topOpacity->opacity() > 0.0)
-    {
-        return; 
-    }
-
-    if (!m_osdContainer->isVisible() || m_osdOpacity->opacity() == 0.0)
-    {
-        m_osdContainer->show();
-        m_osdAnim->stop();
-        m_osdAnim->setStartValue(m_osdOpacity->opacity());
-        m_osdAnim->setEndValue(1.0);
-        m_osdAnim->start();
-    }
-
-    if (type == "seek")
-    {
-        m_osdSeekLine->show();
-        m_osdSeekTimeLabel->show();
-        m_osdVolumeLabel->hide();
-
-        m_osdSeekLine->setMaximum(static_cast<int>(m_totalDuration));
-        m_osdSeekLine->setValue(static_cast<int>(m_currentPosition));
-        m_osdSeekTimeLabel->setText(formatTime(m_currentPosition, m_totalDuration));
-    }
-    else if (type == "volume")
-    {
-        m_osdSeekLine->hide();
-        m_osdSeekTimeLabel->hide();
-        m_osdVolumeLabel->show();
-
-        m_osdVolumeLabel->setText(tr("Volume: %1%").arg(static_cast<int>(m_currentVolume)));
-    }
-
-    m_osdHideTimer->start(1500); 
-}
-
-void PlayerView::hideMiniOsd()
-{
-    if (m_osdOpacity->opacity() <= 0.0)
+    if (m_isViewTearingDown || m_hasReportedStop)
     {
         return;
     }
-    m_osdAnim->stop();
-    m_osdAnim->setStartValue(m_osdOpacity->opacity());
-    m_osdAnim->setEndValue(0.0);
-    m_osdAnim->start();
+
+    const QPoint localPos = mapFromGlobal(globalPos);
+    if (!rect().contains(localPos))
+    {
+        return;
+    }
+
+    setCursorHidden(false);
+
+    if (m_osdLayer && m_osdLayer->isVisible())
+    {
+        m_osdLayer->forceHide();
+    }
+
+    if (m_isPlaying)
+    {
+        m_hideTimer->start(3000);
+    }
+    else
+    {
+        m_hideTimer->stop();
+    }
+
+    if (areControlsFullyVisible())
+    {
+        return;
+    }
+
+    showControls();
 }
+
+void PlayerView::setCursorHidden(bool hidden)
+{
+    const auto targetShape =
+        hidden ? Qt::BlankCursor : Qt::ArrowCursor;
+
+    if (cursor().shape() != targetShape)
+    {
+        setCursor(targetShape);
+    }
+
+    if (m_mpvWidget && m_mpvWidget->cursor().shape() != targetShape)
+    {
+        m_mpvWidget->setCursor(targetShape);
+    }
+}
+
+bool PlayerView::areControlsFullyVisible() const
+{
+    return m_topOpacity && m_topOpacity->opacity() >= 1.0 &&
+           (!m_fadeGroup ||
+            m_fadeGroup->state() != QAbstractAnimation::Running);
+}
+
+
 
 void PlayerView::showControls()
 {
-    this->setCursor(Qt::ArrowCursor);
-    if (m_mpvWidget)
+    if (m_isViewTearingDown || m_hasReportedStop)
     {
-        m_mpvWidget->setCursor(Qt::ArrowCursor);
+        return;
     }
 
+    setCursorHidden(false);
+
     
-    if (m_osdContainer->isVisible())
+    if (m_osdLayer && m_osdLayer->isVisible())
     {
-        m_osdHideTimer->stop();
-        m_osdOpacity->setOpacity(0.0);
-        m_osdContainer->hide();
+        m_osdLayer->forceHide();
     }
 
     if (m_isPlaying)
@@ -1406,14 +2607,32 @@ void PlayerView::showControls()
 
     if (m_fadeGroup->state() == QAbstractAnimation::Running)
     {
-        m_fadeGroup->stop();
+        stopFadeGroupSafely(m_fadeGroup);
     }
 
+    bool canAnimate = true;
     for (int i = 0; i < m_fadeGroup->animationCount(); ++i)
     {
         auto *anim = qobject_cast<QPropertyAnimation *>(m_fadeGroup->animationAt(i));
+        if (!anim || !anim->targetObject())
+        {
+            canAnimate = false;
+            break;
+        }
         anim->setStartValue(anim->targetObject()->property("opacity")); 
         anim->setEndValue(1.0);
+    }
+    if (!canAnimate)
+    {
+        if (m_topOpacity)
+            m_topOpacity->setOpacity(1.0);
+        if (m_bottomOpacity)
+            m_bottomOpacity->setOpacity(1.0);
+        if (m_logoOpacity)
+            m_logoOpacity->setOpacity(1.0);
+        if (m_speedOpacity)
+            m_speedOpacity->setOpacity(1.0);
+        return;
     }
     m_fadeGroup->setDirection(QAbstractAnimation::Forward);
     m_fadeGroup->start();
@@ -1422,6 +2641,11 @@ void PlayerView::showControls()
 
 void PlayerView::hideControls()
 {
+    if (m_isViewTearingDown || m_hasReportedStop)
+    {
+        return;
+    }
+
     if (!m_isPlaying)
     {
         return;
@@ -1432,8 +2656,16 @@ void PlayerView::hideControls()
     bool isMouseInside = this->rect().contains(localPos);
     
     bool isMouseInsidePopup = m_activePopup && m_activePopup->geometry().contains(localPos);
+    const bool hasActivePlayerDialog =
+        m_activePlayerDialog && m_activePlayerDialog->isVisible();
 
     
+    if (hasActivePlayerDialog)
+    {
+        m_hideTimer->start(1000);
+        return;
+    }
+
     if (isAppActive && isMouseInside &&
         (m_topHUD->geometry().contains(localPos) || m_bottomHUD->geometry().contains(localPos) || isMouseInsidePopup ||
          (m_isRightSidebarVisible && m_rightSidebar->geometry().contains(localPos))))
@@ -1443,9 +2675,12 @@ void PlayerView::hideControls()
     }
 
     hideRightSidebar();
+    hideHudMediaSwitcher();
 
     if (m_activePopup)
     {
+        m_activePopup->hide();
+        m_activePopup->close();
         m_activePopup->deleteLater();
         m_activePopup = nullptr;
     }
@@ -1457,42 +2692,50 @@ void PlayerView::hideControls()
 
     if (m_fadeGroup->state() == QAbstractAnimation::Running)
     {
-        m_fadeGroup->stop();
+        stopFadeGroupSafely(m_fadeGroup);
     }
 
+    bool canAnimate = true;
     for (int i = 0; i < m_fadeGroup->animationCount(); ++i)
     {
         auto *anim = qobject_cast<QPropertyAnimation *>(m_fadeGroup->animationAt(i));
+        if (!anim || !anim->targetObject())
+        {
+            canAnimate = false;
+            break;
+        }
         anim->setStartValue(anim->targetObject()->property("opacity")); 
         anim->setEndValue(0.0);
+    }
+    if (!canAnimate)
+    {
+        if (m_topOpacity)
+            m_topOpacity->setOpacity(0.0);
+        if (m_bottomOpacity)
+            m_bottomOpacity->setOpacity(0.0);
+        if (m_logoOpacity)
+            m_logoOpacity->setOpacity(0.0);
+        if (m_speedOpacity)
+            m_speedOpacity->setOpacity(0.0);
+        return;
     }
     m_fadeGroup->setDirection(QAbstractAnimation::Forward);
     m_fadeGroup->start();
 
-    this->setCursor(Qt::BlankCursor);
-    if (m_mpvWidget)
-    {
-        m_mpvWidget->setCursor(Qt::BlankCursor);
-    }
+    setCursorHidden(true);
 }
 
 void PlayerView::onMpvPropertyChanged(const QString &property, const QVariant &value)
 {
+    if (m_isViewTearingDown)
+    {
+        return;
+    }
+
     if (property == "cache-speed")
     {
         qint64 speedBytes = value.toLongLong();
-        if (speedBytes == 0)
-        {
-            m_networkSpeedLabel->setText("0.0 KB/s");
-        }
-        else if (speedBytes < 1024 * 1024)
-        {
-            m_networkSpeedLabel->setText(QString::number(speedBytes / 1024.0, 'f', 1) + " KB/s");
-        }
-        else
-        {
-            m_networkSpeedLabel->setText(QString::number(speedBytes / 1048576.0, 'f', 1) + " MB/s");
-        }
+        m_networkSpeedLabel->setText(formatDataRateValue(speedBytes));
     }
     else if (property == "mute")
     {
@@ -1531,6 +2774,13 @@ void PlayerView::onMpvPropertyChanged(const QString &property, const QVariant &v
         
         m_isSeeking = value.toBool();
         updateLoadingState();
+    }
+
+    if (m_showStatisticsOverlay &&
+        (property == QLatin1String("cache-speed") || property == QLatin1String("track-list") ||
+         property == QLatin1String("pause")))
+    {
+        updateStatisticsDisplay();
     }
 }
 
@@ -1572,7 +2822,10 @@ void PlayerView::changeVolume(int delta, bool silent)
     }
     else
     {
-        showMiniOsd("volume");
+        if (m_osdLayer && m_topOpacity->opacity() <= 0.0)
+        {
+            m_osdLayer->showVolume(tr("Volume: %1%").arg(static_cast<int>(m_currentVolume)));
+        }
     }
 
     
@@ -1603,10 +2856,16 @@ void PlayerView::onVolumeSliderMoved(int value)
 void PlayerView::showSettingsMenu()
 {
     auto *panel = new ModernScrollPanel(this);
+    const bool showDanmakuControls = shouldShowDanmakuHudControls();
 
     
     panel->addItem(tr("Network Speed"), "network_speed", m_showNetworkSpeed);
-    panel->addItem(tr("Tech Info Panel"), "tech_info", m_showInfoOverlay);
+    panel->addItem(tr("Statistics"), "statistics", m_showStatisticsOverlay);
+    panel->addItem(tr("Subtitle Settings"), "subtitle_settings", false);
+    if (showDanmakuControls)
+    {
+        panel->addItem(tr("Danmaku Settings"), "danmaku_settings", false);
+    }
 
     
     ServerProfile profile = m_core->serverManager()->activeProfile();
@@ -1626,6 +2885,16 @@ void PlayerView::showSettingsMenu()
             {
                 Q_UNUSED(text);
                 QString action = data.toString();
+                auto dismissPopup = [this]()
+                {
+                    if (m_activePopup)
+                    {
+                        m_activePopup->hide();
+                        m_activePopup->close();
+                        m_activePopup->deleteLater();
+                        m_activePopup = nullptr;
+                    }
+                };
 
                 if (action == "network_speed")
                 {
@@ -1633,17 +2902,18 @@ void PlayerView::showSettingsMenu()
                     m_networkSpeedLabel->setVisible(m_showNetworkSpeed);
                     showToast(m_showNetworkSpeed ? tr("Network Speed Enabled") : tr("Network Speed Disabled"));
                 }
-                else if (action == "tech_info")
+                else if (action == "statistics")
                 {
-                    m_showInfoOverlay = !m_showInfoOverlay;
-                    if (m_showInfoOverlay)
+                    m_showStatisticsOverlay = !m_showStatisticsOverlay;
+                    if (m_showStatisticsOverlay)
                     {
-                        updateInfoDisplay();
-                        m_infoOverlay->show();
+                        updateStatisticsDisplay();
+                        m_statisticsOverlay->show();
+                        updateOverlayLayout();
                     }
                     else
                     {
-                        m_infoOverlay->hide();
+                        m_statisticsOverlay->hide();
                     }
                 }
                 else if (action == "strm_direct")
@@ -1672,13 +2942,21 @@ void PlayerView::showSettingsMenu()
                     QTimer::singleShot(150, this, [this, mediaId, title, origUrl, currentTicks, sourceInfo]()
                                        { playMedia(mediaId, title, origUrl, currentTicks, sourceInfo); });
                 }
+                else if (action == "subtitle_settings")
+                {
+                    dismissPopup();
+                    openSubtitleSettingsDialog();
+                    return;
+                }
+                else if (action == "danmaku_settings")
+                {
+                    dismissPopup();
+                    openDanmakuSettingsDialog();
+                    return;
+                }
 
                 
-                if (m_activePopup)
-                {
-                    m_activePopup->deleteLater();
-                    m_activePopup = nullptr;
-                }
+                dismissPopup();
             });
 
     showCenteredPopup(panel, m_settingsBtn);
@@ -1709,9 +2987,8 @@ void PlayerView::showSpeedMenu()
                 Q_UNUSED(text);
                 double s = data.toDouble();
                 m_currentSpeed = s;
-                m_mpvWidget->controller()->setProperty("speed", s);
-                m_speedBtn->setText(QString("%1X").arg(s));
-                showToast(tr("Speed: %1X").arg(s));
+                setEffectivePlaybackSpeed(s);
+                showToast(tr("Speed: %1X").arg(PlayerLongPressHandler::formatSpeedText(s).chopped(1)));
 
                 if (m_activePopup)
                 {
@@ -1783,58 +3060,303 @@ void PlayerView::showAudioMenu()
 void PlayerView::showSubtitleMenu()
 {
     auto *panel = new ModernScrollPanel(this);
-
-    auto tracks = m_mpvWidget->controller()->getProperty("track-list").toList();
+    const QList<QVariantMap> tracks =
+        m_danmakuController ? m_danmakuController->contentSubtitleTracks()
+                            : QList<QVariantMap>{};
     bool anySubSelected = false;
 
-    for (const QVariant &v : tracks)
+    for (const QVariantMap &map : tracks)
     {
-        auto map = v.toMap();
-        if (map["type"].toString() == "sub")
+        int id = map["id"].toInt();
+        QString title = map["title"].toString();
+        QString lang = map["lang"].toString();
+        bool selected = map["selected"].toBool();
+        if (selected)
         {
-            int id = map["id"].toInt();
-            QString title = map["title"].toString();
-            QString lang = map["lang"].toString();
-            bool selected = map["selected"].toBool();
-            if (selected)
-            {
-                anySubSelected = true;
-            }
-
-            QString text = title.isEmpty() ? (lang.isEmpty() ? tr("Subtitle %1").arg(id) : lang) : title;
-            panel->addItem(text, id, selected);
+            anySubSelected = true;
         }
+
+        QString text = title.isEmpty() ? (lang.isEmpty() ? tr("Subtitle %1").arg(id) : lang) : title;
+        panel->addItem(text, id, selected);
     }
 
     panel->addItem(tr("Disable Subtitles"), "no", !anySubSelected);
+    panel->addItem(tr("Subtitle Settings"), QStringLiteral("settings"), false);
 
     int maxHeight = this->height() - m_bottomHUD->height() - 40;
-    panel->finalizeLayout(maxHeight < 150 ? 150 : maxHeight, 200);
+    panel->finalizeLayout(maxHeight < 150 ? 150 : maxHeight, 240);
 
     connect(panel, &ModernScrollPanel::itemTriggered, this,
             [this](const QVariant &data, const QString &text)
             {
-                QString valStr = data.toString();
-                if (valStr == "no")
+                auto dismissPopup = [this]()
                 {
-                    m_mpvWidget->controller()->setProperty("sid", "no");
-                    showToast(tr("Subtitles Disabled"));
-                }
-                else
+                    if (m_activePopup)
+                    {
+                        m_activePopup->hide();
+                        m_activePopup->close();
+                        m_activePopup->deleteLater();
+                        m_activePopup = nullptr;
+                    }
+                };
+
+                const QString action = data.toString();
+                if (action == QLatin1String("settings"))
                 {
-                    int id = data.toInt();
-                    m_mpvWidget->controller()->setProperty("sid", id);
-                    showToast(tr("Subtitle: %1").arg(text));
+                    dismissPopup();
+                    openSubtitleSettingsDialog();
+                    return;
                 }
 
-                if (m_activePopup)
+                if (m_danmakuController)
                 {
-                    m_activePopup->deleteLater();
-                    m_activePopup = nullptr;
+                    m_danmakuController->selectSubtitleTrack(data);
                 }
+
+                showToast(action == "no" ? tr("Subtitles Disabled")
+                                          : tr("Subtitle: %1").arg(text));
+                dismissPopup();
             });
 
     showCenteredPopup(panel, m_subtitleBtn);
+}
+
+void PlayerView::showDanmakuMenu()
+{
+    if (!shouldShowDanmakuHudControls())
+    {
+        return;
+    }
+
+    auto *panel = new ModernScrollPanel(this);
+
+    const bool visible =
+        m_danmakuController && m_danmakuController->isDanmakuVisible();
+    panel->addItem(buildDanmakuSummaryText(), QStringLiteral("info"), false);
+    panel->addItem(visible ? tr("Hide Danmaku") : tr("Show Danmaku"),
+                   QStringLiteral("toggle"), visible);
+    panel->addItem(tr("Reload Danmaku"), QStringLiteral("reload"), false);
+    panel->addItem(tr("Load Local Danmaku File"),
+                   QStringLiteral("load_local"), false);
+    panel->addItem(tr("Search Danmaku"), QStringLiteral("search"), false);
+    panel->addItem(tr("Danmaku Settings"),
+                   QStringLiteral("quick_settings"), false);
+
+    int maxHeight = this->height() - m_bottomHUD->height() - 40;
+    panel->finalizeLayout(maxHeight < 160 ? 160 : maxHeight, 360);
+
+    connect(panel, &ModernScrollPanel::itemTriggered, this,
+            [this](const QVariant &data, const QString &text)
+            {
+                Q_UNUSED(text);
+                if (!m_danmakuController)
+                {
+                    return;
+                }
+
+                auto dismissPopup = [this]()
+                {
+                    if (m_activePopup)
+                    {
+                        m_activePopup->hide();
+                        m_activePopup->close();
+                        m_activePopup->deleteLater();
+                        m_activePopup = nullptr;
+                    }
+                };
+
+                const QString action = data.toString();
+                if (action == QLatin1String("info"))
+                {
+                    showToast(buildDanmakuSummaryText());
+                }
+                else if (action == QLatin1String("toggle"))
+                {
+                    m_danmakuController->setDanmakuVisible(
+                        !m_danmakuController->isDanmakuVisible());
+                }
+                else if (action == QLatin1String("reload"))
+                {
+                    m_danmakuController->reload();
+                }
+                else if (action == QLatin1String("load_local"))
+                {
+                    dismissPopup();
+                    loadLocalDanmakuFile();
+                    return;
+                }
+                else if (action == QLatin1String("search"))
+                {
+                    dismissPopup();
+                    showDanmakuIdentifyDialog();
+                    return;
+                }
+                else if (action == QLatin1String("quick_settings"))
+                {
+                    dismissPopup();
+                    openDanmakuSettingsDialog();
+                    return;
+                }
+
+                dismissPopup();
+            });
+
+    showCenteredPopup(panel, m_danmakuBtn);
+}
+
+void PlayerView::showDanmakuIdentifyDialog()
+{
+    if (!m_danmakuController || !m_danmakuController->hasPlaybackContext()) {
+        showToast(tr("Danmaku is unavailable for the current media"));
+        return;
+    }
+
+    if (m_activePopup) {
+        m_activePopup->hide();
+        m_activePopup->close();
+        m_activePopup->deleteLater();
+        m_activePopup = nullptr;
+    }
+
+    const QString activeTargetId =
+        m_danmakuController ? m_danmakuController->activeTargetId() : QString();
+    auto *dialog = new PlayerDanmakuIdentifyDialog(
+        m_core, m_danmakuController->mediaContext(), QString(),
+        activeTargetId, this);
+    connect(dialog, &PlayerDanmakuIdentifyDialog::finished, this,
+            [this, dialog](int result)
+            {
+                if (result != PlayerOverlayDialog::Accepted ||
+                    !dialog->selectedCandidate().isValid() ||
+                    !m_danmakuController)
+                {
+                    return;
+                }
+
+                m_danmakuController->loadFromCandidate(
+                    dialog->selectedCandidate(), true);
+            });
+    trackPlayerDialog(dialog);
+}
+
+void PlayerView::loadLocalDanmakuFile()
+{
+    if (!m_danmakuController || !m_danmakuController->hasPlaybackContext())
+    {
+        showToast(tr("Danmaku is unavailable for the current media"));
+        return;
+    }
+
+    if (m_activePopup)
+    {
+        m_activePopup->hide();
+        m_activePopup->close();
+        m_activePopup->deleteLater();
+        m_activePopup = nullptr;
+    }
+    closeActivePlayerDialog();
+
+    const QString serverId = m_danmakuController->mediaContext().serverId;
+    const QString startDir = DanmakuService::ensureLocalDanmakuDirectory(serverId)
+                                 ? DanmakuService::localDanmakuDirectoryPath(serverId)
+                                 : QDir::homePath();
+    const QString filePath = QFileDialog::getOpenFileName(
+        this, tr("Load Local Danmaku File"), startDir,
+        tr("Danmaku Files (*.ass *.json *.xml);;ASS Files (*.ass);;JSON Files (*.json);;XML Files (*.xml)"));
+    if (filePath.trimmed().isEmpty())
+    {
+        return;
+    }
+
+    qDebug().noquote()
+        << "[Danmaku][PlayerView] Load local danmaku file"
+        << "| mediaId:" << m_danmakuController->mediaContext().mediaId
+        << "| path:" << filePath;
+    m_danmakuController->loadLocalFile(filePath);
+}
+
+void PlayerView::openSubtitleSettingsDialog()
+{
+    if (m_activePopup)
+    {
+        m_activePopup->hide();
+        m_activePopup->close();
+        m_activePopup->deleteLater();
+        m_activePopup = nullptr;
+    }
+
+    auto *dialog = new PlayerSubtitleSettingsDialog(this);
+    trackPlayerDialog(dialog);
+}
+
+void PlayerView::openDanmakuSettingsDialog()
+{
+    if (!shouldShowDanmakuHudControls())
+    {
+        return;
+    }
+
+    if (m_activePopup)
+    {
+        m_activePopup->hide();
+        m_activePopup->close();
+        m_activePopup->deleteLater();
+        m_activePopup = nullptr;
+    }
+
+    auto *dialog = new PlayerDanmakuSettingsDialog(this);
+    connect(dialog, &PlayerDanmakuSettingsDialog::danmakuEnabledToggled, this,
+            [this](bool enabled)
+            {
+                if (!m_danmakuController)
+                {
+                    return;
+                }
+                m_danmakuController->setDanmakuEnabled(enabled);
+            });
+    connect(dialog, &PlayerDanmakuSettingsDialog::liveReloadRequested, this,
+            [this]()
+            {
+                if (!m_danmakuController ||
+                    !m_danmakuController->hasPlaybackContext() ||
+                    !ConfigStore::instance()->get<bool>(
+                        ConfigKeys::PlayerDanmakuEnabled, false))
+                {
+                    return;
+                }
+                m_danmakuController->reload();
+            });
+    connect(dialog, &PlayerDanmakuSettingsDialog::finished, this,
+            [this, dialog](int)
+            {
+                if (!m_danmakuController)
+                {
+                    return;
+                }
+
+                if (dialog->requiresReload() &&
+                    m_danmakuController->hasPlaybackContext() &&
+                    ConfigStore::instance()->get<bool>(
+                        ConfigKeys::PlayerDanmakuEnabled, false))
+                {
+                    m_danmakuController->reload();
+                }
+            });
+    trackPlayerDialog(dialog);
+}
+
+void PlayerView::applySubtitleStyleSettings()
+{
+    if (!m_mpvWidget || !m_mpvWidget->controller())
+    {
+        return;
+    }
+
+    const bool protectDanmakuPrimary =
+        m_danmakuController && m_danmakuController->isDanmakuEnabled() &&
+        m_danmakuController->hasDanmakuTrack();
+    SubtitleStyleUtils::applyToController(m_mpvWidget->controller(),
+                                          protectDanmakuPrimary);
 }
 
 
@@ -1850,7 +3372,10 @@ void PlayerView::seekRelative(double delta, bool silent)
     }
     else
     {
-        showMiniOsd("seek");
+        if (m_osdLayer && m_topOpacity->opacity() <= 0.0)
+        {
+            m_osdLayer->showSeek(m_currentPosition, m_totalDuration, formatTime(m_currentPosition, m_totalDuration));
+        }
     }
 }
 
@@ -1915,67 +3440,338 @@ void PlayerView::setScaleIcon()
 
 void PlayerView::showToast(const QString &msg)
 {
+    if (m_isViewTearingDown)
+    {
+        return;
+    }
+
     m_toastLabel->setText(msg);
     m_toastLabel->show();
     m_toastTimer->start(2500);
 }
 
-
-void PlayerView::updateInfoDisplay()
+void PlayerView::updateStatisticsDisplay()
 {
-    if (!m_mpvWidget || !m_mpvWidget->controller())
+    if (!m_statisticsOverlay || !m_mpvWidget || !m_mpvWidget->controller())
     {
         return;
     }
+
     auto *ctrl = m_mpvWidget->controller();
+    const QVariantList tracks = ctrl->getProperty("track-list").toList();
+    const QVariantMap selectedVideoTrack = findSelectedTrackByType(tracks, QStringLiteral("video"));
+    const QVariantMap selectedAudioTrack = findSelectedTrackByType(tracks, QStringLiteral("audio"));
+    const QVariantMap selectedSubtitleTrack = findSelectedTrackByType(tracks, QStringLiteral("sub"));
 
-    QString vCodec = ctrl->getProperty("video-codec").toString().toUpper();
-    QString vFormat = ctrl->getProperty("video-format").toString().toUpper();
-    QString aCodec = ctrl->getProperty("audio-codec").toString().toUpper();
-    QString hwdec = ctrl->getProperty("hwdec-current").toString().toUpper();
+    const MediaSourceInfo &source = m_currentMediaSourceInfo;
+    const MediaStreamInfo *videoStream = findFirstStreamByType(source, QStringLiteral("Video"));
+    const MediaStreamInfo *audioStream = findFirstStreamByType(source, QStringLiteral("Audio"));
 
-    QString w = ctrl->getProperty("width").toString();
-    QString h = ctrl->getProperty("height").toString();
-    QString fps = ctrl->getProperty("container-fps").toString();
-    QString drops = ctrl->getProperty("frame-drop-count").toString();
+    auto addLine = [](QStringList &lines, const QString &label, const QString &value)
+    {
+        lines << (label + QStringLiteral(": ") + trimOrDash(value));
+    };
 
-    QString aCh = ctrl->getProperty("audio-params/channel-count").toString();
-    QString aSr = ctrl->getProperty("audio-params/samplerate").toString();
+    QStringList lines;
 
-    
-    qint64 vBitrateRaw = ctrl->getProperty("video-bitrate").toLongLong();
-    qint64 aBitrateRaw = ctrl->getProperty("audio-bitrate").toLongLong();
-    QString vBitrate = vBitrateRaw > 0 ? QString::number(vBitrateRaw / 1000) + " kbps" : "Variable / Unknown";
-    QString aBitrate = aBitrateRaw > 0 ? QString::number(aBitrateRaw / 1000) + " kbps" : "Variable / Unknown";
+    QString sourcePath = firstNonEmpty({source.path, m_currentMediaItem.path});
+    sourcePath = QUrl::fromPercentEncoding(sourcePath.toUtf8()).trimmed();
 
-    
-    QString text = QString("[Video Info]\n"
-                           "Codec: %1 (%2)\n"
-                           "Resolution: %3 x %4\n"
-                           "Frame Rate: %5 fps\n"
-                           "Bitrate: %6\n"
-                           "HW Decoder: %7\n"
-                           "Dropped Frames: %8\n\n"
-                           "[Audio Info]\n"
-                           "Codec: %9\n"
-                           "Channels: %10 ch\n"
-                           "Sample Rate: %11 Hz\n"
-                           "Bitrate: %12")
-                       .arg(vCodec.isEmpty() ? "UNKNOWN" : vCodec)
-                       .arg(vFormat.isEmpty() ? "-" : vFormat)
-                       .arg(w.isEmpty() ? "0" : w)
-                       .arg(h.isEmpty() ? "0" : h)
-                       .arg(fps.isEmpty() ? "0" : fps)
-                       .arg(vBitrate)
-                       .arg(hwdec.isEmpty() || hwdec == "NO" ? "Software (CPU)" : hwdec)
-                       .arg(drops.isEmpty() ? "0" : drops)
-                       .arg(aCodec.isEmpty() ? "UNKNOWN" : aCodec)
-                       .arg(aCh.isEmpty() ? "0" : aCh)
-                       .arg(aSr.isEmpty() ? "0" : aSr)
-                       .arg(aBitrate);
+    QString fileDisplay = sourcePath;
+    if (!fileDisplay.isEmpty())
+    {
+        const QFileInfo fileInfo(fileDisplay);
+        if (!fileInfo.fileName().isEmpty())
+        {
+            fileDisplay = fileInfo.fileName();
+        }
+    }
+    if (fileDisplay.isEmpty())
+    {
+        fileDisplay = firstNonEmpty({source.name, m_currentMediaItem.name, m_fullTitle});
+    }
+    addLine(lines, tr("File"), fileDisplay);
 
-    m_infoOverlay->setText(text);
-    m_infoOverlay->adjustSize();
+    QStringList sessionParts;
+    if (!m_currentMediaId.isEmpty())
+    {
+        sessionParts << tr("Item ID") + QStringLiteral("=") + m_currentMediaId;
+    }
+    if (!m_currentMediaSourceId.isEmpty())
+    {
+        sessionParts << tr("Media Source ID") + QStringLiteral("=") + m_currentMediaSourceId;
+    }
+    if (!m_currentPlaySessionId.isEmpty())
+    {
+        sessionParts << tr("Play Session ID") + QStringLiteral("=") + m_currentPlaySessionId;
+    }
+    if (!sessionParts.isEmpty())
+    {
+        addLine(lines, tr("Session"), sessionParts.join(QStringLiteral("  ")));
+    }
+
+    const QVariantList chapterList = ctrl->getProperty("chapter-list").toList();
+    const int chapterIndex = ctrl->getProperty("chapter").toInt();
+    if (!chapterList.isEmpty() && chapterIndex >= 0 && chapterIndex < chapterList.size())
+    {
+        const QVariantMap chapterInfo = chapterList.at(chapterIndex).toMap();
+        QString chapterTitle = chapterInfo.value(QStringLiteral("title")).toString().trimmed();
+        if (chapterTitle.isEmpty())
+        {
+            chapterTitle = tr("Chapter") + QStringLiteral(" ") + QString::number(chapterIndex + 1);
+        }
+        chapterTitle +=
+            QStringLiteral(" (%1 / %2)").arg(chapterIndex + 1).arg(chapterList.size());
+        addLine(lines, tr("Chapter"), chapterTitle);
+    }
+
+    const qint64 fileSize = source.size > 0 ? source.size : m_currentMediaItem.size;
+    const QString container =
+        firstNonEmpty({source.container.toUpper(), m_currentMediaItem.container.toUpper()});
+    addLine(lines, tr("Size"), joinNonEmpty({fileSize > 0 ? FileUtils::formatSize(fileSize) : QString(),
+                                             container},
+                                            QStringLiteral("  ")));
+
+    const QVariantMap cacheState = ctrl->getProperty("demuxer-cache-state").toMap();
+    const qint64 cacheBytes = qMax(qMax(variantToLongLong(cacheState.value(QStringLiteral("fw-bytes"))),
+                                        variantToLongLong(cacheState.value(QStringLiteral("file-cache-bytes")))),
+                                   variantToLongLong(cacheState.value(QStringLiteral("total-bytes"))));
+    double cacheDuration = ctrl->getProperty("demuxer-cache-duration").toDouble();
+    if (cacheDuration <= 0.0)
+    {
+        cacheDuration = variantToDouble(cacheState.value(QStringLiteral("cache-duration")));
+    }
+    const qint64 cacheSpeed = ctrl->getProperty("cache-speed").toLongLong();
+    addLine(lines, tr("Cache"),
+            joinNonEmpty({cacheBytes > 0 ? FileUtils::formatSize(cacheBytes) : QString(),
+                          formatDurationValue(cacheDuration),
+                          formatDataRateValue(cacheSpeed)},
+                         QStringLiteral("  ")));
+
+    const QString voName = ctrl->getProperty("current-vo").toString().trimmed();
+    QString decoderName = ctrl->getProperty("hwdec-current").toString().trimmed();
+    if (decoderName.isEmpty() || decoderName.compare(QStringLiteral("no"), Qt::CaseInsensitive) == 0)
+    {
+        decoderName = tr("Software (CPU)");
+    }
+    else
+    {
+        decoderName = decoderName.toUpper();
+    }
+
+    QStringList playbackParts;
+    if (!voName.isEmpty())
+    {
+        playbackParts << voName;
+    }
+    if (!decoderName.isEmpty())
+    {
+        playbackParts << decoderName;
+    }
+    playbackParts << tr("Speed") + QStringLiteral(" ") +
+                         stripTrailingZeros(QString::number(m_currentSpeed, 'f', 2)) +
+                         QStringLiteral("X");
+
+    const double avsync = ctrl->getProperty("avsync").toDouble();
+    const QString avsyncText = formatAvSyncValue(avsync);
+    if (!avsyncText.isEmpty())
+    {
+        playbackParts << tr("A-V") + QStringLiteral(" ") + avsyncText;
+    }
+    addLine(lines, tr("Playback"), playbackParts.join(QStringLiteral("  ")));
+
+    double displayFps = ctrl->getProperty("display-fps").toDouble();
+    if (displayFps <= 0.0)
+    {
+        displayFps = ctrl->getProperty("estimated-display-fps").toDouble();
+    }
+    double videoFps = ctrl->getProperty("container-fps").toDouble();
+    if (videoFps <= 0.0)
+    {
+        videoFps = selectedVideoTrack.value(QStringLiteral("demux-fps")).toDouble();
+    }
+    if (videoFps <= 0.0 && videoStream)
+    {
+        videoFps = videoStream->realFrameRate;
+    }
+
+    QStringList refreshParts;
+    if (displayFps > 0.0)
+    {
+        refreshParts << QStringLiteral("%1 Hz")
+                            .arg(stripTrailingZeros(QString::number(displayFps, 'f', 2)));
+    }
+    const QString frameRateText = formatFrameRateValue(videoFps);
+    if (!frameRateText.isEmpty())
+    {
+        refreshParts << frameRateText;
+    }
+    addLine(lines, tr("Refresh Rate"), refreshParts.join(QStringLiteral("  ")));
+
+    const QString outputDrops = ctrl->getProperty("frame-drop-count").toString().trimmed();
+    const QString decoderDrops = ctrl->getProperty("decoder-frame-drop-count").toString().trimmed();
+    QStringList dropParts;
+    if (!outputDrops.isEmpty())
+    {
+        dropParts << tr("Output") + QStringLiteral(" ") + outputDrops;
+    }
+    if (!decoderDrops.isEmpty())
+    {
+        dropParts << tr("Decoder") + QStringLiteral(" ") + decoderDrops;
+    }
+    addLine(lines, tr("Dropped Frames"), dropParts.join(QStringLiteral("  ")));
+
+    lines << QString();
+
+    const QString videoCodec =
+        firstNonEmpty({ctrl->getProperty("video-codec").toString().toUpper(),
+                       selectedVideoTrack.value(QStringLiteral("codec")).toString().toUpper(),
+                       videoStream ? videoStream->codec.toUpper() : QString()});
+    const QString videoFormat = ctrl->getProperty("video-format").toString().toUpper().trimmed();
+    const QString videoProfile = videoStream ? videoStream->profile.trimmed() : QString();
+    const QString videoLevel = videoStream ? formatLevelValue(videoStream->level) : QString();
+
+    QStringList videoCodecParts;
+    if (!videoCodec.isEmpty())
+    {
+        videoCodecParts << videoCodec;
+    }
+    if (!videoFormat.isEmpty())
+    {
+        videoCodecParts << videoFormat;
+    }
+    if (!videoProfile.isEmpty())
+    {
+        videoCodecParts << videoProfile;
+    }
+    if (!videoLevel.isEmpty())
+    {
+        videoCodecParts << QStringLiteral("L%1").arg(videoLevel);
+    }
+    addLine(lines, tr("Video"), videoCodecParts.join(QStringLiteral(" / ")));
+
+    addLine(lines, tr("Frame Rate"), frameRateText);
+
+    int sourceWidth = ctrl->getProperty("width").toInt();
+    int sourceHeight = ctrl->getProperty("height").toInt();
+    if ((sourceWidth <= 0 || sourceHeight <= 0) && videoStream)
+    {
+        sourceWidth = videoStream->width;
+        sourceHeight = videoStream->height;
+    }
+    const double displayWidthRaw = ctrl->getProperty("video-params/dw").toDouble();
+    const double displayHeightRaw = ctrl->getProperty("video-params/dh").toDouble();
+    const int displayWidth = displayWidthRaw > 0.0 ? qRound(displayWidthRaw) : sourceWidth;
+    const int displayHeight = displayHeightRaw > 0.0 ? qRound(displayHeightRaw) : sourceHeight;
+
+    QString resolutionText = formatDimensionValue(sourceWidth, sourceHeight);
+    const QString displayDimensions = formatDimensionValue(displayWidth, displayHeight);
+    if (resolutionText.isEmpty())
+    {
+        resolutionText = displayDimensions;
+    }
+    else if (!displayDimensions.isEmpty() && displayDimensions != resolutionText)
+    {
+        resolutionText += QStringLiteral(" -> ") + displayDimensions;
+    }
+    const QString aspectText =
+        formatAspectValue(displayWidth, displayHeight, videoStream ? videoStream->aspectRatio : QString());
+    if (!aspectText.isEmpty())
+    {
+        resolutionText += QStringLiteral(" (%1)").arg(aspectText);
+    }
+    addLine(lines, tr("Resolution"), resolutionText);
+
+    const QString pixelFormat =
+        firstNonEmpty({ctrl->getProperty("video-params/pixelformat").toString(),
+                       videoStream ? videoStream->pixelFormat : QString()});
+    const QString colorLevels = ctrl->getProperty("video-params/colorlevels").toString().trimmed();
+    const int bitDepth = videoStream ? videoStream->bitDepth : 0;
+    addLine(lines, tr("Format"),
+            joinNonEmpty({pixelFormat,
+                          colorLevels,
+                          bitDepth > 0 ? tr("%1-bit").arg(bitDepth) : QString()},
+                         QStringLiteral("  ")));
+
+    const QString colorMatrix = ctrl->getProperty("video-params/colormatrix").toString().trimmed();
+    const QString colorPrimaries = ctrl->getProperty("video-params/primaries").toString().trimmed();
+    const QString colorTransfer = ctrl->getProperty("video-params/gamma").toString().trimmed();
+    addLine(lines, tr("Color"),
+            joinNonEmpty({colorMatrix, colorPrimaries, colorTransfer},
+                         QStringLiteral("  ")));
+
+    qint64 videoBitrate = ctrl->getProperty("video-bitrate").toLongLong();
+    if (videoBitrate <= 0 && videoStream)
+    {
+        videoBitrate = videoStream->bitRate;
+    }
+    if (videoBitrate <= 0)
+    {
+        videoBitrate = m_currentMediaItem.bitrate;
+    }
+    addLine(lines, tr("Bitrate"), formatBitrateValue(videoBitrate));
+
+    lines << QString();
+
+    const QString audioCodec =
+        firstNonEmpty({ctrl->getProperty("audio-codec").toString().toUpper(),
+                       selectedAudioTrack.value(QStringLiteral("codec")).toString().toUpper(),
+                       audioStream ? audioStream->codec.toUpper() : QString()});
+    const QString currentAo = ctrl->getProperty("current-ao").toString().trimmed();
+    addLine(lines, tr("Audio"),
+            joinNonEmpty({audioCodec,
+                          !currentAo.isEmpty() ? tr("AO %1").arg(currentAo) : QString()},
+                         QStringLiteral("  ")));
+
+    addLine(lines, tr("Device"), ctrl->getProperty("audio-device").toString());
+
+    const int channelCount =
+        qMax(ctrl->getProperty("audio-params/channel-count").toInt(),
+             audioStream ? audioStream->channels : 0);
+    const QString channelLayout =
+        firstNonEmpty({ctrl->getProperty("audio-params/channels").toString(),
+                       selectedAudioTrack.value(QStringLiteral("demux-channels")).toString(),
+                       audioStream ? audioStream->channelLayout : QString()});
+    addLine(lines, tr("Channels"),
+            joinNonEmpty({channelCount > 0 ? tr("%1 ch").arg(channelCount) : QString(),
+                          channelLayout},
+                         QStringLiteral("  ")));
+
+    int sampleRate = ctrl->getProperty("audio-params/samplerate").toInt();
+    if (sampleRate <= 0)
+    {
+        sampleRate = selectedAudioTrack.value(QStringLiteral("demux-samplerate")).toInt();
+    }
+    if (sampleRate <= 0 && audioStream)
+    {
+        sampleRate = audioStream->sampleRate;
+    }
+    addLine(lines, tr("Sample Rate"),
+            sampleRate > 0 ? QStringLiteral("%1 Hz").arg(sampleRate) : QString());
+
+    qint64 audioBitrate = ctrl->getProperty("audio-bitrate").toLongLong();
+    if (audioBitrate <= 0 && audioStream)
+    {
+        audioBitrate = audioStream->bitRate;
+    }
+    addLine(lines, tr("Bitrate"), formatBitrateValue(audioBitrate));
+
+    if (!selectedSubtitleTrack.isEmpty())
+    {
+        const QString subtitleLabel =
+            firstNonEmpty({selectedSubtitleTrack.value(QStringLiteral("title")).toString(),
+                           selectedSubtitleTrack.value(QStringLiteral("lang")).toString()});
+        if (!subtitleLabel.isEmpty())
+        {
+            addLine(lines, tr("Subtitle"), subtitleLabel);
+        }
+    }
+
+    m_statisticsOverlay->setLines(lines);
+    if (m_showStatisticsOverlay)
+    {
+        updateOverlayLayout();
+    }
 }
 
 void PlayerView::toggleFullscreenWindow()
@@ -2019,6 +3815,7 @@ QCoro::Task<void> PlayerView::executeFetchLogo(QPointer<PlayerView> safeThis, QE
                 
                 safeThis->m_logoOpacity->setOpacity(safeThis->m_topOpacity->opacity());
                 safeThis->m_logoLabel->show();
+                safeThis->updateOverlayLayout();
             }
         }
     }
@@ -2031,9 +3828,37 @@ QCoro::Task<void> PlayerView::executeFetchLogo(QPointer<PlayerView> safeThis, QE
 void PlayerView::playMedia(const QString &mediaId, const QString &title, const QString &streamUrl,
                            long long startPositionTicks, const QVariant &sourceInfoVar)
 {
+    PlayerLaunchContext launchContext;
+    MediaSourceInfo resolvedSourceInfo;
+    MediaItem resolvedItem;
+    if (sourceInfoVar.isValid() && sourceInfoVar.canConvert<PlayerLaunchContext>())
+    {
+        launchContext = sourceInfoVar.value<PlayerLaunchContext>();
+        resolvedItem = launchContext.mediaItem;
+        resolvedSourceInfo = launchContext.selectedSource;
+    }
+    else if (sourceInfoVar.isValid() && sourceInfoVar.canConvert<MediaSourceInfo>())
+    {
+        resolvedSourceInfo = sourceInfoVar.value<MediaSourceInfo>();
+    }
+
+    connect(m_mpvWidget, &MpvWidget::positionChanged, this,
+            &PlayerView::onPositionChanged, Qt::UniqueConnection);
+
     m_hasReportedStop = false;
     m_currentMediaId = mediaId;
     m_currentMediaSourceId = mediaId;
+    m_currentPlaySessionId.clear();
+    m_currentMediaItem = resolvedItem;
+    m_currentMediaSourceInfo = resolvedSourceInfo;
+    hideRightSidebar();
+    hideHudMediaSwitcher();
+    if (m_activePopup)
+    {
+        m_activePopup->deleteLater();
+        m_activePopup = nullptr;
+    }
+    closeActivePlayerDialog();
 
     
     m_logoLabel->clear();
@@ -2044,10 +3869,9 @@ void PlayerView::playMedia(const QString &mediaId, const QString &title, const Q
     m_currentSourceInfoVar = sourceInfoVar;
 
     QString actualStreamUrl = streamUrl;
-    if (sourceInfoVar.isValid() && sourceInfoVar.canConvert<MediaSourceInfo>())
+    if (!resolvedSourceInfo.id.isEmpty())
     {
-        MediaSourceInfo sourceInfo = sourceInfoVar.value<MediaSourceInfo>();
-        QString directUrl = m_core->mediaService()->getStreamUrl(mediaId, sourceInfo);
+        QString directUrl = m_core->mediaService()->getStreamUrl(mediaId, resolvedSourceInfo);
         if (!directUrl.isEmpty())
         {
             actualStreamUrl = directUrl; 
@@ -2072,6 +3896,24 @@ void PlayerView::playMedia(const QString &mediaId, const QString &title, const Q
         m_currentMediaSourceId = query.queryItemValue("MediaSourceId");
     }
 
+    if (m_currentMediaSourceInfo.id.isEmpty() && !m_currentMediaItem.mediaSources.isEmpty())
+    {
+        for (const MediaSourceInfo &candidate : m_currentMediaItem.mediaSources)
+        {
+            if (!m_currentMediaSourceId.isEmpty() &&
+                candidate.id.compare(m_currentMediaSourceId, Qt::CaseInsensitive) == 0)
+            {
+                m_currentMediaSourceInfo = candidate;
+                break;
+            }
+        }
+
+        if (m_currentMediaSourceInfo.id.isEmpty())
+        {
+            m_currentMediaSourceInfo = m_currentMediaItem.mediaSources.first();
+        }
+    }
+
     m_pendingSeekSeconds = startPositionTicks / 10000000.0;
 
     m_fullTitle = title;
@@ -2079,6 +3921,19 @@ void PlayerView::playMedia(const QString &mediaId, const QString &title, const Q
 
     m_currentPosition = m_pendingSeekSeconds;
     m_totalDuration = 0.0;
+
+    if (m_statisticsOverlay)
+    {
+        if (m_showStatisticsOverlay)
+        {
+            updateStatisticsDisplay();
+            m_statisticsOverlay->show();
+        }
+        else
+        {
+            m_statisticsOverlay->hide();
+        }
+    }
 
     QWidget *win = window();
     if (win)
@@ -2101,28 +3956,57 @@ void PlayerView::playMedia(const QString &mediaId, const QString &title, const Q
     m_isSeriesMode = false;
     m_seriesId.clear();
     m_seriesName.clear();
-    m_sidebarCachedForMediaId.clear(); 
+    clearMediaSwitcherCache();
+    updateMediaSwitcherButton();
 
-    
-    auto detectSeriesMode = [](QPointer<PlayerView> safeThis, QEmbyCore *core, QString mId) -> QCoro::Task<void>
+    if (resolvedItem.type == "Episode" && !resolvedItem.seriesId.isEmpty())
     {
-        try
+        m_isSeriesMode = true;
+        m_seriesId = resolvedItem.seriesId;
+        m_seriesName = resolvedItem.seriesName;
+        updateMediaSwitcherButton();
+        
+        ensureMediaSwitcherDataLoaded();
+    }
+    else
+    {
+        
+        auto detectSeriesMode = [](QPointer<PlayerView> safeThis, QEmbyCore *core, QString mId) -> QCoro::Task<void>
         {
-            MediaItem detail = co_await core->mediaService()->getItemDetail(mId);
-            if (!safeThis || safeThis->m_currentMediaId != mId)
-                co_return;
-            if (detail.type == "Episode" && !detail.seriesId.isEmpty())
+            try
             {
-                safeThis->m_isSeriesMode = true;
-                safeThis->m_seriesId = detail.seriesId;
-                safeThis->m_seriesName = detail.seriesName;
+                MediaItem detail = co_await core->mediaService()->getItemDetail(mId);
+                if (!safeThis || safeThis->m_currentMediaId != mId)
+                    co_return;
+                if (detail.type == "Episode" && !detail.seriesId.isEmpty())
+                {
+                    safeThis->m_isSeriesMode = true;
+                    safeThis->m_seriesId = detail.seriesId;
+                    safeThis->m_seriesName = detail.seriesName;
+                    safeThis->clearMediaSwitcherCache();
+                    safeThis->updateMediaSwitcherButton();
+                    
+                    safeThis->ensureMediaSwitcherDataLoaded();
+                    if (safeThis->useHudMediaSwitcher() &&
+                        safeThis->m_mediaSwitchDrawer &&
+                        safeThis->m_mediaSwitchDrawer->isVisible())
+                    {
+                        safeThis->showHudMediaSwitcher();
+                    }
+                    else if (safeThis->m_isRightSidebarVisible)
+                    {
+                        safeThis->showRightSidebar();
+                    }
+                }
             }
-        }
-        catch (...)
-        {
-        }
-    };
-    detectSeriesMode(QPointer<PlayerView>(this), m_core, mediaId);
+            catch (...)
+            {
+            }
+        };
+        detectSeriesMode(QPointer<PlayerView>(this), m_core, mediaId);
+        
+        ensureMediaSwitcherDataLoaded();
+    }
 
     
     
@@ -2131,6 +4015,32 @@ void PlayerView::playMedia(const QString &mediaId, const QString &title, const Q
 
     
     m_mpvWidget->loadMedia(actualStreamUrl);
+
+    if (!resolvedItem.id.isEmpty() || !resolvedSourceInfo.id.isEmpty())
+    {
+        if (resolvedItem.id.isEmpty())
+        {
+            resolvedItem.id = mediaId;
+            resolvedItem.name = title;
+        }
+        PlayerLaunchContext danmakuContext;
+        danmakuContext.mediaItem = resolvedItem;
+        danmakuContext.selectedSource = resolvedSourceInfo;
+        qDebug().noquote()
+            << "[Danmaku][PlayerView] Prepared playback context"
+            << "| mediaId:" << danmakuContext.mediaItem.id
+            << "| sourceId:" << danmakuContext.selectedSource.id
+            << "| title:" << danmakuContext.mediaItem.name;
+        m_danmakuController->setPlaybackContext(danmakuContext);
+    }
+    else
+    {
+        qDebug().noquote()
+            << "[Danmaku][PlayerView] No playback context available for danmaku"
+            << "| mediaId:" << mediaId
+            << "| sourceInfoValid:" << sourceInfoVar.isValid();
+        m_danmakuController->clearPlaybackContext();
+    }
 
     
     
@@ -2147,9 +4057,9 @@ void PlayerView::playMedia(const QString &mediaId, const QString &title, const Q
 
     QVariantList pendingSubtitles;
 
-    if (sourceInfoVar.isValid() && sourceInfoVar.canConvert<MediaSourceInfo>())
+    if (!resolvedSourceInfo.id.isEmpty())
     {
-        MediaSourceInfo sourceInfo = sourceInfoVar.value<MediaSourceInfo>();
+        MediaSourceInfo sourceInfo = resolvedSourceInfo;
 
         m_targetAudioStreamIndex = -2; 
         m_targetSubStreamIndex = -2;
@@ -2345,7 +4255,8 @@ void PlayerView::playMedia(const QString &mediaId, const QString &title, const Q
 
 void PlayerView::reportProgressToServer()
 {
-    if (m_currentMediaId.isEmpty() || m_hasReportedStop || m_currentPlaySessionId.isEmpty())
+    if (m_isViewTearingDown || m_currentMediaId.isEmpty() || m_hasReportedStop ||
+        m_currentPlaySessionId.isEmpty())
     {
         return;
     }
@@ -2354,17 +4265,22 @@ void PlayerView::reportProgressToServer()
     m_core->mediaService()->reportPlaybackProgress(m_currentMediaId, m_currentMediaSourceId, currentTicks, !m_isPlaying,
                                                    m_currentPlaySessionId);
 
-    if (m_showInfoOverlay)
+    if (m_showStatisticsOverlay)
     {
-        updateInfoDisplay(); 
+        updateStatisticsDisplay();
     }
 }
 
 void PlayerView::onBackClicked()
 {
+    if (m_isViewTearingDown)
+    {
+        return;
+    }
+
     
     
-    stopAndReport();
+    prepareForStackLeave();
     Q_EMIT navigateBack();
 
     
@@ -2414,6 +4330,11 @@ void PlayerView::onBackClicked()
 
 void PlayerView::onPositionChanged(double position)
 {
+    if (m_isViewTearingDown)
+    {
+        return;
+    }
+
     if (std::isnan(position) || std::isinf(position) || position < 0)
     {
         position = 0.0;
@@ -2430,15 +4351,19 @@ void PlayerView::onPositionChanged(double position)
     m_currentTimeLabel->setText(formatTime(position, m_totalDuration));
 
     
-    if (m_osdContainer->isVisible() && !m_osdSeekLine->isHidden())
+    if (m_osdLayer && m_osdLayer->isSeekLineVisible())
     {
-        m_osdSeekLine->setValue(static_cast<int>(position));
-        m_osdSeekTimeLabel->setText(formatTime(position, m_totalDuration));
+        m_osdLayer->updateSeekPosition(static_cast<int>(position), formatTime(position, m_totalDuration));
     }
 }
 
 void PlayerView::onDurationChanged(double duration)
 {
+    if (m_isViewTearingDown)
+    {
+        return;
+    }
+
     if (std::isnan(duration) || std::isinf(duration) || duration < 0)
     {
         duration = 0.0;
@@ -2448,7 +4373,6 @@ void PlayerView::onDurationChanged(double duration)
     m_totalTimeLabel->setText(formatTime(duration, duration));
 
     
-    m_osdSeekLine->setMaximum(static_cast<int>(duration));
 
     if (!m_hasSetVideoSize && duration > 0)
     {
@@ -2557,6 +4481,11 @@ void PlayerView::onDurationChanged(double duration)
 
 void PlayerView::onPlaybackStateChanged(bool isPaused)
 {
+    if (m_isViewTearingDown)
+    {
+        return;
+    }
+
     m_isPlaying = !isPaused;
     m_playPauseBtn->setIcon(QIcon(m_isPlaying ? ":/svg/player/pause.svg" : ":/svg/player/play.svg"));
 

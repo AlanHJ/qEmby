@@ -822,6 +822,12 @@ ModernMessageBox {
     border: 1px solid #334155;
 }
 
+QWidget[playerDialogSurface="true"] {
+    background-color: rgba(15, 23, 42, 0.94);
+    border: 1px solid rgba(71, 85, 105, 0.88);
+    border-radius: 18px;
+}
+
 QWidget#dialog-titlebar {
     background-color: transparent;
     min-height: 34px;
@@ -857,11 +863,32 @@ QPushButton#dialog-close-btn:pressed {
     background-color: #F1707A;
 }
 
+/* PlayerOverlayDialog 内置对话框关闭按钮：右上角圆角匹配 surface 圆角 */
+QWidget[playerDialogSurface="true"] QPushButton#dialog-close-btn {
+    border-top-right-radius: 17px;
+}
+
+QWidget[playerDialogSurface="true"] QPushButton#dialog-close-btn:hover {
+    border-top-right-radius: 17px;
+}
+
 QLabel#dialog-text {
     font-size: 14px;
     color: #CBD5E1;
     line-height: 1.5;
     padding-top: 4px;
+}
+
+QWidget#dialog-option-row {
+    background: transparent;
+    border: none;
+}
+
+QLabel#dialog-option-label {
+    color: #E2E8F0;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
 }
 
 QPushButton#dialog-btn-cancel {
@@ -922,6 +949,386 @@ QPushButton#dialog-btn-primary:hover {
 QPushButton#dialog-btn-primary:disabled {
     background-color: rgba(59, 130, 246, 0.4);
     color: rgba(255, 255, 255, 0.7);
+}
+
+ModernDialogBase#playerDanmakuSettingsDialog,
+QDialog#playerDanmakuSettingsDialog,
+QWidget#playerDanmakuSettingsDialog {
+    background-color: rgba(15, 23, 42, 0.90);
+    border: 1px solid rgba(71, 85, 105, 0.88);
+}
+
+#playerDanmakuSettingsDialog QFrame#playerDanmakuSummaryCard {
+    background: rgba(30, 41, 59, 0.82);
+    border: 1px solid rgba(96, 165, 250, 0.14);
+    border-radius: 14px;
+}
+
+#playerDanmakuSettingsDialog QLabel#playerDanmakuSummaryText {
+    font-size: 12px;
+    color: #B8C6DB;
+    line-height: 1.45;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+#playerDanmakuSettingsDialog QFrame#playerDanmakuSwitchTile,
+#playerDanmakuSettingsDialog QFrame#playerDanmakuToggleTile,
+#playerDanmakuSettingsDialog QFrame#playerDanmakuInputTile {
+    background: rgba(15, 23, 42, 0.76);
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    border-radius: 14px;
+}
+
+#playerDanmakuSettingsDialog QFrame#playerDanmakuSliderTile {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+            stop:0 rgba(15, 23, 42, 0.84),
+            stop:1 rgba(30, 41, 59, 0.78));
+    border: 1px solid rgba(96, 165, 250, 0.16);
+    border-radius: 14px;
+}
+
+#playerDanmakuSettingsDialog QLabel#playerDanmakuTileIcon {
+    background: rgba(59, 130, 246, 0.10);
+    border: 1px solid rgba(96, 165, 250, 0.14);
+    border-radius: 14px;
+}
+
+#playerDanmakuSettingsDialog QLabel#playerDanmakuTileIcon[compactIcon="true"] {
+    border-radius: 11px;
+}
+
+#playerDanmakuSettingsDialog QLabel#playerDanmakuTileTitle {
+    color: #F8FAFC;
+    font-size: 12px;
+    font-weight: 700;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+#playerDanmakuSettingsDialog QFrame#playerDanmakuToggleTile QLabel#playerDanmakuTileTitle {
+    font-size: 11px;
+    font-weight: 600;
+}
+
+#playerDanmakuSettingsDialog QFrame#playerDanmakuInputTile QLabel#playerDanmakuTileTitle {
+    font-size: 11px;
+    font-weight: 600;
+}
+
+#playerDanmakuSettingsDialog QLabel#playerDanmakuTileDesc {
+    color: #64748B;
+    font-size: 11px;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+#playerDanmakuSettingsDialog QFrame#playerDanmakuSliderTile QWidget#DanmakuOptionSlider {
+    min-width: 0px;
+    max-width: 16777215px;
+}
+
+#playerDanmakuSettingsDialog QFrame#playerDanmakuSliderTile QLabel#DanmakuOptionSliderValue,
+#playerDanmakuSettingsDialog QFrame#playerDanmakuSliderTile QLineEdit#DanmakuOptionSliderValue,
+#playerDanmakuSettingsDialog QFrame#playerDanmakuSliderTile QLineEdit#DanmakuOptionSliderValue:hover,
+#playerDanmakuSettingsDialog QFrame#playerDanmakuSliderTile QLineEdit#DanmakuOptionSliderValue:focus {
+    color: #93C5FD;
+    font-size: 12px;
+    font-weight: 700;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    background: transparent;
+    border: none;
+    border-radius: 0px;
+    padding: 0px;
+    min-width: 0px;
+    max-width: 16777215px;
+    selection-background-color: rgba(96, 165, 250, 0.22);
+    selection-color: #F8FAFC;
+}
+
+#playerDanmakuSettingsDialog QFrame#playerDanmakuSliderTile QLabel#DanmakuOptionSliderHint {
+    color: #64748B;
+    font-size: 10px;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+#playerDanmakuSettingsDialog QFrame#playerDanmakuSliderTile QWidget#DanmakuOptionSlider ModernSlider {
+    qproperty-themeColor: #60A5FA;
+    qproperty-trackColor: rgba(255, 255, 255, 0.10);
+    qproperty-bufferColor: rgba(96, 165, 250, 0.18);
+    qproperty-handleColor: #FFFFFF;
+    qproperty-normalTrackHeight: 5;
+    qproperty-hoverTrackHeight: 7;
+    qproperty-normalHandleRadius: 6;
+    qproperty-activeHandleRadius: 8;
+}
+
+#playerDanmakuSettingsDialog QFrame#playerDanmakuInputTile QFrame#TagInputContainer {
+    background-color: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    border-radius: 10px;
+}
+
+#playerDanmakuSettingsDialog QFrame#playerDanmakuInputTile QFrame#TagInputContainer:focus-within {
+    border-color: rgba(96, 165, 250, 0.42);
+}
+
+ModernDialogBase#playerSubtitleSettingsDialog,
+QDialog#playerSubtitleSettingsDialog,
+QWidget#playerSubtitleSettingsDialog {
+    background-color: rgba(15, 23, 42, 0.90);
+    border: 1px solid rgba(71, 85, 105, 0.88);
+}
+
+#playerSubtitleSettingsDialog QFrame#playerSubtitleSummaryCard {
+    background: rgba(30, 41, 59, 0.82);
+    border: 1px solid rgba(96, 165, 250, 0.14);
+    border-radius: 14px;
+}
+
+#playerSubtitleSettingsDialog QLabel#playerSubtitleSummaryText {
+    font-size: 12px;
+    color: #B8C6DB;
+    line-height: 1.45;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+#playerSubtitleSettingsDialog QFrame#playerSubtitleComboTile,
+#playerSubtitleSettingsDialog QFrame#playerSubtitleInlineComboTile,
+#playerSubtitleSettingsDialog QFrame#playerSubtitleSliderTile {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+            stop:0 rgba(15, 23, 42, 0.84),
+            stop:1 rgba(30, 41, 59, 0.78));
+    border: 1px solid rgba(96, 165, 250, 0.16);
+    border-radius: 14px;
+}
+
+#playerSubtitleSettingsDialog QFrame#playerSubtitleInlineComboTile {
+    min-height: 48px;
+}
+
+#playerSubtitleSettingsDialog QLabel#playerSubtitleTileIcon {
+    background: rgba(59, 130, 246, 0.10);
+    border: 1px solid rgba(96, 165, 250, 0.14);
+    border-radius: 14px;
+}
+
+#playerSubtitleSettingsDialog QLabel#playerSubtitleTileTitle {
+    color: #F8FAFC;
+    font-size: 12px;
+    font-weight: 700;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+#playerSubtitleSettingsDialog QLabel#playerSubtitleTileDesc {
+    color: #64748B;
+    font-size: 11px;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+#playerSubtitleSettingsDialog QFrame#playerSubtitleSliderTile QWidget#SubtitleOptionSlider {
+    min-width: 0px;
+    max-width: 16777215px;
+}
+
+#playerSubtitleSettingsDialog QFrame#playerSubtitleSliderTile QLabel#SubtitleOptionSliderValue,
+#playerSubtitleSettingsDialog QFrame#playerSubtitleSliderTile QLineEdit#SubtitleOptionSliderValue,
+#playerSubtitleSettingsDialog QFrame#playerSubtitleSliderTile QLineEdit#SubtitleOptionSliderValue:hover,
+#playerSubtitleSettingsDialog QFrame#playerSubtitleSliderTile QLineEdit#SubtitleOptionSliderValue:focus {
+    color: #93C5FD;
+    font-size: 12px;
+    font-weight: 700;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    background: transparent;
+    border: none;
+    border-radius: 0px;
+    padding: 0px;
+    min-width: 0px;
+    max-width: 16777215px;
+    selection-background-color: rgba(96, 165, 250, 0.22);
+    selection-color: #F8FAFC;
+}
+
+#playerSubtitleSettingsDialog QFrame#playerSubtitleSliderTile QLabel#SubtitleOptionSliderHint {
+    color: #64748B;
+    font-size: 10px;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+#playerSubtitleSettingsDialog QFrame#playerSubtitleSliderTile QWidget#SubtitleOptionSlider ModernSlider {
+    qproperty-themeColor: #60A5FA;
+    qproperty-trackColor: rgba(255, 255, 255, 0.10);
+    qproperty-bufferColor: rgba(96, 165, 250, 0.18);
+    qproperty-handleColor: #FFFFFF;
+    qproperty-normalTrackHeight: 5;
+    qproperty-hoverTrackHeight: 7;
+    qproperty-normalHandleRadius: 6;
+    qproperty-activeHandleRadius: 8;
+}
+
+#playerSubtitleSettingsDialog ModernComboBox#playerSubtitleFontCombo {
+    background-color: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 10px;
+    color: #E2E8F0;
+    font-size: 13px;
+    font-weight: 500;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    min-width: 248px;
+    padding: 4px 30px 4px 14px;
+    selection-background-color: transparent;
+}
+
+#playerSubtitleSettingsDialog ModernComboBox#playerSubtitleFontCombo:hover {
+    background-color: rgba(255, 255, 255, 0.10);
+    border-color: rgba(255, 255, 255, 0.18);
+}
+
+#playerSubtitleSettingsDialog ModernComboBox#playerSubtitleFontCombo:focus {
+    border-color: #3B82F6;
+    background-color: rgba(59, 130, 246, 0.08);
+    outline: none;
+}
+
+#playerSubtitleSettingsDialog ModernComboBox#playerSubtitleFontCombo::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: center right;
+    width: 32px;
+    border: none;
+    background: transparent;
+}
+
+#playerSubtitleSettingsDialog ModernComboBox#playerSubtitleFontCombo::down-arrow {
+    image: url(":/svg/dark/chevron-down.svg");
+    width: 14px;
+    height: 14px;
+}
+
+#playerSubtitleSettingsDialog ModernComboBox#playerSubtitleFontCombo QAbstractItemView {
+    background-color: #1E293B;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 8px;
+    color: #E2E8F0;
+    font-size: 13px;
+    outline: none;
+    padding: 4px 0px 4px 4px;
+    selection-background-color: rgba(59, 130, 246, 0.20);
+    selection-color: #93C5FD;
+}
+
+#playerSubtitleSettingsDialog ModernComboBox#playerSubtitleFontCombo QAbstractItemView QScrollBar:vertical {
+    margin: 0px;
+}
+
+#playerSubtitleSettingsDialog ModernComboBox#playerSubtitleFontCombo QAbstractItemView QScrollBar::handle:vertical {
+    margin: 0px 0px 0px 6px;
+}
+
+#playerSubtitleSettingsDialog ModernComboBox#playerSubtitleFontCombo QAbstractItemView QScrollBar::handle:vertical:hover,
+#playerSubtitleSettingsDialog ModernComboBox#playerSubtitleFontCombo QAbstractItemView QScrollBar::handle:vertical:pressed {
+    margin: 0px 0px 0px 2px;
+}
+
+QListWidget#modernComboEmbeddedList[flush-right-scrollbar="true"] QScrollBar:vertical {
+    width: 10px;
+}
+
+QListWidget#modernComboEmbeddedList[flush-right-scrollbar="true"] QScrollBar::handle:vertical {
+    border-radius: 2px;
+    margin: 0px 0px 0px 6px;
+}
+
+QListWidget#modernComboEmbeddedList[flush-right-scrollbar="true"] QScrollBar::handle:vertical:hover,
+QListWidget#modernComboEmbeddedList[flush-right-scrollbar="true"] QScrollBar::handle:vertical:pressed {
+    border-radius: 4px;
+    margin: 0px 0px 0px 2px;
+}
+
+#playerSubtitleSettingsDialog ModernComboBox#playerSubtitleFontCombo QAbstractItemView::item {
+    padding: 5px 12px;
+    border-radius: 6px;
+}
+
+#playerSubtitleSettingsDialog ModernComboBox#playerSubtitleFontCombo QAbstractItemView::item:hover {
+    background-color: rgba(255, 255, 255, 0.07);
+    color: #F8FAFC;
+}
+
+#playerSubtitleSettingsDialog ModernComboBox#playerSubtitleFontCombo QAbstractItemView::item:selected {
+    background-color: rgba(59, 130, 246, 0.20);
+    color: #93C5FD;
+}
+
+#playerSubtitleSettingsDialog ModernComboBox#playerSubtitleFontCombo QAbstractItemView::item:selected:hover {
+    background-color: rgba(59, 130, 246, 0.20);
+    color: #93C5FD;
+}
+
+/* ── ModernComboBox 全屏内嵌 popup（替代被 DWM 独占遮挡的原生 Popup）── */
+
+QWidget#modernComboEmbeddedOverlay {
+    background: transparent;
+}
+
+QFrame#modernComboEmbeddedFrame {
+    background-color: #1E293B;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    padding: 3px;
+}
+
+QFrame#modernComboEmbeddedFrame[flush-right-scrollbar="true"] {
+    padding: 3px 0px 3px 3px;
+}
+
+QListWidget#modernComboEmbeddedList {
+    background-color: transparent;
+    border: none;
+    outline: none;
+    color: #E2E8F0;
+    font-size: 13px;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+QListWidget#modernComboEmbeddedList::item {
+    padding: 5px 12px;
+    border-radius: 6px;
+}
+
+QListWidget#modernComboEmbeddedList::item:hover {
+    background-color: rgba(255, 255, 255, 0.07);
+    color: #F8FAFC;
+}
+
+QListWidget#modernComboEmbeddedList::item:selected {
+    background-color: rgba(59, 130, 246, 0.20);
+    color: #93C5FD;
+}
+
+QListWidget#modernComboEmbeddedList::item:selected:hover {
+    background-color: rgba(59, 130, 246, 0.25);
+    color: #93C5FD;
+}
+
+QListWidget#modernComboEmbeddedList QScrollBar:vertical {
+    background-color: transparent;
+    width: 6px;
+    margin: 4px 0px 4px 0px;
+}
+
+QListWidget#modernComboEmbeddedList QScrollBar::handle:vertical {
+    background-color: rgba(255, 255, 255, 0.15);
+    border-radius: 3px;
+    min-height: 30px;
+}
+
+QListWidget#modernComboEmbeddedList QScrollBar::handle:vertical:hover {
+    background-color: rgba(255, 255, 255, 0.25);
+}
+
+QListWidget#modernComboEmbeddedList QScrollBar::add-line:vertical,
+QListWidget#modernComboEmbeddedList QScrollBar::sub-line:vertical,
+QListWidget#modernComboEmbeddedList QScrollBar::add-page:vertical,
+QListWidget#modernComboEmbeddedList QScrollBar::sub-page:vertical {
+    height: 0px;
+    background: transparent;
 }
 
 /* =========================================
@@ -1544,6 +1951,63 @@ QLabel#overview-poster {
     border-radius: 8px;
 }
 
+QLabel#MediaImageEditIntroText {
+    color: #94A3B8;
+    font-size: 13px;
+    padding-top: 0px;
+}
+
+QWidget#MediaImageEditSidePanel {
+    background-color: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+}
+
+QLabel#MediaImageEditSectionTitle {
+    color: #F8FAFC;
+    font-size: 12px;
+    font-weight: 700;
+    padding-top: 0px;
+}
+
+QLabel#MediaImageEditSideStatus {
+    background-color: rgba(15, 23, 42, 0.72);
+    border: 1px solid rgba(59, 130, 246, 0.18);
+    border-radius: 10px;
+    color: #CBD5E1;
+    font-size: 12px;
+    padding: 8px 10px;
+}
+
+QLabel#MediaImageEditMetaText {
+    color: #CBD5E1;
+    font-size: 12px;
+    padding-top: 0px;
+}
+
+QLabel#identify-preview-label {
+    background-color: #1E293B;
+    border: 2px dashed transparent;
+    border-radius: 8px;
+    color: #94A3B8;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 16px;
+}
+
+QLabel#identify-preview-label[media-image-editor="true"] {
+    background-color: rgba(15, 23, 42, 0.84);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 0px;
+}
+
+QLabel#identify-preview-label[drag-over="true"] {
+    background-color: #0F172A;
+    border-color: #38BDF8;
+    color: #E0F2FE;
+}
+
 QLabel#overview-title {
     font-size: 24px;
     font-weight: 800;
@@ -1704,17 +2168,10 @@ QPushButton.player-hud-btn:pressed {
 }
 
 /* =========================================================
-   PlayerView 左上角状态提示层 / 技术信息面板
+   PlayerView 左上角统计信息层
    ========================================================= */
-QLabel#playerInfoOverlay {
-    background-color: rgba(0, 0, 0, 180);
-    color: #FFFFFF;
-    font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
-    font-size: 13px;
-    font-weight: 500;
-    padding: 10px 16px;
-    border-radius: 8px;
-    line-height: 1.5;
+QWidget#playerStatisticsOverlay {
+    background: transparent;
 }
 
 /* =========================================================
@@ -1749,6 +2206,21 @@ QPushButton#playerSpeedBtn {
     padding: 0 10px;
 }
 
+QPushButton#playerMediaSwitchBtn {
+    min-width: 0px;
+    padding: 0px;
+    border: none;
+    border-radius: 12px;
+}
+
+QPushButton#playerMediaSwitchBtn:hover {
+    background: rgba(255, 255, 255, 30);
+}
+
+QPushButton#playerMediaSwitchBtn:pressed {
+    background: rgba(255, 255, 255, 50);
+}
+
 QPushButton#playerSpeedBtn:focus {
     outline: none;
     border: none;
@@ -1760,6 +2232,19 @@ QPushButton#playerSpeedBtn:hover {
 
 QPushButton#playerSpeedBtn:pressed {
     background: rgba(255, 255, 255, 50);
+}
+
+QPushButton#playerMediaSwitchBtn[drawerActive="true"] {
+    background: rgba(255, 255, 255, 45);
+    border: 1px solid rgba(255, 255, 255, 88);
+}
+
+QPushButton#playerMediaSwitchBtn[drawerActive="true"]:hover {
+    background: rgba(255, 255, 255, 58);
+}
+
+QPushButton#playerMediaSwitchBtn[drawerActive="true"]:pressed {
+    background: rgba(255, 255, 255, 72);
 }
 
 /* 【修复】：更紧凑、更精致的悬浮毛玻璃菜单 */
@@ -1876,6 +2361,46 @@ QListWidget#playerResumeList QScrollBar::add-page:vertical,
 QListWidget#playerResumeList QScrollBar::sub-page:vertical {
     background: none;
     /* 去除轨道底色 */
+}
+
+QFrame#playerMediaSwitcherPanel {
+    background-color: rgba(18, 18, 20, 220);
+    border: 1px solid rgba(255, 255, 255, 28);
+    border-radius: 14px;
+}
+
+QLabel#playerMediaSwitcherTitle {
+    color: #FFFFFF;
+    font-size: 13px;
+    font-weight: 700;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    margin: 0px;
+}
+
+QLabel#playerMediaSwitcherSectionTitle {
+    color: rgba(255, 255, 255, 150);
+    font-size: 10px;
+    font-weight: 700;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    margin: 0px;
+}
+
+QLabel#playerMediaSwitcherStatus {
+    color: rgba(255, 255, 255, 140);
+    font-size: 11px;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    margin: 0px 0px 2px 0px;
+}
+
+QWidget#playerMediaSwitcherLoading {
+    background: transparent;
+}
+
+QWidget#playerMediaSwitcherMovieGallery,
+QWidget#playerMediaSwitcherSeasonGallery,
+QWidget#playerMediaSwitcherEpisodeGallery {
+    background: transparent;
+    border: none;
 }
 
 /* =========================================================
@@ -2042,6 +2567,30 @@ QLabel#osdVolumeLabel {
     padding: 6px 16px;
     border-radius: 8px;
     border: 1px solid rgba(255, 255, 255, 30);
+}
+
+QWidget#playerMouseEdgeIndicator {
+    background-color: rgba(255, 255, 255, 18);
+    border: 1px solid rgba(255, 255, 255, 52);
+    border-radius: 22px;
+}
+
+QWidget#playerMouseEdgeIndicator[gestureActive="true"] {
+    background-color: rgba(255, 255, 255, 24);
+    border: 1px solid rgba(255, 255, 255, 120);
+}
+
+QLabel#playerMouseEdgeIndicatorIcon,
+QLabel#playerMouseEdgeIndicatorText {
+    background: transparent;
+    color: rgba(255, 255, 255, 235);
+}
+
+QLabel#playerMouseEdgeIndicatorText {
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
 }
 
 
@@ -2234,7 +2783,98 @@ ModernSwitch {
     qproperty-thumbColor: #F8FAFC;
 }
 
-/* 6. Settings 内的下拉选择框 */
+/* 6. 弹幕设置滑杆 */
+QWidget#DanmakuOptionSlider {
+    min-width: 240px;
+}
+
+QLabel#DanmakuOptionSliderValue,
+QLineEdit#DanmakuOptionSliderValue {
+    font-size: 13px;
+    font-weight: 700;
+    color: #BFDBFE;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    background: transparent;
+    border: none;
+    padding: 0px;
+    selection-background-color: rgba(96, 165, 250, 0.22);
+    selection-color: #F8FAFC;
+}
+
+#SettingsCard QLineEdit#DanmakuOptionSliderValue,
+#SettingsSubPanel QLineEdit#DanmakuOptionSliderValue {
+    background: transparent;
+    border: none;
+    border-radius: 0px;
+    padding: 0px;
+    min-width: 0px;
+    max-width: 16777215px;
+}
+
+QLabel#DanmakuOptionSliderHint {
+    font-size: 11px;
+    color: #64748B;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+#SettingsCard QWidget#DanmakuOptionSlider ModernSlider,
+#SettingsSubPanel QWidget#DanmakuOptionSlider ModernSlider {
+    qproperty-themeColor: #60A5FA;
+    qproperty-trackColor: rgba(255, 255, 255, 0.10);
+    qproperty-bufferColor: rgba(96, 165, 250, 0.16);
+    qproperty-handleColor: #F8FAFC;
+    qproperty-normalTrackHeight: 6;
+    qproperty-hoverTrackHeight: 8;
+    qproperty-normalHandleRadius: 7;
+    qproperty-activeHandleRadius: 9;
+}
+
+QWidget#SubtitleOptionSlider {
+    min-width: 240px;
+}
+
+QLabel#SubtitleOptionSliderValue,
+QLineEdit#SubtitleOptionSliderValue {
+    font-size: 13px;
+    font-weight: 700;
+    color: #BFDBFE;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    background: transparent;
+    border: none;
+    padding: 0px;
+    selection-background-color: rgba(96, 165, 250, 0.22);
+    selection-color: #F8FAFC;
+}
+
+#SettingsCard QLineEdit#SubtitleOptionSliderValue,
+#SettingsSubPanel QLineEdit#SubtitleOptionSliderValue {
+    background: transparent;
+    border: none;
+    border-radius: 0px;
+    padding: 0px;
+    min-width: 0px;
+    max-width: 16777215px;
+}
+
+QLabel#SubtitleOptionSliderHint {
+    font-size: 11px;
+    color: #64748B;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+#SettingsCard QWidget#SubtitleOptionSlider ModernSlider,
+#SettingsSubPanel QWidget#SubtitleOptionSlider ModernSlider {
+    qproperty-themeColor: #60A5FA;
+    qproperty-trackColor: rgba(255, 255, 255, 0.10);
+    qproperty-bufferColor: rgba(96, 165, 250, 0.16);
+    qproperty-handleColor: #F8FAFC;
+    qproperty-normalTrackHeight: 6;
+    qproperty-hoverTrackHeight: 8;
+    qproperty-normalHandleRadius: 7;
+    qproperty-activeHandleRadius: 9;
+}
+
+/* 7. Settings 内的下拉选择框 */
 #SettingsCard ModernComboBox {
     background-color: rgba(255, 255, 255, 0.07);
     border: 1px solid rgba(255, 255, 255, 0.10);
@@ -2338,7 +2978,7 @@ ModernSwitch {
     height: 0px;
 }
 
-/* 7. Settings 内的操作按钮 */
+/* 8. Settings 内的操作按钮 */
 #SettingsCardButton {
     background-color: rgba(255, 255, 255, 0.07);
     border: 1px solid rgba(255, 255, 255, 0.10);
@@ -3002,6 +3642,12 @@ QLineEdit#ManageLibInput[readOnly="true"] {
     border-color: rgba(71, 85, 105, 0.24);
 }
 
+QLineEdit#LibraryMetadataLineEdit[readOnly="true"] {
+    color: #CBD5E1;
+    background-color: rgba(15, 23, 42, 0.42);
+    border-color: rgba(71, 85, 105, 0.24);
+}
+
 /* 会话卡片 */
 #ManageSessionCard {
     background-color: rgba(51, 65, 85, 0.4);
@@ -3224,6 +3870,142 @@ QListWidget#ManageLibraryList::item {
     padding: 0;
 }
 
+QFrame#DanmakuServerListPanel {
+    background-color: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+}
+
+QListWidget#DanmakuServerList {
+    background: transparent;
+    border: none;
+    outline: none;
+}
+
+QListWidget#DanmakuServerList::item {
+    background: transparent;
+    border: none;
+    padding: 0;
+}
+
+QWidget#DanmakuServerListRow {
+    background: transparent;
+    border: none;
+}
+
+QFrame#DanmakuServerCard {
+    background-color: rgba(255, 255, 255, 0.045);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+}
+
+QFrame#DanmakuServerCard:hover {
+    background-color: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+QFrame#DanmakuServerCard[selected="true"] {
+    background-color: rgba(255, 255, 255, 0.075);
+    border: 1px solid rgba(148, 163, 184, 0.28);
+}
+
+QFrame#DanmakuServerCard[currentServer="true"] {
+    background-color: rgba(59, 130, 246, 0.16);
+    border: 1px solid rgba(96, 165, 250, 0.45);
+}
+
+QFrame#DanmakuServerCard[selected="true"][currentServer="true"] {
+    background-color: rgba(59, 130, 246, 0.20);
+    border: 1px solid rgba(125, 211, 252, 0.52);
+}
+
+QFrame#DanmakuServerCard[serverEnabled="false"] {
+    background-color: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(100, 116, 139, 0.16);
+}
+
+QFrame#DanmakuServerCard[selected="true"][serverEnabled="false"] {
+    background-color: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+QFrame#DanmakuServerCard[serverEnabled="false"] QLabel#DanmakuServerCardTitle {
+    color: #94A3B8;
+}
+
+QFrame#DanmakuServerCard[serverEnabled="false"] QLabel#DanmakuServerCardLine {
+    color: #64748B;
+}
+
+QFrame#DanmakuServerCard[serverEnabled="false"] QLabel#DanmakuServerCardMeta {
+    color: #64748B;
+}
+
+QLabel#DanmakuServerCardTitle {
+    color: #F8FAFC;
+    font-size: 14px;
+    font-weight: 700;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+QLabel#DanmakuServerCardLine {
+    color: #94A3B8;
+    font-size: 12px;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+QLabel#DanmakuServerCardMeta {
+    color: #CBD5E1;
+    font-size: 11px;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+QPushButton#DanmakuServerRemoveButton {
+    background: transparent;
+    border: none;
+    border-radius: 10px;
+    padding: 0;
+}
+
+QPushButton#DanmakuServerRemoveButton[removable="false"] {
+    background: transparent;
+}
+
+QPushButton#DanmakuServerRemoveButton:hover {
+    background: rgba(239, 68, 68, 0.12);
+}
+
+QPushButton#DanmakuServerRemoveButton:pressed {
+    background: rgba(239, 68, 68, 0.20);
+}
+
+QPushButton#DanmakuServerRemoveButton[removable="false"]:hover {
+    background: transparent;
+}
+
+QPushButton#DanmakuServerRemoveButton[removable="false"]:pressed {
+    background: transparent;
+}
+
+QFrame#DanmakuServerEditorPanel {
+    background-color: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+}
+
+QLabel#DanmakuServerEditorTitle {
+    color: #F8FAFC;
+    font-size: 16px;
+    font-weight: 700;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+QLabel#DanmakuServerEditorDesc {
+    color: #94A3B8;
+    font-size: 12px;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
 /* 库卡片 Delegate 主题色 */
 #library-card-theme {
     qproperty-cardBg: rgba(51, 65, 85, 102);
@@ -3329,9 +4111,11 @@ QPushButton#LibCardDeleteBtn {
 QPushButton#LibCardEditBtn {
     qproperty-icon: url(":/svg/dark/edit.svg");
 }
+
 QPushButton#LibCardEditBtn:hover {
     background-color: rgba(59, 130, 246, 0.25);
 }
+
 QPushButton#LibCardEditBtn:pressed {
     background-color: rgba(59, 130, 246, 0.4);
 }
@@ -3339,9 +4123,11 @@ QPushButton#LibCardEditBtn:pressed {
 QPushButton#LibCardScanBtn {
     qproperty-icon: url(":/svg/dark/scan-library.svg");
 }
+
 QPushButton#LibCardScanBtn:hover {
     background-color: rgba(34, 197, 94, 0.25);
 }
+
 QPushButton#LibCardScanBtn:pressed {
     background-color: rgba(34, 197, 94, 0.4);
 }
@@ -3349,9 +4135,11 @@ QPushButton#LibCardScanBtn:pressed {
 QPushButton#LibCardDeleteBtn {
     qproperty-icon: url(":/svg/dark/delete.svg");
 }
+
 QPushButton#LibCardDeleteBtn:hover {
     background-color: rgba(239, 68, 68, 0.25);
 }
+
 QPushButton#LibCardDeleteBtn:pressed {
     background-color: rgba(239, 68, 68, 0.4);
 }
@@ -3403,6 +4191,157 @@ QLineEdit#ManageLibInput:focus {
     border-color: rgba(59, 130, 246, 0.5);
 }
 
+QLineEdit#LibraryMetadataLineEdit {
+    background-color: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 8px;
+    color: #CBD5E1;
+    font-size: 12px;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    padding: 6px 10px;
+    selection-background-color: rgba(59, 130, 246, 0.40);
+    selection-color: #FFFFFF;
+}
+
+QLineEdit#LibraryMetadataLineEdit:hover {
+    background-color: rgba(255, 255, 255, 0.07);
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+QLineEdit#LibraryMetadataLineEdit:focus {
+    background-color: rgba(255, 255, 255, 0.09);
+    border-color: rgba(59, 130, 246, 0.50);
+}
+
+QLabel#LibraryMetadataFieldLabel {
+    color: #CBD5E1;
+    font-size: 13px;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+QPlainTextEdit#LibraryMetadataOverviewEdit {
+    background-color: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 8px;
+    color: #E2E8F0;
+    font-size: 13px;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    padding: 8px 10px;
+    selection-background-color: rgba(59, 130, 246, 0.40);
+    selection-color: #FFFFFF;
+}
+
+QPlainTextEdit#LibraryMetadataOverviewEdit:focus {
+    border-color: rgba(59, 130, 246, 0.50);
+}
+
+QCheckBox#LibraryMetadataLockCheck {
+    background: transparent;
+    border: none;
+    color: #CBD5E1;
+    font-size: 13px;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    spacing: 8px;
+}
+
+QCheckBox#LibraryMetadataLockCheck::indicator {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background-color: rgba(255, 255, 255, 0.06);
+}
+
+QCheckBox#LibraryMetadataLockCheck::indicator:hover {
+    border-color: rgba(59, 130, 246, 0.55);
+}
+
+QCheckBox#LibraryMetadataLockCheck::indicator:checked {
+    background-color: #3B82F6;
+    border-color: #3B82F6;
+    image: url(:/svg/dark/check.svg);
+}
+
+QLineEdit#PlaylistSearchEdit {
+    background-color: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 7px;
+    color: #CBD5E1;
+    font-size: 12px;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    padding: 4px 10px;
+    min-height: 0px;
+    max-height: 28px;
+    selection-background-color: rgba(59, 130, 246, 0.40);
+    selection-color: #FFFFFF;
+}
+
+QLineEdit#PlaylistSearchEdit:hover {
+    background-color: rgba(255, 255, 255, 0.07);
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+QLineEdit#PlaylistSearchEdit:focus {
+    background-color: rgba(255, 255, 255, 0.09);
+    border-color: rgba(59, 130, 246, 0.50);
+}
+
+QWidget#PlaylistInlineCreateRow {
+    background: transparent;
+    border: none;
+}
+
+QLineEdit#PlaylistInlineCreateEdit {
+    background-color: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(59, 130, 246, 0.18);
+    border-radius: 6px;
+    color: #E2E8F0;
+    font-size: 11px;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    padding: 2px 8px;
+    min-height: 14px;
+    max-height: 22px;
+}
+
+QLineEdit#PlaylistInlineCreateEdit:focus {
+    background-color: rgba(255, 255, 255, 0.09);
+    border-color: rgba(59, 130, 246, 0.50);
+}
+
+QPushButton#PlaylistInlineCreateConfirmBtn,
+QPushButton#PlaylistInlineCreateCancelBtn {
+    border-radius: 4px;
+    qproperty-iconSize: 9px 9px;
+    padding: 0px;
+}
+
+QPushButton#PlaylistInlineCreateConfirmBtn {
+    background: rgba(34, 197, 94, 0.16);
+    border: 1px solid rgba(34, 197, 94, 0.30);
+    qproperty-icon: url(":/svg/dark/check.svg");
+}
+
+QPushButton#PlaylistInlineCreateConfirmBtn:hover {
+    background: rgba(34, 197, 94, 0.26);
+    border-color: rgba(34, 197, 94, 0.45);
+}
+
+QPushButton#PlaylistInlineCreateConfirmBtn:disabled {
+    background: rgba(34, 197, 94, 0.08);
+    border-color: rgba(34, 197, 94, 0.15);
+}
+
+QPushButton#PlaylistInlineCreateCancelBtn {
+    background: rgba(239, 68, 68, 0.10);
+    border: 1px solid rgba(239, 68, 68, 0.20);
+    qproperty-icon: url(":/svg/dark/close.svg");
+}
+
+QPushButton#PlaylistInlineCreateCancelBtn:hover {
+    background: rgba(239, 68, 68, 0.20);
+    border-color: rgba(239, 68, 68, 0.35);
+}
+
 /* 路径列表 */
 QListWidget#ManageLibPathList {
     background-color: rgba(255, 255, 255, 0.04);
@@ -3413,6 +4352,37 @@ QListWidget#ManageLibPathList {
     font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
     padding: 4px;
     outline: none;
+}
+
+QListWidget#ManageLibPathList[flush-right-scrollbar="true"] {
+    padding: 0px;
+}
+
+QListWidget#ManageLibPathList[media-image-list="true"] {
+    background: transparent;
+    border: none;
+    padding: 0px;
+}
+
+QListWidget#ManageLibPathList[media-image-list="true"]::item {
+    padding: 8px 10px;
+    border-radius: 8px;
+}
+
+QListWidget#ManageLibPathList[media-image-list="true"] QScrollBar:vertical {
+    background: transparent;
+    width: 8px;
+    margin: 2px 0px 2px 0px;
+}
+
+QListWidget#ManageLibPathList[media-image-list="true"] QScrollBar::handle:vertical {
+    background: rgba(148, 163, 184, 0.32);
+    border-radius: 4px;
+    min-height: 24px;
+}
+
+QListWidget#ManageLibPathList[media-image-list="true"] QScrollBar::handle:vertical:hover {
+    background: rgba(148, 163, 184, 0.50);
 }
 
 QListWidget#ManageLibPathList::item {
@@ -3427,6 +4397,51 @@ QListWidget#ManageLibPathList::item:selected {
 
 QListWidget#ManageLibPathList::item:hover {
     background-color: rgba(255, 255, 255, 0.06);
+}
+
+QFrame#DashboardSectionOrderStrip {
+    background: transparent;
+    border: none;
+    min-height: 36px;
+}
+
+QFrame#DashboardSectionOrderChip {
+    background-color: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+}
+
+QFrame#DashboardSectionOrderChip[dragging="true"] {
+    background-color: rgba(59, 130, 246, 0.14);
+    border-color: rgba(96, 165, 250, 0.30);
+}
+
+QLabel#DashboardSectionOrderChipLabel {
+    color: #E2E8F0;
+    font-size: 12px;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+QFrame#DashboardSectionOrderChip[dragging="true"] QLabel#DashboardSectionOrderChipLabel {
+    color: #BFDBFE;
+}
+
+QFrame#DashboardSectionOrderDropIndicator {
+    background-color: rgba(96, 165, 250, 0.08);
+    border: 1px solid rgba(96, 165, 250, 0.34);
+    border-radius: 14px;
+}
+
+QFrame#DashboardSectionOrderDragPreview {
+    background-color: rgba(15, 23, 42, 0.78);
+    border: 1px solid rgba(96, 165, 250, 0.40);
+    border-radius: 14px;
+}
+
+QLabel#DashboardSectionOrderDragPreviewLabel {
+    color: #DBEAFE;
+    font-size: 12px;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
 }
 
 /* ── 高级设置折叠按钮 ── */
@@ -3603,7 +4618,8 @@ QFrame#ManageLibSeparator {
 QScrollArea#LibCreateScrollArea {
     background: transparent;
 }
-QScrollArea#LibCreateScrollArea > QWidget > QWidget {
+
+QScrollArea#LibCreateScrollArea>QWidget>QWidget {
     background: transparent;
 }
 
@@ -3989,7 +5005,7 @@ QScrollArea#TagPresetScrollArea {
     border: none;
 }
 
-QScrollArea#TagPresetScrollArea > QWidget > QWidget {
+QScrollArea#TagPresetScrollArea>QWidget>QWidget {
     background: transparent;
 }
 
@@ -4039,9 +5055,11 @@ QPushButton#CollCardDeleteBtn {
 QPushButton#CollCardRenameBtn {
     qproperty-icon: url(":/svg/dark/edit.svg");
 }
+
 QPushButton#CollCardRenameBtn:hover {
     background-color: rgba(59, 130, 246, 0.25);
 }
+
 QPushButton#CollCardRenameBtn:pressed {
     background-color: rgba(59, 130, 246, 0.4);
 }
@@ -4049,12 +5067,15 @@ QPushButton#CollCardRenameBtn:pressed {
 QPushButton#CollCardDeleteBtn {
     qproperty-icon: url(":/svg/dark/delete.svg");
 }
+
 QPushButton#CollCardDeleteBtn:hover {
     background-color: rgba(239, 68, 68, 0.25);
 }
+
 QPushButton#CollCardDeleteBtn:pressed {
     background-color: rgba(239, 68, 68, 0.4);
 }
+
 QPushButton#CollCardDeleteBtn:disabled {
     background: transparent;
     opacity: 0.35;
@@ -4282,13 +5303,16 @@ QPlainTextEdit#ManageLogViewer {
     qproperty-icon: url(:/svg/dark/delete.svg);
     qproperty-iconSize: 16px 16px;
 }
+
 #ManageUserDeleteBtn:hover {
     background-color: rgba(239, 68, 68, 0.15);
     border-color: rgba(239, 68, 68, 0.5);
 }
+
 #ManageUserDeleteBtn:pressed {
     background-color: rgba(239, 68, 68, 0.25);
 }
+
 #ManageUserDeleteBtn:disabled {
     opacity: 0.3;
     border-color: rgba(100, 116, 139, 0.2);
@@ -4368,7 +5392,8 @@ QFrame#UserEditFooterBar {
     background-color: transparent;
     border: none;
 }
-#UserEditScrollArea > QWidget > QWidget {
+
+#UserEditScrollArea>QWidget>QWidget {
     background-color: transparent;
 }
 
@@ -4381,6 +5406,7 @@ QFrame#UserEditFooterBar {
     padding: 9px 12px;
     font-size: 13px;
 }
+
 #UserEditLineEdit:focus {
     border-color: #3B82F6;
 }
@@ -4393,13 +5419,16 @@ QFrame#UserEditFooterBar {
     qproperty-icon: url(":/svg/dark/check.svg");
     qproperty-iconSize: 16px 16px;
 }
+
 #ManageSaveBtn:hover {
     background-color: rgba(34, 197, 94, 0.24);
     border-color: rgba(34, 197, 94, 0.45);
 }
+
 #ManageSaveBtn:pressed {
     background-color: rgba(34, 197, 94, 0.32);
 }
+
 #ManageSaveBtn:disabled {
     background-color: rgba(51, 65, 85, 0.3);
     border-color: rgba(71, 85, 105, 0.2);
@@ -4413,11 +5442,13 @@ QLabel#TaskSummaryValue {
     font-size: 24px;
     font-weight: 700;
 }
+
 QLabel#TaskSummaryCaption {
     color: rgba(148, 163, 184, 0.92);
     font-size: 12px;
     font-weight: 600;
 }
+
 QLabel#TaskMetaBadge {
     background-color: rgba(59, 130, 246, 0.12);
     border: 1px solid rgba(59, 130, 246, 0.22);
@@ -4427,6 +5458,7 @@ QLabel#TaskMetaBadge {
     font-size: 11px;
     font-weight: 600;
 }
+
 QLabel#TaskMutedBadge {
     background-color: rgba(51, 65, 85, 0.72);
     border: 1px solid rgba(148, 163, 184, 0.16);
@@ -4436,15 +5468,18 @@ QLabel#TaskMutedBadge {
     font-size: 11px;
     font-weight: 600;
 }
+
 QWidget#TaskEditTriggerRow {
     background-color: rgba(15, 23, 42, 0.55);
     border: 1px solid rgba(148, 163, 184, 0.12);
     border-radius: 10px;
 }
+
 QLabel#TaskTriggerMetaLabel {
     color: rgba(148, 163, 184, 0.88);
     font-size: 12px;
 }
+
 QLabel#TaskReadOnlyBadge {
     background-color: rgba(245, 158, 11, 0.12);
     border: 1px solid rgba(245, 158, 11, 0.22);
@@ -4454,11 +5489,13 @@ QLabel#TaskReadOnlyBadge {
     font-size: 11px;
     font-weight: 600;
 }
+
 QWidget#TaskEditAddForm {
     background-color: rgba(30, 41, 59, 0.5);
     border: 1px solid rgba(59, 130, 246, 0.25);
     border-radius: 8px;
 }
+
 QPushButton#TaskEditAddTriggerBtn {
     background-color: rgba(59, 130, 246, 0.15);
     border: 1px solid rgba(59, 130, 246, 0.3);
@@ -4468,7 +5505,224 @@ QPushButton#TaskEditAddTriggerBtn {
     font-size: 12px;
     font-weight: 600;
 }
+
 QPushButton#TaskEditAddTriggerBtn:hover {
     background-color: rgba(59, 130, 246, 0.25);
 }
 
+/* =====================================================================
+   Download Manager (Dark)
+   ===================================================================== */
+QWidget#DownloadListSection {
+    background: transparent;
+    border: none;
+}
+
+QWidget#DownloadFooterBar {
+    background: transparent;
+    border: none;
+    border-top: 1px solid rgba(100, 116, 139, 0.20);
+}
+
+QWidget#DownloadSummaryBar {
+    background: transparent;
+    border: none;
+}
+
+QLabel#DownloadSummaryLabel {
+    color: rgba(226, 232, 240, 0.96);
+    font-size: 13px;
+    font-weight: 700;
+}
+
+QWidget#DownloadListHeader {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid rgba(100, 116, 139, 0.22);
+}
+
+QLabel#DownloadHeaderLabel {
+    color: rgba(148, 163, 184, 0.92);
+    font-size: 11px;
+    font-weight: 700;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    letter-spacing: 0.2px;
+}
+
+QScrollArea#DownloadRecordsArea,
+QWidget#DownloadRecordsViewport,
+QWidget#DownloadRecordsContainer {
+    background-color: transparent;
+    border: none;
+}
+
+QScrollArea#DownloadRecordsArea QScrollBar:vertical {
+    background: transparent;
+    width: 6px;
+    margin: 4px 0px 4px 0px;
+}
+
+QScrollArea#DownloadRecordsArea QScrollBar::handle:vertical {
+    background-color: rgba(148, 163, 184, 0.28);
+    border: none;
+    border-radius: 3px;
+    min-height: 28px;
+}
+
+QScrollArea#DownloadRecordsArea QScrollBar::handle:vertical:hover {
+    background-color: rgba(148, 163, 184, 0.44);
+}
+
+QScrollArea#DownloadRecordsArea QScrollBar::add-line:vertical,
+QScrollArea#DownloadRecordsArea QScrollBar::sub-line:vertical,
+QScrollArea#DownloadRecordsArea QScrollBar::add-page:vertical,
+QScrollArea#DownloadRecordsArea QScrollBar::sub-page:vertical {
+    background: transparent;
+    border: none;
+    height: 0px;
+}
+
+QFrame#DownloadRecordRow {
+    background-color: rgba(15, 23, 42, 0.62);
+    border: 1px solid rgba(100, 116, 139, 0.14);
+    border-radius: 14px;
+}
+
+QFrame#DownloadRecordRow:hover {
+    background-color: rgba(30, 41, 59, 0.80);
+    border-color: rgba(96, 165, 250, 0.22);
+}
+
+QLabel#DownloadRecordIndex {
+    background-color: rgba(59, 130, 246, 0.18);
+    border: 1px solid rgba(96, 165, 250, 0.28);
+    border-radius: 10px;
+    color: #BFDBFE;
+    padding: 6px 0px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+QLabel#DownloadRecordTitle {
+    color: #F8FAFC;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+QLabel#DownloadRecordValue {
+    color: rgba(203, 213, 225, 0.92);
+    font-size: 12px;
+    font-weight: 500;
+}
+
+QLabel#DownloadRecordProgress {
+    border-radius: 10px;
+    padding: 6px 10px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+QLabel#DownloadRecordProgress[tone="active"] {
+    background-color: rgba(59, 130, 246, 0.16);
+    border: 1px solid rgba(96, 165, 250, 0.26);
+    color: #BFDBFE;
+}
+
+QLabel#DownloadRecordProgress[tone="success"] {
+    background-color: rgba(34, 197, 94, 0.14);
+    border: 1px solid rgba(34, 197, 94, 0.20);
+    color: #BBF7D0;
+}
+
+QLabel#DownloadRecordProgress[tone="paused"] {
+    background-color: rgba(245, 158, 11, 0.16);
+    border: 1px solid rgba(245, 158, 11, 0.22);
+    color: #FCD34D;
+}
+
+QLabel#DownloadRecordProgress[tone="danger"] {
+    background-color: rgba(239, 68, 68, 0.16);
+    border: 1px solid rgba(248, 113, 113, 0.24);
+    color: #FECACA;
+}
+
+QLabel#DownloadSectionTitle {
+    color: rgba(148, 163, 184, 0.92);
+    font-size: 11px;
+    font-weight: 700;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    letter-spacing: 0.2px;
+}
+
+QLabel#DownloadLocationValue {
+    background-color: rgba(15, 23, 42, 0.52);
+    border: 1px solid rgba(100, 116, 139, 0.14);
+    border-radius: 12px;
+    color: #F8FAFC;
+    padding: 10px 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+QFrame#DownloadEmptyState {
+    background-color: transparent;
+    border: 1px dashed rgba(100, 116, 139, 0.24);
+    border-radius: 16px;
+}
+
+QLabel#DownloadEmptyIcon {
+    min-width: 46px;
+    min-height: 46px;
+}
+
+QLabel#DownloadEmptyTitle {
+    color: #F8FAFC;
+    font-size: 16px;
+    font-weight: 700;
+}
+
+QLabel#DownloadEmptyHint {
+    color: rgba(148, 163, 184, 0.9);
+    font-size: 12px;
+}
+
+QPushButton#DownloadIconButton {
+    background-color: rgba(15, 23, 42, 0.76);
+    border: 1px solid rgba(100, 116, 139, 0.24);
+    border-radius: 11px;
+    padding: 0px;
+}
+
+QPushButton#DownloadIconButton:hover {
+    background-color: rgba(30, 41, 59, 0.92);
+    border-color: rgba(148, 163, 184, 0.30);
+}
+
+QPushButton#DownloadIconButton:pressed {
+    background-color: rgba(51, 65, 85, 0.92);
+}
+
+QPushButton#DownloadIconButton[tone="accent"] {
+    background-color: rgba(59, 130, 246, 0.16);
+    border-color: rgba(96, 165, 250, 0.26);
+}
+
+QPushButton#DownloadIconButton[tone="accent"]:hover {
+    background-color: rgba(59, 130, 246, 0.24);
+    border-color: rgba(147, 197, 253, 0.34);
+}
+
+QPushButton#DownloadIconButton[tone="danger"] {
+    background-color: rgba(239, 68, 68, 0.16);
+    border-color: rgba(248, 113, 113, 0.26);
+}
+
+QPushButton#DownloadIconButton[tone="danger"]:hover {
+    background-color: rgba(239, 68, 68, 0.24);
+    border-color: rgba(252, 165, 165, 0.34);
+}
+
+QPushButton#DownloadIconButton:disabled {
+    background-color: rgba(30, 41, 59, 0.62);
+    border-color: rgba(100, 116, 139, 0.18);
+}

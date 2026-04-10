@@ -21,6 +21,16 @@ public:
                          ButtonType yesType = Primary,
                          IconType iconType = Question);
 
+    static bool questionWithToggle(QWidget *parent,
+                                   const QString &title,
+                                   const QString &text,
+                                   const QString &toggleText,
+                                   bool *toggleChecked,
+                                   const QString &yesText = "Yes",
+                                   const QString &noText = "Cancel",
+                                   ButtonType yesType = Primary,
+                                   IconType iconType = Question);
+
     
     static void information(QWidget *parent,
                             const QString &title,
@@ -40,8 +50,16 @@ public:
                          const QString &okText = "OK");
 
 private:
-    void setupUi(const QString &title, const QString &text, const QString &yesText, const QString &noText, ButtonType yesType, IconType iconType);
+    void setupUi(const QString &title,
+                 const QString &text,
+                 const QString &yesText,
+                 const QString &noText,
+                 ButtonType yesType,
+                 IconType iconType,
+                 const QString &toggleText = QString(),
+                 bool toggleChecked = false);
     bool m_result = false;
+    bool m_toggleChecked = false;
 };
 
 #endif 

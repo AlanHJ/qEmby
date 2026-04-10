@@ -4,7 +4,26 @@
 #include <config/configstore.h>
 #include <config/config_keys.h>
 #include <QSet>
+#include <QVector>
 #include <QMutableHashIterator>
+
+namespace {
+
+QString buildImageIdentity(const MediaItem& item)
+{
+    return QStringLiteral("%1|%2|%3|%4|%5|%6|%7|%8|%9")
+        .arg(item.getPrimaryImageId())
+        .arg(item.images.primaryTag)
+        .arg(item.images.thumbTag)
+        .arg(item.images.backdropTag)
+        .arg(item.images.logoTag)
+        .arg(item.images.parentPrimaryTag)
+        .arg(item.images.parentThumbTag)
+        .arg(item.images.parentBackdropTag)
+        .arg(item.images.parentImageItemId);
+}
+
+} 
 
 MediaListModel::MediaListModel(int imageMaxWidth, QEmbyCore* core, QObject *parent)
     : QAbstractListModel(parent), m_imageMaxWidth(imageMaxWidth), m_core(core) {}
@@ -25,6 +44,9 @@ QVariant MediaListModel::data(const QModelIndex &index, int role) const {
 
     if (role == ItemDataRole) {
         return QVariant::fromValue(item);
+    }
+    else if (role == Qt::ToolTipRole) {
+        return buildTooltipText(item);
     }
     else if (role == PosterPixmapRole) {
         if (m_imageCache.contains(item.id)) {
@@ -83,6 +105,56 @@ QVariant MediaListModel::data(const QModelIndex &index, int role) const {
         return QVariant(); 
     }
     return QVariant();
+}
+
+QString MediaListModel::buildTooltipText(const MediaItem &item) const {
+    QStringList lines;
+
+    if ((item.type == QStringLiteral("Episode") ||
+         item.type == QStringLiteral("Season")) &&
+        !item.seriesName.isEmpty()) {
+        lines << item.seriesName;
+    }
+
+    QString title = item.name.trimmed();
+    if (item.type == QStringLiteral("Episode") && item.parentIndexNumber >= 0 &&
+        item.indexNumber >= 0) {
+        title = QStringLiteral("S%1E%2  %3")
+                    .arg(item.parentIndexNumber, 2, 10, QChar('0'))
+                    .arg(item.indexNumber, 2, 10, QChar('0'))
+                    .arg(item.name);
+    }
+    lines << title;
+
+    QStringList metaParts;
+    if (item.type == QStringLiteral("Season") && item.parentIndexNumber >= 0) {
+        metaParts << tr("Season %1").arg(item.parentIndexNumber);
+    }
+    if (item.productionYear > 0) {
+        metaParts << QString::number(item.productionYear);
+    }
+    if (!item.premiereDate.trimmed().isEmpty()) {
+        metaParts << item.premiereDate.left(10);
+    }
+    if (item.runTimeTicks > 0) {
+        const long long minutes = item.runTimeTicks / 10000000 / 60;
+        if (minutes > 0) {
+            metaParts << tr("%1 min").arg(minutes);
+        }
+    }
+    if (item.type == QStringLiteral("Season") && item.recursiveItemCount > 0) {
+        metaParts << tr("%1 Episodes").arg(item.recursiveItemCount);
+    }
+    if (!metaParts.isEmpty()) {
+        lines << metaParts.join(QStringLiteral(" • "));
+    }
+
+    const QString overview = item.overview.simplified();
+    if (!overview.isEmpty()) {
+        lines << overview;
+    }
+
+    return lines.join(QLatin1Char('\n'));
 }
 
 
@@ -173,12 +245,24 @@ MediaItem MediaListModel::getItem(const QModelIndex& index) const {
 void MediaListModel::updateItem(const MediaItem& updatedItem) {
     for (int i = 0; i < m_items.size(); ++i) {
         if (m_items[i].id == updatedItem.id) {
+            const bool imageChanged =
+                buildImageIdentity(m_items[i]) != buildImageIdentity(updatedItem);
+
             
             m_items[i] = updatedItem;
+
+            if (imageChanged) {
+                m_imageCache.remove(updatedItem.id);
+                m_loadingImages.remove(updatedItem.id);
+            }
             
             
             QModelIndex idx = index(i, 0);
-            Q_EMIT dataChanged(idx, idx, {ItemDataRole});
+            QVector<int> roles = {ItemDataRole};
+            if (imageChanged) {
+                roles.append(PosterPixmapRole);
+            }
+            Q_EMIT dataChanged(idx, idx, roles);
             break; 
         }
     }

@@ -2,8 +2,10 @@
 #define NETWORKMANAGER_H
 
 #include "../qEmbyCore_global.h"
+#include <QByteArray>
 #include <QObject>
 #include <QNetworkAccessManager>
+#include <QNetworkRequest>
 #include <QNetworkReply>
 #include <QJsonObject>
 #include <QJsonDocument>
@@ -22,6 +24,14 @@ class QEMBYCORE_EXPORT NetworkManager : public QObject
 public:
     explicit NetworkManager(QObject *parent = nullptr);
     ~NetworkManager();
+
+    static void applyRequestOptions(QNetworkRequest& request,
+                                    const NetworkRequestOptions& options);
+    static void attachReplyHandlers(QNetworkReply* reply,
+                                    const NetworkRequestOptions& options,
+                                    const QString& requestKind);
+    static QString buildReplyErrorMessage(QNetworkReply* reply,
+                                          int httpStatus);
 
     
     QCoro::Task<QJsonObject> get(const QString& url,
@@ -47,6 +57,11 @@ public:
                                        const QMap<QString, QString>& headers,
                                        const QJsonArray& payload,
                                        const NetworkRequestOptions& options = {});
+    QCoro::Task<QJsonObject> postBytes(const QString& url,
+                                       const QMap<QString, QString>& headers,
+                                       QByteArray payload,
+                                       QString contentType,
+                                       const NetworkRequestOptions& options = {});
     QCoro::Task<QJsonObject> postForm(const QString& url,
                                       const QMap<QString, QString>& headers,
                                       const QUrlQuery& formData,
@@ -62,12 +77,6 @@ private:
 
     
     void applyHeaders(QNetworkRequest& request, const QMap<QString, QString>& headers);
-    void applyRequestOptions(QNetworkRequest& request,
-                             const NetworkRequestOptions& options);
-    void attachReplyHandlers(QNetworkReply* reply,
-                             const NetworkRequestOptions& options,
-                             const QString& requestKind);
-    QString buildReplyErrorMessage(QNetworkReply* reply, int httpStatus) const;
 
     
     QJsonObject parseReply(QNetworkReply* reply);

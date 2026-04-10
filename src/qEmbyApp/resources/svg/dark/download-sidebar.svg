@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" shape-rendering="geometricPrecision">
+  <defs><style>.cls-1 { fill: none; stroke: white; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.5px; }</style></defs>
+  <path class="cls-1" d="M12 3.2v8.2"/>
+  <path class="cls-1" d="M15.35 8.2 12 11.55 8.65 8.2"/>
+  <rect class="cls-1" x="3.35" y="12.25" width="17.3" height="7.45" rx="2.35" ry="2.35"/>
+  <path class="cls-1" d="M8.15 16h7.7"/>
+</svg>

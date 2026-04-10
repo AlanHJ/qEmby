@@ -3,12 +3,14 @@
 
 #include "../baseview.h"
 #include <QPropertyAnimation>
+#include <QStringList>
 #include <qcorotask.h>
 
 class QListView;
 class MediaListModel;
 class MediaCardDelegate;
 class QLabel;
+class QWidget;
 class QVBoxLayout;
 class QScrollArea;
 class HorizontalListViewGallery;
@@ -33,6 +35,10 @@ protected:
     
     
     void onMediaItemRemoved(const QString& itemId) override;
+    CardContextMenuRequest showCardContextMenu(const MediaItem& item,
+                                               const QPoint& globalPos) override;
+    void dispatchCardContextMenuRequest(
+        const MediaItem& item, const CardContextMenuRequest& request) override;
 
     void showEvent(QShowEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
@@ -40,7 +46,15 @@ protected:
     bool eventFilter(QObject* obj, QEvent* event) override;
 
 private:
+    void launchDashboardTask(QCoro::Task<void>&& task);
     void setupUi();
+    void applyDashboardSectionOrder();
+    QStringList dashboardSectionOrder() const;
+    QString currentServerId() const;
+    QWidget* sectionWidgetForId(const QString& sectionId) const;
+    void clearLibraryGallerySections();
+    bool isManageableDashboardLibraryCard(const MediaItem& item) const;
+    void openDashboardLibraryImageEditor(const MediaItem& item);
 
     
     QWidget* createSectionHeader(const QString& title, const QString& type);
@@ -48,35 +62,53 @@ private:
     QListView* createGridListView(MediaListModel** outModel);
     void adjustLibraryGridHeight();
 
-    QScrollArea* m_mainScrollArea; 
+    
+    QCoro::Task<void> loadResumeSection(bool show, int generation);
+    QCoro::Task<void> loadLatestSection(bool show, int generation);
+    QCoro::Task<void> loadRecommendedSection(bool show, int generation);
+    QCoro::Task<void> loadLibrarySections(bool showLibraries, bool showEachLibrary, int generation);
+    QCoro::Task<void> executeDashboardLibraryRefresh(
+        MediaItem item, bool replaceAllMetadata, bool replaceAllImages,
+        bool isMetadataRefresh);
+
+    QScrollArea* m_mainScrollArea = nullptr; 
 
     
-    QPropertyAnimation* m_vScrollAnim;
-    int m_vScrollTarget;
+    QPropertyAnimation* m_vScrollAnim = nullptr;
+    int m_vScrollTarget = 0;
 
     
-    QWidget* m_resumeHeader;
-    HorizontalListViewGallery* m_resumeGallery;
+    QWidget* m_resumeSection = nullptr;
+    QWidget* m_resumeHeader = nullptr;
+    HorizontalListViewGallery* m_resumeGallery = nullptr;
 
     
-    QWidget* m_latestHeader;
-    HorizontalListViewGallery* m_latestGallery;
+    QWidget* m_latestSection = nullptr;
+    QWidget* m_latestHeader = nullptr;
+    HorizontalListViewGallery* m_latestGallery = nullptr;
 
     
-    QWidget* m_recommendHeader;
-    HorizontalListViewGallery* m_recommendGallery;
+    QWidget* m_recommendSection = nullptr;
+    QWidget* m_recommendHeader = nullptr;
+    HorizontalListViewGallery* m_recommendGallery = nullptr;
 
     
-    QLabel* m_libraryTitle;
-    QListView* m_libraryListView;
-    MediaListModel* m_libraryModel;
+    QWidget* m_libraryGridSection = nullptr;
+    QWidget* m_librarySectionsContainer = nullptr;
+    QLabel* m_libraryTitle = nullptr;
+    QListView* m_libraryListView = nullptr;
+    MediaListModel* m_libraryModel = nullptr;
 
     
     QList<MediaSectionWidget*> m_libraryGalleries;
     QVBoxLayout* m_containerLayout = nullptr;
+    QVBoxLayout* m_librarySectionsLayout = nullptr;
 
     
-    MediaCardDelegate* m_libraryDelegate;
+    MediaCardDelegate* m_libraryDelegate = nullptr;
+
+    
+    int m_loadGeneration = 0;
 };
 
 #endif 

@@ -4,9 +4,14 @@
 #include <QFrame>
 #include <QPixmap>
 #include <QPushButton>
+#include "../../components/librarycontextmenurequest.h"
 #include <models/admin/adminmodels.h>
 
 class LibraryGrid;
+class QContextMenuEvent;
+class QMouseEvent;
+class QPaintEvent;
+class QResizeEvent;
 
 
 
@@ -35,9 +40,13 @@ signals:
     void editClicked(int index);
     void scanClicked(int index);
     void deleteClicked(int index);
+    void editImagesRequested(int index);
+    void refreshMetadataRequested(int index);
+    void scanLibraryFilesRequested(int index);
     void selectionChanged(const QString& itemId, bool selected);
 
 protected:
+    void contextMenuEvent(QContextMenuEvent* event) override;
     void paintEvent(QPaintEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
@@ -47,6 +56,8 @@ protected:
 private:
     void updateButtonLayout();
     void toggleSelected();
+    LibraryContextMenuRequest showContextMenu(const QPoint& globalPos);
+    void dispatchContextMenuRequest(const LibraryContextMenuRequest& request);
 
     VirtualFolder m_folder;
     int m_folderIdx;

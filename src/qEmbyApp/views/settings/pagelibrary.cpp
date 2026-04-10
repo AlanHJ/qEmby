@@ -1,9 +1,13 @@
 #include "pagelibrary.h"
+#include "../../components/dashboardsectionorderwidget.h"
 #include "../../components/moderntoast.h"
 #include "../../components/moderncombobox.h"
 #include "../../components/modernswitch.h"
 #include "../../components/settingscard.h"
+#include "../../components/settingssubpanel.h"
+#include "../../utils/dashboardsectionorderutils.h"
 #include "config/config_keys.h"
+#include "config/configstore.h"
 #include "fileutils.h"
 #include "qembycore.h"
 #include "services/manager/servermanager.h"
@@ -13,6 +17,13 @@
 #include <QStandardPaths>
 #include <QDir>
 #include <QFileInfo>
+
+namespace {
+const QString kHomeSectionOrderIconPath =
+    QStringLiteral(":/svg/dark/home-section-order.svg");
+const QString kHomeSectionOrderDragIconPath =
+    QStringLiteral(":/svg/dark/home-section-drag.svg");
+}
 
 PageLibrary::PageLibrary(QEmbyCore *core, QWidget *parent)
     : SettingsPageBase(core, tr("Library"), parent) {
@@ -85,6 +96,83 @@ PageLibrary::PageLibrary(QEmbyCore *core, QWidget *parent)
       new SettingsCard(":/svg/dark/image-quality.svg", tr("Image Quality"),
                        tr("Set image download quality (higher uses more bandwidth)"),
                        qualityCombo, ConfigKeys::ImageQuality, this));
+
+  m_mainLayout->addWidget(new SettingsCard(
+      ":/svg/dark/image-quality.svg", tr("Shimmer Loading Animation"),
+      tr("Show shimmer skeleton animation while loading dashboard content"),
+      new ModernSwitch(this),
+      ConfigKeys::ShimmerAnimation, this,
+      QVariant(false)));
+
+  const QString customHomeSectionOrderEnabledKey =
+      ConfigKeys::forServer(sid, ConfigKeys::CustomHomeSectionOrderEnabled);
+  const QString homeSectionOrderKey =
+      ConfigKeys::forServer(sid, ConfigKeys::HomeSectionOrder);
+  auto* configStore = ConfigStore::instance();
+  const QStringList storedHomeSectionOrder =
+      configStore->get<QStringList>(homeSectionOrderKey, {});
+  const QStringList initialHomeSectionOrder =
+      storedHomeSectionOrder.isEmpty()
+          ? DashboardSectionOrderUtils::defaultSectionOrder()
+          : DashboardSectionOrderUtils::normalizeSectionOrder(
+                storedHomeSectionOrder);
+
+  auto* customHomeOrderSwitch = new ModernSwitch(this);
+  m_mainLayout->addWidget(new SettingsCard(
+      kHomeSectionOrderIconPath, tr("Custom Home Section Order"),
+      tr("Override the default order of the main home screen sections"),
+      customHomeOrderSwitch, customHomeSectionOrderEnabledKey, this,
+      QVariant(false)));
+
+  m_homeSectionOrderPanel =
+      new SettingsSubPanel(kHomeSectionOrderDragIconPath, this);
+  m_homeSectionOrderWidget =
+      new DashboardSectionOrderWidget(m_homeSectionOrderPanel);
+  m_homeSectionOrderWidget->setSectionOrder(initialHomeSectionOrder);
+  m_homeSectionOrderPanel->contentLayout()->addWidget(
+      m_homeSectionOrderWidget, 1);
+  m_mainLayout->addWidget(m_homeSectionOrderPanel);
+
+  if (!storedHomeSectionOrder.isEmpty() &&
+      storedHomeSectionOrder != initialHomeSectionOrder) {
+    configStore->set(homeSectionOrderKey, initialHomeSectionOrder);
+  }
+
+  connect(customHomeOrderSwitch, &ModernSwitch::toggled,
+          m_homeSectionOrderPanel, &SettingsSubPanel::setExpanded);
+  connect(m_homeSectionOrderWidget,
+          &DashboardSectionOrderWidget::sectionOrderChanged, this,
+          [configStore, homeSectionOrderKey](const QStringList& order) {
+            configStore->set(
+                homeSectionOrderKey,
+                DashboardSectionOrderUtils::normalizeSectionOrder(order));
+          });
+  connect(configStore, &ConfigStore::valueChanged, this,
+          [this, configStore, customHomeSectionOrderEnabledKey,
+           homeSectionOrderKey](const QString& key, const QVariant& value) {
+            if (key == customHomeSectionOrderEnabledKey &&
+                m_homeSectionOrderPanel) {
+              m_homeSectionOrderPanel->setExpanded(value.toBool());
+              return;
+            }
+
+            if (key != homeSectionOrderKey || !m_homeSectionOrderWidget) {
+              return;
+            }
+
+            const QStringList normalizedOrder =
+                DashboardSectionOrderUtils::normalizeSectionOrder(
+                    value.toStringList());
+            m_homeSectionOrderWidget->setSectionOrder(normalizedOrder);
+
+            if (normalizedOrder != value.toStringList()) {
+              configStore->set(homeSectionOrderKey, normalizedOrder);
+            }
+          });
+
+  if (configStore->get<bool>(customHomeSectionOrderEnabledKey, false)) {
+    m_homeSectionOrderPanel->initExpanded();
+  }
 
   
   

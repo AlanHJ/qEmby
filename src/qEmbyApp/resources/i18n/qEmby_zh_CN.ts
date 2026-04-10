@@ -45,8 +45,8 @@
         <translation>服务器地址 (例如 192.168.1.1 或域名)</translation>
     </message>
     <message>
-        <source>Server URL (e.g. example.com, example.com/emby or https://example.com:8920/jellyfin)</source>
-        <translation>服务器 URL（例如 example.com、example.com/emby 或 https://example.com:8920/jellyfin）</translation>
+        <source>Server URL (e.g. example.com, example.com/emby or https:
+        <translation>服务器 URL（例如 example.com、example.com/emby 或 https:
     </message>
     <message>
         <source>Server URL</source>
@@ -155,8 +155,8 @@ This action cannot be undone.</source>
         <translation>请输入有效的端口号。</translation>
     </message>
     <message>
-        <source>Server URL must use http:// or https://.</source>
-        <translation>服务器 URL 必须使用 http:// 或 https://。</translation>
+        <source>Server URL must use http:
+        <translation>服务器 URL 必须使用 http:
     </message>
     <message>
         <source>Connecting...</source>
@@ -217,6 +217,10 @@ Error: </source>
         <translation>管理</translation>
     </message>
     <message>
+        <source>Downloads</source>
+        <translation>下载</translation>
+    </message>
+    <message>
         <source>Logout</source>
         <translation>退出</translation>
     </message>
@@ -243,6 +247,10 @@ Error: </source>
     <message>
         <source>This feature is under development</source>
         <translation>该功能正在开发中</translation>
+    </message>
+    <message>
+        <source>Server Management</source>
+        <translation>服务器管理</translation>
     </message>
 </context>
 
@@ -605,6 +613,18 @@ Error: </source>
         <translation>查看详情</translation>
     </message>
     <message>
+        <source>Download</source>
+        <translation>下载</translation>
+    </message>
+    <message>
+        <source>Add to Playlist</source>
+        <translation>添加到播放列表</translation>
+    </message>
+    <message>
+        <source>Remove from Playlist</source>
+        <translation>从播放列表中移除</translation>
+    </message>
+    <message>
         <source>Add to Favorites</source>
         <translation>添加到收藏</translation>
     </message>
@@ -623,6 +643,30 @@ Error: </source>
     <message>
         <source>Remove from Continue Watching</source>
         <translation>从继续观看中移除</translation>
+    </message>
+    <message>
+        <source>Edit Metadata</source>
+        <translation>编辑元数据</translation>
+    </message>
+    <message>
+        <source>Edit Images</source>
+        <translation>编辑图像</translation>
+    </message>
+    <message>
+        <source>Delete Playlist</source>
+        <translation>删除播放列表</translation>
+    </message>
+    <message>
+        <source>Identify</source>
+        <translation>识别</translation>
+    </message>
+    <message>
+        <source>Refresh Metadata</source>
+        <translation>刷新元数据</translation>
+    </message>
+    <message>
+        <source>Remove Media</source>
+        <translation>移除媒体</translation>
     </message>
 </context>
 
@@ -653,8 +697,526 @@ Error: </source>
         <translation>已从继续观看中移除</translation>
     </message>
     <message>
+        <source>Removed from current playlist</source>
+        <translation>已从当前播放列表中移除</translation>
+    </message>
+    <message>
         <source>Operation failed</source>
         <translation>操作失败</translation>
+    </message>
+    <message>
+        <source>Added to playlist "%1"</source>
+        <translation>已添加到播放列表“%1”</translation>
+    </message>
+    <message>
+        <source>Failed to add to playlist: %1</source>
+        <translation>添加到播放列表失败：%1</translation>
+    </message>
+    <message>
+        <source>Failed to remove from playlist: %1</source>
+        <translation>从播放列表中移除失败：%1</translation>
+    </message>
+    <message>
+        <source>This action requires administrator privileges</source>
+        <translation>此操作需要管理员权限</translation>
+    </message>
+    <message>
+        <source>Identify is not supported for this item type</source>
+        <translation>此项目类型暂不支持识别</translation>
+    </message>
+    <message>
+        <source>Duplicate Add</source>
+        <translation>重复添加</translation>
+    </message>
+    <message>
+        <source>%1 is already in playlist %2.
+
+Add it again?</source>
+        <translation>“%1”已经在播放列表“%2”中。
+
+仍要再次添加吗？</translation>
+    </message>
+    <message>
+        <source>&quot;%1&quot; is already in playlist &quot;%2&quot;.
+
+Add it again?</source>
+        <translation>“%1”已经在播放列表“%2”中。
+
+仍要再次添加吗？</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <source>Add Again</source>
+        <translation>再次添加</translation>
+    </message>
+    <message>
+        <source>current playlist</source>
+        <translation>当前播放列表</translation>
+    </message>
+    <message>
+        <source>Delete Playlist</source>
+        <translation>删除播放列表</translation>
+    </message>
+    <message>
+        <source>Are you sure you want to delete playlist &quot;%1&quot;?
+
+This action cannot be undone.</source>
+        <translation>确定要删除播放列表“%1”吗？
+
+此操作不可撤销。</translation>
+    </message>
+    <message>
+        <source>Delete</source>
+        <translation>删除</translation>
+    </message>
+    <message>
+        <source>&quot;%1&quot; deleted</source>
+        <translation>&quot;%1&quot;已删除</translation>
+    </message>
+    <message>
+        <source>Delete failed: %1</source>
+        <translation>删除失败：%1</translation>
+    </message>
+    <message>
+        <source>this item</source>
+        <translation>此项目</translation>
+    </message>
+    <message>
+        <source>Refreshing metadata for &quot;%1&quot;...</source>
+        <translation>正在刷新“%1”的元数据...</translation>
+    </message>
+    <message>
+        <source>Metadata refresh failed: %1</source>
+        <translation>刷新元数据失败：%1</translation>
+    </message>
+    <message>
+        <source>Remove Media</source>
+        <translation>移除媒体</translation>
+    </message>
+    <message>
+        <source>Are you sure you want to remove &quot;%1&quot; from the server?
+
+This action cannot be undone.</source>
+        <translation>确定要从服务器移除“%1”吗？
+
+此操作不可撤销。</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>移除</translation>
+    </message>
+    <message>
+        <source>&quot;%1&quot; removed</source>
+        <translation>“%1”已移除</translation>
+    </message>
+    <message>
+        <source>Failed to remove media: %1</source>
+        <translation>移除媒体失败：%1</translation>
+    </message>
+</context>
+
+<context>
+    <name>MediaIdentifyDialog</name>
+    <message>
+        <source>Unknown Title</source>
+        <translation>未知标题</translation>
+    </message>
+    <message>
+        <source>Provider IDs: %1</source>
+        <translation>提供方 ID：%1</translation>
+    </message>
+    <message>
+        <source>Album Artist: %1</source>
+        <translation>专辑艺术家：%1</translation>
+    </message>
+    <message>
+        <source>Artists: %1</source>
+        <translation>艺术家：%1</translation>
+    </message>
+    <message>
+        <source>Identify</source>
+        <translation>识别</translation>
+    </message>
+    <message>
+        <source>this item</source>
+        <translation>此项目</translation>
+    </message>
+    <message>
+        <source>Search remote metadata matches for &quot;%1&quot; and apply the correct result.</source>
+        <translation>为“%1”搜索远程元数据候选，并应用正确的匹配结果。</translation>
+    </message>
+    <message>
+        <source>Enter title or keyword</source>
+        <translation>输入标题或关键词</translation>
+    </message>
+    <message>
+        <source>IMDb Id (optional)</source>
+        <translation>IMDb Id（可选）</translation>
+    </message>
+    <message>
+        <source>MovieDb Id (optional)</source>
+        <translation>MovieDb Id（可选）</translation>
+    </message>
+    <message>
+        <source>TheTVDB Id (optional)</source>
+        <translation>TheTVDB Id（可选）</translation>
+    </message>
+    <message>
+        <source>Any</source>
+        <translation>任意</translation>
+    </message>
+    <message>
+        <source>Search</source>
+        <translation>搜索</translation>
+    </message>
+    <message>
+        <source>Enter a title or provider ID to search.</source>
+        <translation>请输入标题或提供方 ID 后开始搜索。</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <source>Apply Match</source>
+        <translation>应用匹配</translation>
+    </message>
+    <message>
+        <source>Preview unavailable</source>
+        <translation>暂无预览</translation>
+    </message>
+    <message>
+        <source>Loading preview...</source>
+        <translation>正在加载预览...</translation>
+    </message>
+    <message>
+        <source>Searching...</source>
+        <translation>正在搜索...</translation>
+    </message>
+    <message>
+        <source>No matches found</source>
+        <translation>未找到匹配结果</translation>
+    </message>
+    <message>
+        <source>Found %1 matches</source>
+        <translation>找到 %1 个匹配结果</translation>
+    </message>
+    <message>
+        <source>Search failed</source>
+        <translation>搜索失败</translation>
+    </message>
+    <message>
+        <source>Failed to search metadata: %1</source>
+        <translation>搜索元数据失败：%1</translation>
+    </message>
+    <message>
+        <source>Applying match...</source>
+        <translation>正在应用匹配...</translation>
+    </message>
+    <message>
+        <source>Metadata updated</source>
+        <translation>元数据已更新</translation>
+    </message>
+    <message>
+        <source>Apply failed</source>
+        <translation>应用失败</translation>
+    </message>
+    <message>
+        <source>Failed to apply match: %1</source>
+        <translation>应用匹配失败：%1</translation>
+    </message>
+</context>
+
+<context>
+    <name>MediaImageEditDialog</name>
+    <message>
+        <source>Primary</source>
+        <translation>主图</translation>
+    </message>
+    <message>
+        <source>Backdrop</source>
+        <translation>背景图</translation>
+    </message>
+    <message>
+        <source>Banner</source>
+        <translation>横幅图</translation>
+    </message>
+    <message>
+        <source>Thumb</source>
+        <translation>缩略图</translation>
+    </message>
+    <message>
+        <source>Logo</source>
+        <translation>Logo</translation>
+    </message>
+    <message>
+        <source>Art</source>
+        <translation>艺术图</translation>
+    </message>
+    <message>
+        <source>Disc</source>
+        <translation>唱片图</translation>
+    </message>
+    <message>
+        <source>Box</source>
+        <translation>盒封</translation>
+    </message>
+    <message>
+        <source>Box Rear</source>
+        <translation>盒封背面</translation>
+    </message>
+    <message>
+        <source>Menu</source>
+        <translation>菜单图</translation>
+    </message>
+    <message>
+        <source>Screenshot</source>
+        <translation>截图</translation>
+    </message>
+    <message>
+        <source>Chapter</source>
+        <translation>章节图</translation>
+    </message>
+    <message>
+        <source>Profile</source>
+        <translation>资料图</translation>
+    </message>
+    <message>
+        <source>No image</source>
+        <translation>暂无图像</translation>
+    </message>
+    <message>
+        <source>%1 image(s) available</source>
+        <translation>%1 张图片可用</translation>
+    </message>
+    <message>
+        <source>%1 %2</source>
+        <translation>%1 %2</translation>
+    </message>
+    <message>
+        <source>%1 image(s)</source>
+        <translation>%1 张图片</translation>
+    </message>
+    <message>
+        <source>%1 × %2</source>
+        <translation>%1 × %2</translation>
+    </message>
+    <message>
+        <source>Index %1</source>
+        <translation>索引 %1</translation>
+    </message>
+    <message>
+        <source>Image Files (%1);;All Files (*)</source>
+        <translation>图片文件 (%1);;所有文件 (*)</translation>
+    </message>
+    <message>
+        <source>Edit Images</source>
+        <translation>编辑图像</translation>
+    </message>
+    <message>
+        <source>this item</source>
+        <translation>此项目</translation>
+    </message>
+    <message>
+        <source>Manage image types for &quot;%1&quot;. Changes are applied immediately.</source>
+        <translation>管理“%1”的各类图像，修改会立即生效。</translation>
+    </message>
+    <message>
+        <source>Loading image information...</source>
+        <translation>正在加载图像信息...</translation>
+    </message>
+    <message>
+        <source>Image Types</source>
+        <translation>图像类型</translation>
+    </message>
+    <message>
+        <source>Drop an image file or image URL here to replace it.</source>
+        <translation>将图片文件或图片地址拖到这里即可替换。</translation>
+    </message>
+    <message>
+        <source>Choose Image</source>
+        <translation>选择图像</translation>
+    </message>
+    <message>
+        <source>Image URL</source>
+        <translation>图片地址</translation>
+    </message>
+    <message>
+        <source>Download</source>
+        <translation>下载</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>关闭</translation>
+    </message>
+    <message>
+        <source>Remove Image</source>
+        <translation>移除图像</translation>
+    </message>
+    <message>
+        <source>Upload Image</source>
+        <translation>上传图像</translation>
+    </message>
+    <message>
+        <source>Preview unavailable</source>
+        <translation>暂无预览</translation>
+    </message>
+    <message>
+        <source>Loaded images for %1 type(s)</source>
+        <translation>已加载 %1 种图像类型</translation>
+    </message>
+    <message>
+        <source>No images found yet</source>
+        <translation>暂未找到图像</translation>
+    </message>
+    <message>
+        <source>Failed to load images</source>
+        <translation>加载图像失败</translation>
+    </message>
+    <message>
+        <source>Failed to load images: %1</source>
+        <translation>加载图像失败：%1</translation>
+    </message>
+    <message>
+        <source>No image for this type</source>
+        <translation>该类型暂无图像</translation>
+    </message>
+    <message>
+        <source>Loading preview...</source>
+        <translation>正在加载预览...</translation>
+    </message>
+    <message>
+        <source>Select Image</source>
+        <translation>选择图像</translation>
+    </message>
+    <message>
+        <source>Enter Image URL</source>
+        <translation>输入图片地址</translation>
+    </message>
+    <message>
+        <source>Paste an image address for the %1 image of &quot;%2&quot;.</source>
+        <translation>请为“%2”的 %1 图像粘贴一个图片地址。</translation>
+    </message>
+    <message>
+        <source>https:
+        <translation>https:
+    </message>
+    <message>
+        <source>Save Image</source>
+        <translation>保存图像</translation>
+    </message>
+    <message>
+        <source>Downloading image...</source>
+        <translation>正在下载图像...</translation>
+    </message>
+    <message>
+        <source>Download failed</source>
+        <translation>下载失败</translation>
+    </message>
+    <message>
+        <source>Failed to download image: %1</source>
+        <translation>下载图像失败：%1</translation>
+    </message>
+    <message>
+        <source>Unknown error</source>
+        <translation>未知错误</translation>
+    </message>
+    <message>
+        <source>Save failed</source>
+        <translation>保存失败</translation>
+    </message>
+    <message>
+        <source>Failed to save image: %1</source>
+        <translation>保存图像失败：%1</translation>
+    </message>
+    <message>
+        <source>Image downloaded</source>
+        <translation>图像已下载</translation>
+    </message>
+    <message>
+        <source>Invalid image URL</source>
+        <translation>图片地址无效</translation>
+    </message>
+    <message>
+        <source>Dropped data does not contain a supported image</source>
+        <translation>拖入的内容不包含受支持的图像</translation>
+    </message>
+    <message>
+        <source>Failed to read image file</source>
+        <translation>读取图像文件失败</translation>
+    </message>
+    <message>
+        <source>Uploading image...</source>
+        <translation>正在上传图像...</translation>
+    </message>
+    <message>
+        <source>Image updated</source>
+        <translation>图像已更新</translation>
+    </message>
+    <message>
+        <source>Upload failed</source>
+        <translation>上传失败</translation>
+    </message>
+    <message>
+        <source>Failed to upload image: %1</source>
+        <translation>上传图像失败：%1</translation>
+    </message>
+    <message>
+        <source>Are you sure you want to remove the %1 image from &quot;%2&quot;?</source>
+        <translation>确定要从“%2”中移除 %1 图像吗？</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>移除</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <source>Removing image...</source>
+        <translation>正在移除图像...</translation>
+    </message>
+    <message>
+        <source>Image removed</source>
+        <translation>图像已移除</translation>
+    </message>
+    <message>
+        <source>Remove failed</source>
+        <translation>移除失败</translation>
+    </message>
+    <message>
+        <source>Failed to remove image: %1</source>
+        <translation>移除图像失败：%1</translation>
+    </message>
+    <message>
+        <source>No image uploaded for this type.</source>
+        <translation>该类型尚未上传图像。</translation>
+    </message>
+    <message>
+        <source>No image uploaded for this type.
+Choose a file, paste an image URL, or drag one onto the preview.</source>
+        <translation>该类型尚未上传图像。
+请选择文件、粘贴图片地址，或直接拖到预览图上。</translation>
+    </message>
+    <message>
+        <source>Replace Image</source>
+        <translation>替换图像</translation>
+    </message>
+</context>
+
+<context>
+    <name>MediaService</name>
+    <message>
+        <source>Invalid image URL</source>
+        <translation>图片地址无效</translation>
+    </message>
+    <message>
+        <source>Downloaded data is not a valid image</source>
+        <translation>下载的数据不是有效的图像</translation>
     </message>
 </context>
 
@@ -775,6 +1337,54 @@ Error: </source>
     <message>
         <source>See All &gt;</source>
         <translation>查看全部 &gt;</translation>
+    </message>
+    <message>
+        <source>Scanning &quot;%1&quot;...</source>
+        <translation>正在扫描“%1”...</translation>
+    </message>
+    <message>
+        <source>Scan failed: %1</source>
+        <translation>扫描失败：%1</translation>
+    </message>
+    <message>
+        <source>Metadata saved</source>
+        <translation>元数据已保存</translation>
+    </message>
+    <message>
+        <source>Failed to update metadata: %1</source>
+        <translation>更新元数据失败：%1</translation>
+    </message>
+</context>
+
+<context>
+    <name>DashboardSectionOrderWidget</name>
+    <message>
+        <source>Drag the items below to change the order of home screen sections. Left to right matches top to bottom on the home screen.</source>
+        <translation>拖动下方项目以调整主页各区块的显示顺序。这里从左到右的顺序，对应主页中从上到下的顺序。</translation>
+    </message>
+    <message>
+        <source>Continue Watching</source>
+        <translation>继续观看</translation>
+    </message>
+    <message>
+        <source>Latest Media</source>
+        <translation>最近更新</translation>
+    </message>
+    <message>
+        <source>Recommended</source>
+        <translation>为你推荐</translation>
+    </message>
+    <message>
+        <source>All Libraries</source>
+        <translation>媒体库</translation>
+    </message>
+    <message>
+        <source>Each Library Sections</source>
+        <translation>各媒体库分区</translation>
+    </message>
+    <message>
+        <source>%1. %2</source>
+        <translation>%1. %2</translation>
     </message>
 </context>
 
@@ -977,12 +1587,132 @@ Error: </source>
         <translation>网速显示已隐藏</translation>
     </message>
     <message>
-        <source>Tech Info Panel</source>
-        <translation>技术参数面板</translation>
+        <source>Statistics</source>
+        <translation>统计信息</translation>
+    </message>
+    <message>
+        <source>File</source>
+        <translation>文件</translation>
+    </message>
+    <message>
+        <source>Session</source>
+        <translation>会话</translation>
+    </message>
+    <message>
+        <source>Item ID</source>
+        <translation>媒体 ID</translation>
+    </message>
+    <message>
+        <source>Media Source ID</source>
+        <translation>媒体源 ID</translation>
+    </message>
+    <message>
+        <source>Play Session ID</source>
+        <translation>播放会话 ID</translation>
+    </message>
+    <message>
+        <source>Cache</source>
+        <translation>缓存</translation>
+    </message>
+    <message>
+        <source>Playback</source>
+        <translation>播放</translation>
+    </message>
+    <message>
+        <source>Refresh Rate</source>
+        <translation>刷新率</translation>
+    </message>
+    <message>
+        <source>Dropped Frames</source>
+        <translation>丢帧</translation>
+    </message>
+    <message>
+        <source>Output</source>
+        <translation>输出</translation>
+    </message>
+    <message>
+        <source>Decoder</source>
+        <translation>解码器</translation>
+    </message>
+    <message>
+        <source>Color</source>
+        <translation>色彩</translation>
+    </message>
+    <message>
+        <source>Channels</source>
+        <translation>声道</translation>
+    </message>
+    <message>
+        <source>Sample Rate</source>
+        <translation>采样率</translation>
+    </message>
+    <message>
+        <source>Device</source>
+        <translation>设备</translation>
+    </message>
+    <message>
+        <source>Subtitle</source>
+        <translation>字幕</translation>
+    </message>
+    <message>
+        <source>Speed</source>
+        <translation>速度</translation>
+    </message>
+    <message>
+        <source>A-V</source>
+        <translation>音视频</translation>
+    </message>
+    <message>
+        <source>Software (CPU)</source>
+        <translation>软解 (CPU)</translation>
+    </message>
+    <message>
+        <source>%1-bit</source>
+        <translation>%1 位</translation>
+    </message>
+    <message>
+        <source>AO %1</source>
+        <translation>AO %1</translation>
+    </message>
+    <message>
+        <source>%1 ch</source>
+        <translation>%1 声道</translation>
+    </message>
+    <message>
+        <source>Chapter</source>
+        <translation>章节</translation>
+    </message>
+    <message>
+        <source>Size</source>
+        <translation>大小</translation>
+    </message>
+    <message>
+        <source>Video</source>
+        <translation>视频</translation>
+    </message>
+    <message>
+        <source>Audio</source>
+        <translation>音频</translation>
+    </message>
+    <message>
+        <source>Frame Rate</source>
+        <translation>帧率</translation>
+    </message>
+    <message>
+        <source>Resolution</source>
+        <translation>分辨率</translation>
+    </message>
+    <message>
+        <source>Format</source>
+        <translation>格式</translation>
+    </message>
+    <message>
+        <source>Bitrate</source>
+        <translation>码率</translation>
     </message>
     <message>
         <source>STRM Direct Play</source>
-        <translation>STRM 直连播放</translation>
+        <translation>STRM直连</translation>
     </message>
     <message>
         <source>STRM Direct Play: ON (Reloading...)</source>
@@ -1409,6 +2139,22 @@ This will remove the current log and rotated backups. This action cannot be undo
         <translation>设置图片下载质量（越高占用带宽越多）</translation>
     </message>
     <message>
+        <source>Shimmer Loading Animation</source>
+        <translation>骨架屏加载动画</translation>
+    </message>
+    <message>
+        <source>Show shimmer skeleton animation while loading dashboard content</source>
+        <translation>在主页内容加载期间显示闪光骨架屏占位动画</translation>
+    </message>
+    <message>
+        <source>Custom Home Section Order</source>
+        <translation>自定义主页顺序</translation>
+    </message>
+    <message>
+        <source>Override the default order of the main home screen sections</source>
+        <translation>覆盖主页主要区块的默认显示顺序</translation>
+    </message>
+    <message>
         <source>Cache Management</source>
         <translation>缓存管理</translation>
     </message>
@@ -1649,6 +2395,14 @@ This will remove the current log and rotated backups. This action cannot be undo
         <translation>减少页面过渡和悬停动画以提升性能</translation>
     </message>
     <message>
+        <source>Snapshot Navigation</source>
+        <translation>截图导航模式</translation>
+    </message>
+    <message>
+        <source>Use static screenshots during page transitions for smoother animation on complex views</source>
+        <translation>页面切换时使用静态截图替代实时渲染，提升复杂视图的过渡流畅度</translation>
+    </message>
+    <message>
         <source>Enable Search History</source>
         <translation>启用搜索记录</translation>
     </message>
@@ -1773,6 +2527,18 @@ This action cannot be undone.</source>
         <translation>中文</translation>
     </message>
     <message>
+        <source>Chinese (Hong Kong)</source>
+        <translation>中文（港）</translation>
+    </message>
+    <message>
+        <source>Chinese (Macau)</source>
+        <translation>中文（澳）</translation>
+    </message>
+    <message>
+        <source>Chinese (Taiwan)</source>
+        <translation>中文（台）</translation>
+    </message>
+    <message>
         <source>English</source>
         <translation>英语</translation>
     </message>
@@ -1803,6 +2569,10 @@ This action cannot be undone.</source>
     <message>
         <source>Preferred Audio Language</source>
         <translation>首选音轨语言</translation>
+    </message>
+    <message>
+        <source>Rules are matched in order; choose presets or type custom keywords and press Enter</source>
+        <translation>规则会按顺序匹配；可选择预设或输入自定义关键词后按回车</translation>
     </message>
     <message>
         <source>Automatically select audio track matching this language</source>
@@ -1845,12 +2615,36 @@ This action cannot be undone.</source>
         <translation>Remux</translation>
     </message>
     <message>
+        <source>Bitrate High to Low</source>
+        <translation>码率从高到低</translation>
+    </message>
+    <message>
+        <source>Bitrate Low to High</source>
+        <translation>码率从低到高</translation>
+    </message>
+    <message>
+        <source>File Size Large to Small</source>
+        <translation>文件大小从大到小</translation>
+    </message>
+    <message>
+        <source>File Size Small to Large</source>
+        <translation>文件大小从小到大</translation>
+    </message>
+    <message>
+        <source>Date New to Old</source>
+        <translation>日期从新到旧</translation>
+    </message>
+    <message>
+        <source>Date Old to New</source>
+        <translation>日期从旧到新</translation>
+    </message>
+    <message>
         <source>Preferred Video Version</source>
         <translation>首选视频版本</translation>
     </message>
     <message>
-        <source>Select preferred resolutions; type custom keywords and press Enter</source>
-        <translation>选择首选分辨率；输入自定义关键词后按回车</translation>
+        <source>Choose keyword or sort rules in order; type custom keywords and press Enter</source>
+        <translation>按顺序选择关键词或排序规则；输入自定义关键词后按回车</translation>
     </message>
     <message>
         <source>3 Seconds</source>
@@ -1879,6 +2673,62 @@ This action cannot be undone.</source>
     <message>
         <source>Number of seconds to skip when pressing forward or rewind</source>
         <translation>按下前进或后退时跳过的秒数</translation>
+    </message>
+    <message>
+        <source>Long Press Left/Right</source>
+        <translation>长按左右键</translation>
+    </message>
+    <message>
+        <source>Enable long press actions for left/right keys during playback</source>
+        <translation>启用播放时左右键的长按操作</translation>
+    </message>
+    <message>
+        <source>Long Press Trigger Time</source>
+        <translation>长按触发时长</translation>
+    </message>
+    <message>
+        <source>Set how long left/right keys must be held before the long press action starts</source>
+        <translation>设置左右键按住多久后开始触发长按动作</translation>
+    </message>
+    <message>
+        <source>Long Press Mode</source>
+        <translation>长按模式</translation>
+    </message>
+    <message>
+        <source>Choose whether holding left/right keys performs time jump seek or temporary speed playback</source>
+        <translation>选择长按左右键时执行时间跳转还是临时倍速播放</translation>
+    </message>
+    <message>
+        <source>Mouse Edge Long Press</source>
+        <translation>鼠标左右区域长按</translation>
+    </message>
+    <message>
+        <source>Hold the left or right side of the playback area for speed rewind or fast forward</source>
+        <translation>在播放界面的左侧或右侧按住鼠标以进行倍速快退或快进</translation>
+    </message>
+    <message>
+        <source>Time Jump Playback</source>
+        <translation>时间跳转播放</translation>
+    </message>
+    <message>
+        <source>Speed Playback</source>
+        <translation>倍速播放</translation>
+    </message>
+    <message>
+        <source>300 ms</source>
+        <translation>300 毫秒</translation>
+    </message>
+    <message>
+        <source>500 ms</source>
+        <translation>500 毫秒</translation>
+    </message>
+    <message>
+        <source>800 ms</source>
+        <translation>800 毫秒</translation>
+    </message>
+    <message>
+        <source>1000 ms</source>
+        <translation>1000 毫秒</translation>
     </message>
     <message>
         <source>Long Press Seek</source>
@@ -2001,8 +2851,8 @@ This action cannot be undone.</source>
         <translation>URL路径替换 每行一条规则：源路径 =&gt; 目标路径</translation>
     </message>
     <message>
-        <source>e.g., http://192.168.2.1:19798/path/ =&gt; W:/mount/</source>
-        <translation>例如 http://192.168.2.1:19798/path/ =&gt; W:/mount/</translation>
+        <source>e.g., http:
+        <translation>例如 http:
     </message>
 </context>
 
@@ -3095,6 +3945,14 @@ This action cannot be undone.</source>
         <translation>更新媒体库失败：%1</translation>
     </message>
     <message>
+        <source>Metadata saved</source>
+        <translation>元数据已保存</translation>
+    </message>
+    <message>
+        <source>Failed to update metadata: %1</source>
+        <translation>更新元数据失败：%1</translation>
+    </message>
+    <message>
         <source>Delete Library</source>
         <translation>删除媒体库</translation>
     </message>
@@ -3125,6 +3983,14 @@ This will remove the library from the server, but will not delete the actual med
     <message>
         <source>Scanning &quot;%1&quot;...</source>
         <translation>正在扫描"%1"...</translation>
+    </message>
+    <message>
+        <source>Refreshing metadata for &quot;%1&quot;...</source>
+        <translation>正在刷新“%1”的元数据...</translation>
+    </message>
+    <message>
+        <source>Metadata refresh failed: %1</source>
+        <translation>刷新元数据失败：%1</translation>
     </message>
     <message>
         <source>Scan failed: %1</source>
@@ -3231,6 +4097,246 @@ This will remove the libraries from the server, but will not delete the actual m
     <message>
         <source>Transcode</source>
         <translation>转码</translation>
+    </message>
+</context>
+
+<context>
+    <name>LibraryActionMenu</name>
+    <message>
+        <source>Edit Metadata</source>
+        <translation>编辑元数据</translation>
+    </message>
+    <message>
+        <source>Edit Images</source>
+        <translation>编辑图像</translation>
+    </message>
+    <message>
+        <source>Refresh Metadata</source>
+        <translation>刷新元数据</translation>
+    </message>
+    <message>
+        <source>Scan Library Files</source>
+        <translation>扫描媒体库文件</translation>
+    </message>
+</context>
+
+<context>
+    <name>LibraryMetadataEditDialog</name>
+    <message>
+        <source>Edit Metadata</source>
+        <translation>编辑元数据</translation>
+    </message>
+    <message>
+        <source>Basic Information</source>
+        <translation>基础信息</translation>
+    </message>
+    <message>
+        <source>Classification</source>
+        <translation>分类</translation>
+    </message>
+    <message>
+        <source>Ratings &amp; Release</source>
+        <translation>评分与发行</translation>
+    </message>
+    <message>
+        <source>External IDs</source>
+        <translation>外部标识</translation>
+    </message>
+    <message>
+        <source>Music Metadata</source>
+        <translation>音乐元数据</translation>
+    </message>
+    <message>
+        <source>Additional Details</source>
+        <translation>附加详情</translation>
+    </message>
+    <message>
+        <source>Metadata Settings</source>
+        <translation>元数据设置</translation>
+    </message>
+    <message>
+        <source>Field Locks</source>
+        <translation>字段锁定</translation>
+    </message>
+    <message>
+        <source>Path</source>
+        <translation>路径</translation>
+    </message>
+    <message>
+        <source>Name</source>
+        <translation>名称</translation>
+    </message>
+    <message>
+        <source>Original Title</source>
+        <translation>原始标题</translation>
+    </message>
+    <message>
+        <source>Sort Name</source>
+        <translation>排序名称</translation>
+    </message>
+    <message>
+        <source>Tagline</source>
+        <translation>宣传语</translation>
+    </message>
+    <message>
+        <source>Genres</source>
+        <translation>类型</translation>
+    </message>
+    <message>
+        <source>Tags</source>
+        <translation>标签</translation>
+    </message>
+    <message>
+        <source>Studios</source>
+        <translation>工作室</translation>
+    </message>
+    <message>
+        <source>Date Added</source>
+        <translation>加入日期</translation>
+    </message>
+    <message>
+        <source>Production Year</source>
+        <translation>年份</translation>
+    </message>
+    <message>
+        <source>Premiere Date</source>
+        <translation>发行日期</translation>
+    </message>
+    <message>
+        <source>End Date</source>
+        <translation>结束日期</translation>
+    </message>
+    <message>
+        <source>Status</source>
+        <translation>状态</translation>
+    </message>
+    <message>
+        <source>Runtime (Minutes)</source>
+        <translation>时长（分钟）</translation>
+    </message>
+    <message>
+        <source>Official Rating</source>
+        <translation>家长分级</translation>
+    </message>
+    <message>
+        <source>Custom Rating</source>
+        <translation>自定义评分</translation>
+    </message>
+    <message>
+        <source>Community Rating</source>
+        <translation>社区评分</translation>
+    </message>
+    <message>
+        <source>Critic Rating</source>
+        <translation>影评人评分</translation>
+    </message>
+    <message>
+        <source>IMDb Id</source>
+        <translation>IMDb Id</translation>
+    </message>
+    <message>
+        <source>MovieDb Id</source>
+        <translation>MovieDb Id</translation>
+    </message>
+    <message>
+        <source>TheTVDB Id</source>
+        <translation>TheTVDB Id</translation>
+    </message>
+    <message>
+        <source>Album</source>
+        <translation>专辑</translation>
+    </message>
+    <message>
+        <source>Album Artist</source>
+        <translation>专辑艺人</translation>
+    </message>
+    <message>
+        <source>Artists</source>
+        <translation>艺人</translation>
+    </message>
+    <message>
+        <source>Composers</source>
+        <translation>作曲家</translation>
+    </message>
+    <message>
+        <source>Channel Number</source>
+        <translation>频道编号</translation>
+    </message>
+    <message>
+        <source>Place of Birth</source>
+        <translation>出生地</translation>
+    </message>
+    <message>
+        <source>Parent Index Number</source>
+        <translation>父级序号</translation>
+    </message>
+    <message>
+        <source>Index Number</source>
+        <translation>序号</translation>
+    </message>
+    <message>
+        <source>Preferred Metadata Language</source>
+        <translation>首选元数据语言</translation>
+    </message>
+    <message>
+        <source>Metadata Country Code</source>
+        <translation>元数据国家/地区代码</translation>
+    </message>
+    <message>
+        <source>Overview</source>
+        <translation>概述</translation>
+    </message>
+    <message>
+        <source>Lock metadata</source>
+        <translation>锁定元数据</translation>
+    </message>
+    <message>
+        <source>Comma separated values</source>
+        <translation>多个值请用逗号分隔</translation>
+    </message>
+    <message>
+        <source>yyyy-MM-dd</source>
+        <translation>yyyy-MM-dd</translation>
+    </message>
+    <message>
+        <source>yyyy-MM-ddTHH:mm:ss</source>
+        <translation>yyyy-MM-ddTHH:mm:ss</translation>
+    </message>
+    <message>
+        <source>yyyy-MM-dd HH:mm:ss</source>
+        <translation>yyyy-MM-dd HH:mm:ss</translation>
+    </message>
+    <message>
+        <source>Minutes</source>
+        <translation>分钟</translation>
+    </message>
+    <message>
+        <source>0-10</source>
+        <translation>0-10</translation>
+    </message>
+    <message>
+        <source>0-100</source>
+        <translation>0-100</translation>
+    </message>
+    <message>
+        <source>Continuing / Ended</source>
+        <translation>连载中 / 已完结</translation>
+    </message>
+    <message>
+        <source>en-US</source>
+        <translation>en-US</translation>
+    </message>
+    <message>
+        <source>US</source>
+        <translation>US</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <source>Save</source>
+        <translation>保存</translation>
     </message>
 </context>
 
@@ -3967,6 +5073,70 @@ Do you want to continue?</source>
     <message>
         <source>Books</source>
         <translation>图书</translation>
+    </message>
+</context>
+
+<context>
+    <name>AddToPlaylistDialog</name>
+    <message>
+        <source>Add to Playlist</source>
+        <translation>添加到播放列表</translation>
+    </message>
+    <message>
+        <source>Select a playlist</source>
+        <translation>请选择一个播放列表</translation>
+    </message>
+    <message>
+        <source>Search playlists...</source>
+        <translation>搜索播放列表...</translation>
+    </message>
+    <message>
+        <source>New Playlist</source>
+        <translation>新建播放列表</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation>添加</translation>
+    </message>
+    <message>
+        <source>Loading...</source>
+        <translation>加载中...</translation>
+    </message>
+    <message>
+        <source>No playlists found</source>
+        <translation>未找到任何播放列表</translation>
+    </message>
+    <message>
+        <source>Failed to load playlists: %1</source>
+        <translation>加载播放列表失败：%1</translation>
+    </message>
+    <message>
+        <source>Create Playlist</source>
+        <translation>创建播放列表</translation>
+    </message>
+    <message>
+        <source>Playlist name</source>
+        <translation>播放列表名称</translation>
+    </message>
+    <message>
+        <source>Enter playlist name</source>
+        <translation>请输入播放列表名称</translation>
+    </message>
+    <message>
+        <source>Create</source>
+        <translation>创建</translation>
+    </message>
+    <message>
+        <source>Playlist created</source>
+        <translation>播放列表已创建</translation>
+    </message>
+    <message>
+        <source>Failed to create playlist: %1</source>
+        <translation>创建播放列表失败：%1</translation>
     </message>
 </context>
 
@@ -5583,6 +6753,1456 @@ This action cannot be undone.</source>
     <message>
         <source>Select All</source>
         <translation>全选</translation>
+    </message>
+</context>
+
+<context>
+    <name>DownloadManager</name>
+    <message>
+        <source>Downloaded Media</source>
+        <translation>下载的媒体</translation>
+    </message>
+    <message>
+        <source>Failed to write download file</source>
+        <translation>写入下载文件失败</translation>
+    </message>
+    <message>
+        <source>Downloading</source>
+        <translation>下载中</translation>
+    </message>
+    <message>
+        <source>Completed</source>
+        <translation>已完成</translation>
+    </message>
+    <message>
+        <source>Download completed</source>
+        <translation>下载完成</translation>
+    </message>
+    <message>
+        <source>Download failed</source>
+        <translation>下载失败</translation>
+    </message>
+    <message>
+        <source>Failed to prepare download: %1</source>
+        <translation>准备下载失败：%1</translation>
+    </message>
+    <message>
+        <source>This media is not available for download</source>
+        <translation>当前媒体不可下载</translation>
+    </message>
+    <message>
+        <source>Failed to resolve download address</source>
+        <translation>解析下载地址失败</translation>
+    </message>
+    <message>
+        <source>Failed to create download directory</source>
+        <translation>创建下载目录失败</translation>
+    </message>
+    <message>
+        <source>Failed to open download file</source>
+        <translation>打开下载文件失败</translation>
+    </message>
+    <message>
+        <source>Download started</source>
+        <translation>已开始下载</translation>
+    </message>
+    <message>
+        <source>Pausing</source>
+        <translation>暂停中</translation>
+    </message>
+    <message>
+        <source>Paused</source>
+        <translation>已暂停</translation>
+    </message>
+    <message>
+        <source>Cancelling</source>
+        <translation>正在取消</translation>
+    </message>
+    <message>
+        <source>Cancelled</source>
+        <translation>已取消</translation>
+    </message>
+    <message>
+        <source>Download cancelled</source>
+        <translation>下载已取消</translation>
+    </message>
+    <message>
+        <source>Download paused</source>
+        <translation>下载已暂停</translation>
+    </message>
+    <message>
+        <source>Download resumed</source>
+        <translation>下载已继续</translation>
+    </message>
+    <message>
+        <source>Download removed</source>
+        <translation>下载任务已移除</translation>
+    </message>
+    <message>
+        <source>Switch back to the original server before resuming this download</source>
+        <translation>请先切换回原始服务器，再继续此下载任务</translation>
+    </message>
+    <message>
+        <source>The original media source is no longer available</source>
+        <translation>原始媒体源已不可用</translation>
+    </message>
+</context>
+
+<context>
+    <name>DownloadManagerDialog</name>
+    <message>
+        <source>Unknown</source>
+        <translation>未知</translation>
+    </message>
+    <message>
+        <source>B</source>
+        <translation>B</translation>
+    </message>
+    <message>
+        <source>KB</source>
+        <translation>KB</translation>
+    </message>
+    <message>
+        <source>MB</source>
+        <translation>MB</translation>
+    </message>
+    <message>
+        <source>GB</source>
+        <translation>GB</translation>
+    </message>
+    <message>
+        <source>TB</source>
+        <translation>TB</translation>
+    </message>
+    <message>
+        <source>%1% (%2 / %3)</source>
+        <translation>%1%（%2 / %3）</translation>
+    </message>
+    <message>
+        <source>Downloading %1% (%2 / %3)</source>
+        <translation>下载中 %1%（%2 / %3）</translation>
+    </message>
+    <message>
+        <source>%1 downloaded</source>
+        <translation>已下载 %1</translation>
+    </message>
+    <message>
+        <source>Downloading %1</source>
+        <translation>下载中 %1</translation>
+    </message>
+    <message>
+        <source>%1 %2% (%3 / %4)</source>
+        <translation>%1 %2%（%3 / %4）</translation>
+    </message>
+    <message>
+        <source>%1 %2</source>
+        <translation>%1 %2</translation>
+    </message>
+    <message>
+        <source>Pausing</source>
+        <translation>暂停中</translation>
+    </message>
+    <message>
+        <source>Paused %1% (%2 / %3)</source>
+        <translation>已暂停 %1%（%2 / %3）</translation>
+    </message>
+    <message>
+        <source>Paused %1</source>
+        <translation>已暂停 %1</translation>
+    </message>
+    <message>
+        <source>Paused</source>
+        <translation>已暂停</translation>
+    </message>
+    <message>
+        <source>Waiting...</source>
+        <translation>等待中...</translation>
+    </message>
+    <message>
+        <source>--</source>
+        <translation>--</translation>
+    </message>
+    <message>
+        <source>Downloads</source>
+        <translation>下载</translation>
+    </message>
+    <message>
+        <source>Download Manager</source>
+        <translation>下载管理</translation>
+    </message>
+    <message>
+        <source>Total %1  Active %2  Completed %3  Failed %4</source>
+        <translation>共 %1 项  进行中 %2  已完成 %3  失败 %4</translation>
+    </message>
+    <message>
+        <source>%1 records, %2 active, %3 completed, %4 failed</source>
+        <translation>共 %1 项，进行中 %2 项，已完成 %3 项，失败 %4 项</translation>
+    </message>
+    <message>
+        <source>No download records</source>
+        <translation>暂无下载记录</translation>
+    </message>
+    <message>
+        <source>No records yet</source>
+        <translation>暂无记录</translation>
+    </message>
+    <message>
+        <source>Download tasks will appear here after you start them.</source>
+        <translation>开始下载后，任务会显示在这里。</translation>
+    </message>
+    <message>
+        <source>Start a download and the record will appear here.</source>
+        <translation>开始下载后，记录会显示在这里。</translation>
+    </message>
+    <message>
+        <source>No.</source>
+        <translation>序号</translation>
+    </message>
+    <message>
+        <source>Active</source>
+        <translation>进行中</translation>
+    </message>
+    <message>
+        <source>Completed</source>
+        <translation>已完成</translation>
+    </message>
+    <message>
+        <source>Failed</source>
+        <translation>失败</translation>
+    </message>
+    <message>
+        <source>Download Directory</source>
+        <translation>下载目录</translation>
+    </message>
+    <message>
+        <source>Download Location</source>
+        <translation>下载位置</translation>
+    </message>
+    <message>
+        <source>Saved To</source>
+        <translation>保存位置</translation>
+    </message>
+    <message>
+        <source>Choose where new downloads are saved.</source>
+        <translation>设置新下载内容的保存位置。</translation>
+    </message>
+    <message>
+        <source>Open Directory</source>
+        <translation>打开目录</translation>
+    </message>
+    <message>
+        <source>Set Directory</source>
+        <translation>设置目录</translation>
+    </message>
+    <message>
+        <source>Current Downloads</source>
+        <translation>当前下载</translation>
+    </message>
+    <message>
+        <source>Stopping a task removes the unfinished file immediately.</source>
+        <translation>停止任务后会立即删除未完成的文件。</translation>
+    </message>
+    <message>
+        <source>No active downloads</source>
+        <translation>暂无进行中的下载</translation>
+    </message>
+    <message>
+        <source>Media</source>
+        <translation>媒体</translation>
+    </message>
+    <message>
+        <source>Size</source>
+        <translation>大小</translation>
+    </message>
+    <message>
+        <source>Progress</source>
+        <translation>进度</translation>
+    </message>
+    <message>
+        <source>Started</source>
+        <translation>开始时间</translation>
+    </message>
+    <message>
+        <source>Status</source>
+        <translation>状态</translation>
+    </message>
+    <message>
+        <source>Action</source>
+        <translation>操作</translation>
+    </message>
+    <message>
+        <source>Download History</source>
+        <translation>下载历史</translation>
+    </message>
+    <message>
+        <source>Select a record to open the media, jump to its folder, or remove it.</source>
+        <translation>选择一条记录后，可以打开媒体、跳转到目录，或移除记录。</translation>
+    </message>
+    <message>
+        <source>No download history</source>
+        <translation>暂无下载历史</translation>
+    </message>
+    <message>
+        <source>Result</source>
+        <translation>结果</translation>
+    </message>
+    <message>
+        <source>Finished</source>
+        <translation>完成时间</translation>
+    </message>
+    <message>
+        <source>No download record selected</source>
+        <translation>未选择下载记录</translation>
+    </message>
+    <message>
+        <source>Open Media</source>
+        <translation>打开媒体</translation>
+    </message>
+    <message>
+        <source>Pause Download</source>
+        <translation>暂停下载</translation>
+    </message>
+    <message>
+        <source>Resume Download</source>
+        <translation>继续下载</translation>
+    </message>
+    <message>
+        <source>Open Folder</source>
+        <translation>打开文件夹</translation>
+    </message>
+    <message>
+        <source>Delete Record</source>
+        <translation>删除记录</translation>
+    </message>
+    <message>
+        <source>Stop</source>
+        <translation>停止</translation>
+    </message>
+    <message>
+        <source>Stop Download</source>
+        <translation>停止下载</translation>
+    </message>
+    <message>
+        <source>Stop and remove the unfinished file</source>
+        <translation>停止并删除未完成文件</translation>
+    </message>
+    <message>
+        <source>Select Download Directory</source>
+        <translation>选择下载目录</translation>
+    </message>
+    <message>
+        <source>The download folder is no longer available.</source>
+        <translation>下载文件夹已不存在。</translation>
+    </message>
+    <message>
+        <source>The downloaded media file is no longer available.</source>
+        <translation>下载的媒体文件已不存在。</translation>
+    </message>
+    <message>
+        <source>Also Delete File</source>
+        <translation>同时删除文件</translation>
+    </message>
+    <message>
+        <source>Also remove the local file when deleting a history record</source>
+        <translation>删除历史记录时同时删除本地文件</translation>
+    </message>
+    <message>
+        <source>Delete download record for "%1"?</source>
+        <translation>确定要删除“%1”的下载记录吗？</translation>
+    </message>
+    <message>
+        <source>Delete download record for "%1" and remove the local file?</source>
+        <translation>确定要删除“%1”的下载记录并移除本地文件吗？</translation>
+    </message>
+    <message>
+        <source>Cancel active download for "%1" and remove the unfinished file?</source>
+        <translation>确定要取消“%1”的下载并删除未完成文件吗？</translation>
+    </message>
+    <message>
+        <source>Delete</source>
+        <translation>删除</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <source>Delete File</source>
+        <translation>删除文件</translation>
+    </message>
+    <message>
+        <source>Delete the downloaded file too?</source>
+        <translation>是否同时删除已下载的文件？</translation>
+    </message>
+    <message>
+        <source>Keep File</source>
+        <translation>保留文件</translation>
+    </message>
+    <message>
+        <source>Server: %1
+Status: %2
+Added: %3
+Finished: %4
+Size: %5</source>
+        <translation>服务器：%1
+状态：%2
+添加时间：%3
+完成时间：%4
+大小：%5</translation>
+    </message>
+    <message>
+        <source>Saved To: %1</source>
+        <translation>保存到：%1</translation>
+    </message>
+</context>
+
+<context>
+    <name>PlayerView</name>
+    <message>
+        <source>Danmaku</source>
+        <translation>弹幕</translation>
+    </message>
+    <message>
+        <source>Local File</source>
+        <translation>本地文件</translation>
+    </message>
+    <message>
+        <source>DandanPlay</source>
+        <translation>弹弹Play</translation>
+    </message>
+    <message>
+        <source>Unknown Source</source>
+        <translation>未知来源</translation>
+    </message>
+    <message>
+        <source>No danmaku loaded</source>
+        <translation>未加载弹幕</translation>
+    </message>
+    <message>
+        <source>Loading danmaku...</source>
+        <translation>正在加载弹幕...</translation>
+    </message>
+    <message>
+        <source>Unknown Danmaku</source>
+        <translation>未知弹幕</translation>
+    </message>
+    <message>
+        <source>%1 comments</source>
+        <translation>%1 条弹幕</translation>
+    </message>
+    <message>
+        <source>Comment count unavailable</source>
+        <translation>弹幕条数未知</translation>
+    </message>
+    <message>
+        <source>Current: %1 | %2 | %3</source>
+        <translation>当前：%1 | %2 | %3</translation>
+    </message>
+    <message>
+        <source>Danmaku
+Source: %1
+Provider: %2
+Comments: %3</source>
+        <translation>弹幕
+来源标题：%1
+来源类型：%2
+弹幕条数：%3</translation>
+    </message>
+    <message>
+        <source>Reload Danmaku</source>
+        <translation>重新加载弹幕</translation>
+    </message>
+    <message>
+        <source>Manual Match Danmaku</source>
+        <translation>手动匹配弹幕</translation>
+    </message>
+    <message>
+        <source>Hide Danmaku</source>
+        <translation>隐藏弹幕</translation>
+    </message>
+    <message>
+        <source>Show Danmaku</source>
+        <translation>显示弹幕</translation>
+    </message>
+    <message>
+        <source>Danmaku Settings</source>
+        <translation>弹幕设置</translation>
+    </message>
+    <message>
+        <source>Subtitle Settings</source>
+        <translation>字幕设置</translation>
+    </message>
+    <message>
+        <source>Load Local Danmaku File</source>
+        <translation>加载本地弹幕文件</translation>
+    </message>
+    <message>
+        <source>Search Danmaku</source>
+        <translation>搜索弹幕</translation>
+    </message>
+    <message>
+        <source>Danmaku (Loading...)</source>
+        <translation>弹幕（加载中...）</translation>
+    </message>
+    <message>
+        <source>Danmaku (Hidden)</source>
+        <translation>弹幕（已隐藏）</translation>
+    </message>
+    <message>
+        <source>Danmaku (Loaded)</source>
+        <translation>弹幕（已加载）</translation>
+    </message>
+    <message>
+        <source>Danmaku (%1)</source>
+        <translation>弹幕（%1）</translation>
+    </message>
+    <message>
+        <source>Manual Danmaku Match</source>
+        <translation>手动匹配弹幕</translation>
+    </message>
+    <message>
+        <source>Danmaku is unavailable for the current media</source>
+        <translation>当前媒体暂不支持弹幕</translation>
+    </message>
+    <message>
+        <source>Danmaku Files (*.ass *.json *.xml);;ASS Files (*.ass);;JSON Files (*.json);;XML Files (*.xml)</source>
+        <translation>弹幕文件 (*.ass *.json *.xml);;ASS 文件 (*.ass);;JSON 文件 (*.json);;XML 文件 (*.xml)</translation>
+    </message>
+    <message>
+        <source>Enter a keyword to search danmaku for the current video.</source>
+        <translation>输入一个关键词，为当前视频搜索弹幕。</translation>
+    </message>
+    <message>
+        <source>Series name or episode title</source>
+        <translation>剧名或剧集标题</translation>
+    </message>
+    <message>
+        <source>Search</source>
+        <translation>搜索</translation>
+    </message>
+</context>
+
+<context>
+    <name>PlayerDanmakuController</name>
+    <message>
+        <source>Danmaku Disabled</source>
+        <translation>弹幕已关闭</translation>
+    </message>
+    <message>
+        <source>Danmaku Enabled</source>
+        <translation>弹幕已开启</translation>
+    </message>
+    <message>
+        <source>Danmaku Loaded (%1)</source>
+        <translation>弹幕已加载（%1）</translation>
+    </message>
+    <message>
+        <source>Danmaku Loaded</source>
+        <translation>弹幕已加载</translation>
+    </message>
+    <message>
+        <source>No matching danmaku found</source>
+        <translation>未找到匹配的弹幕</translation>
+    </message>
+    <message>
+        <source>No danmaku available</source>
+        <translation>没有可用弹幕</translation>
+    </message>
+    <message>
+        <source>Failed to load danmaku</source>
+        <translation>加载弹幕失败</translation>
+    </message>
+    <message>
+        <source>Unsupported danmaku file</source>
+        <translation>不支持的弹幕文件</translation>
+    </message>
+    <message>
+        <source>Danmaku Shown</source>
+        <translation>弹幕已显示</translation>
+    </message>
+    <message>
+        <source>Danmaku Hidden</source>
+        <translation>弹幕已隐藏</translation>
+    </message>
+</context>
+
+<context>
+    <name>PlayerDanmakuIdentifyDialog</name>
+    <message>
+        <source>Local File</source>
+        <translation>本地文件</translation>
+    </message>
+    <message>
+        <source>DandanPlay</source>
+        <translation>弹弹Play</translation>
+    </message>
+    <message>
+        <source>Unknown Source</source>
+        <translation>未知来源</translation>
+    </message>
+    <message>
+        <source>%1 comments</source>
+        <translation>%1 条弹幕</translation>
+    </message>
+    <message>
+        <source>Comment count unavailable</source>
+        <translation>弹幕条数未知</translation>
+    </message>
+    <message>
+        <source>Unknown Danmaku</source>
+        <translation>未知弹幕</translation>
+    </message>
+    <message>
+        <source>Source: %1</source>
+        <translation>来源：%1</translation>
+    </message>
+    <message>
+        <source>Title: %1</source>
+        <translation>标题：%1</translation>
+    </message>
+    <message>
+        <source>Series: %1</source>
+        <translation>系列：%1</translation>
+    </message>
+    <message>
+        <source>Comments: %1</source>
+        <translation>弹幕条数：%1</translation>
+    </message>
+    <message>
+        <source>Unknown</source>
+        <translation>未知</translation>
+    </message>
+    <message>
+        <source>Score: %1</source>
+        <translation>匹配分数：%1</translation>
+    </message>
+    <message>
+        <source>Episode: S%1E%2</source>
+        <translation>剧集：S%1E%2</translation>
+    </message>
+    <message>
+        <source>Match Reason: %1</source>
+        <translation>匹配依据：%1</translation>
+    </message>
+    <message>
+        <source>Target: %1</source>
+        <translation>目标：%1</translation>
+    </message>
+    <message>
+        <source>Search Danmaku</source>
+        <translation>搜索弹幕</translation>
+    </message>
+    <message>
+        <source>this video</source>
+        <translation>当前视频</translation>
+    </message>
+    <message>
+        <source>Search danmaku sources for "%1" and choose the best match.</source>
+        <translation>为“%1”搜索弹幕来源，并选择最合适的匹配结果。</translation>
+    </message>
+    <message>
+        <source>Enter title or keyword</source>
+        <translation>输入标题或关键词</translation>
+    </message>
+    <message>
+        <source>Search</source>
+        <translation>搜索</translation>
+    </message>
+    <message>
+        <source>Search for local or online danmaku sources.</source>
+        <translation>搜索本地或在线弹幕来源。</translation>
+    </message>
+    <message>
+        <source>Danmaku Details</source>
+        <translation>弹幕详情</translation>
+    </message>
+    <message>
+        <source>Select a danmaku source to view details.</source>
+        <translation>选择一个弹幕来源以查看详情。</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <source>Load Danmaku</source>
+        <translation>加载弹幕</translation>
+    </message>
+    <message>
+        <source>Searching...</source>
+        <translation>搜索中...</translation>
+    </message>
+    <message>
+        <source>No matches found</source>
+        <translation>未找到匹配结果</translation>
+    </message>
+    <message>
+        <source>Found %1 matches</source>
+        <translation>找到 %1 个匹配结果</translation>
+    </message>
+    <message>
+        <source>Search failed</source>
+        <translation>搜索失败</translation>
+    </message>
+    <message>
+        <source>Failed to search danmaku: %1</source>
+        <translation>搜索弹幕失败：%1</translation>
+    </message>
+</context>
+
+<context>
+    <name>PlayerDanmakuSettingsDialog</name>
+    <message>
+        <source>Danmaku Settings</source>
+        <translation>弹幕设置</translation>
+    </message>
+    <message>
+        <source>Adjust danmaku rendering without leaving playback. Changes are saved and applied immediately.</source>
+        <translation>无需离开播放页即可调整弹幕渲染设置。修改会立即保存并实时生效。</translation>
+    </message>
+    <message>
+        <source>Enable Danmaku</source>
+        <translation>开启弹幕</translation>
+    </message>
+    <message>
+        <source>Display streaming danmaku in the embedded player</source>
+        <translation>在内置播放器中显示流式弹幕</translation>
+    </message>
+    <message>
+        <source>Dual Subtitle Mode</source>
+        <translation>双字幕模式</translation>
+    </message>
+    <message>
+        <source>Keep regular subtitles visible alongside danmaku when possible</source>
+        <translation>尽量在显示弹幕时保留常规字幕</translation>
+    </message>
+    <message>
+        <source>Danmaku Opacity</source>
+        <translation>弹幕透明度</translation>
+    </message>
+    <message>
+        <source>Control the transparency of rendered danmaku</source>
+        <translation>控制渲染后弹幕的透明度</translation>
+    </message>
+    <message>
+        <source>Danmaku Size</source>
+        <translation>弹幕大小</translation>
+    </message>
+    <message>
+        <source>Scale the ASS font size used for danmaku rendering</source>
+        <translation>调整弹幕渲染所使用的 ASS 字体大小</translation>
+    </message>
+    <message>
+        <source>Display Area</source>
+        <translation>显示区域</translation>
+    </message>
+    <message>
+        <source>Limit how much of the screen height danmaku can occupy</source>
+        <translation>限制弹幕可占用的屏幕高度</translation>
+    </message>
+    <message>
+        <source>Danmaku Density</source>
+        <translation>弹幕密度</translation>
+    </message>
+    <message>
+        <source>Reduce or increase the number of simultaneous lanes</source>
+        <translation>减少或增加同时显示的弹幕轨道数量</translation>
+    </message>
+    <message>
+        <source>Danmaku Speed</source>
+        <translation>弹幕速度</translation>
+    </message>
+    <message>
+        <source>Adjust how quickly scrolling danmaku travels across the screen</source>
+        <translation>调整滚动弹幕在屏幕上的移动速度</translation>
+    </message>
+    <message>
+        <source>Danmaku Offset</source>
+        <translation>弹幕偏移</translation>
+    </message>
+    <message>
+        <source>Shift danmaku timing earlier or later to align with playback</source>
+        <translation>将弹幕时间整体提前或延后以匹配播放进度</translation>
+    </message>
+    <message>
+        <source>Hide Scrolling Danmaku</source>
+        <translation>隐藏滚动弹幕</translation>
+    </message>
+    <message>
+        <source>Hide standard right-to-left scrolling comments</source>
+        <translation>隐藏标准的从右向左滚动弹幕</translation>
+    </message>
+    <message>
+        <source>Hide Top Danmaku</source>
+        <translation>隐藏顶部弹幕</translation>
+    </message>
+    <message>
+        <source>Hide fixed danmaku positioned at the top of the screen</source>
+        <translation>隐藏固定显示在屏幕顶部的弹幕</translation>
+    </message>
+    <message>
+        <source>Hide Bottom Danmaku</source>
+        <translation>隐藏底部弹幕</translation>
+    </message>
+    <message>
+        <source>Hide fixed danmaku positioned at the bottom of the screen</source>
+        <translation>隐藏固定显示在屏幕底部的弹幕</translation>
+    </message>
+    <message>
+        <source>Blocked Keywords</source>
+        <translation>屏蔽关键词</translation>
+    </message>
+    <message>
+        <source>40%</source>
+        <translation>40%</translation>
+    </message>
+    <message>
+        <source>55%</source>
+        <translation>55%</translation>
+    </message>
+    <message>
+        <source>72%</source>
+        <translation>72%</translation>
+    </message>
+    <message>
+        <source>85%</source>
+        <translation>85%</translation>
+    </message>
+    <message>
+        <source>100%</source>
+        <translation>100%</translation>
+    </message>
+    <message>
+        <source>80%</source>
+        <translation>80%</translation>
+    </message>
+    <message>
+        <source>120%</source>
+        <translation>120%</translation>
+    </message>
+    <message>
+        <source>140%</source>
+        <translation>140%</translation>
+    </message>
+    <message>
+        <source>Low</source>
+        <translation>低</translation>
+    </message>
+    <message>
+        <source>Medium</source>
+        <translation>中</translation>
+    </message>
+    <message>
+        <source>High</source>
+        <translation>高</translation>
+    </message>
+    <message>
+        <source>Slow</source>
+        <translation>慢</translation>
+    </message>
+    <message>
+        <source>Normal</source>
+        <translation>正常</translation>
+    </message>
+    <message>
+        <source>Fast</source>
+        <translation>快</translation>
+    </message>
+    <message>
+        <source>-1000 ms</source>
+        <translation>-1000 毫秒</translation>
+    </message>
+    <message>
+        <source>-500 ms</source>
+        <translation>-500 毫秒</translation>
+    </message>
+    <message>
+        <source>0 ms</source>
+        <translation>0 毫秒</translation>
+    </message>
+    <message>
+        <source>+500 ms</source>
+        <translation>+500 毫秒</translation>
+    </message>
+    <message>
+        <source>+1000 ms</source>
+        <translation>+1000 毫秒</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>关闭</translation>
+    </message>
+</context>
+
+<context>
+    <name>DandanplayProvider</name>
+    <message>
+        <source>DandanPlay Open API now requires App ID and App Secret. Configure them in Danmaku Server settings.</source>
+        <translation>弹弹Play 开放 API 现在要求提供 App ID 和 App Secret。请在弹幕服务器设置中完成配置。</translation>
+    </message>
+</context>
+
+<context>
+    <name>DanmakuServerDialog</name>
+    <message>
+        <source>Danmaku Servers</source>
+        <translation>弹幕服务器</translation>
+    </message>
+    <message>
+        <source>Manage multiple danmaku servers here. Click a server card to edit it and choose the active server used for matching and loading danmaku.</source>
+        <translation>在这里管理多个弹幕服务器。点击某个服务器卡片即可编辑它，并选择实际用于匹配和加载弹幕的当前服务器。</translation>
+    </message>
+    <message>
+        <source>Current Server</source>
+        <translation>当前服务器</translation>
+    </message>
+    <message>
+        <source>Servers</source>
+        <translation>服务器列表</translation>
+    </message>
+    <message>
+        <source>Each item shows the danmaku server name, address, and app credentials. Official DandanPlay Open API access requires valid App ID and App Secret.</source>
+        <translation>每个列表项会显示弹幕服务器名称、地址和 App 凭据。使用官方弹弹Play 开放 API 时，必须提供有效的 App ID 和 App Secret。</translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation>添加</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>删除</translation>
+    </message>
+    <message>
+        <source>Name</source>
+        <translation>名称</translation>
+    </message>
+    <message>
+        <source>e.g., Official DandanPlay</source>
+        <translation>例如：官方弹弹Play</translation>
+    </message>
+    <message>
+        <source>Server URL</source>
+        <translation>服务器地址</translation>
+    </message>
+    <message>
+        <source>Edit Selected Server</source>
+        <translation>编辑当前服务器</translation>
+    </message>
+    <message>
+        <source>Update the server name, address, and app credentials for the selected danmaku server. Official DandanPlay endpoints require App ID and App Secret.</source>
+        <translation>修改当前所选弹幕服务器的名称、地址和 App 凭据。官方弹弹Play 接口要求提供 App ID 和 App Secret。</translation>
+    </message>
+    <message>
+        <source>App ID</source>
+        <translation>App ID</translation>
+    </message>
+    <message>
+        <source>App Secret</source>
+        <translation>App Secret</translation>
+    </message>
+    <message>
+        <source>Required for official DandanPlay</source>
+        <translation>官方弹弹Play 必填</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <source>Save</source>
+        <translation>保存</translation>
+    </message>
+    <message>
+        <source>Danmaku Server %1</source>
+        <translation>弹幕服务器 %1</translation>
+    </message>
+    <message>
+        <source>Remove Danmaku Server</source>
+        <translation>删除弹幕服务器</translation>
+    </message>
+    <message>
+        <source>Remove &quot;%1&quot; from the danmaku server list?</source>
+        <translation>要将“%1”从弹幕服务器列表中删除吗？</translation>
+    </message>
+    <message>
+        <source>At least one danmaku server is required.</source>
+        <translation>至少需要保留一个弹幕服务器。</translation>
+    </message>
+    <message>
+        <source>At least one enabled danmaku server is required.</source>
+        <translation>至少需要保留一个已启用的弹幕服务器。</translation>
+    </message>
+    <message>
+        <source>OK</source>
+        <translation>确定</translation>
+    </message>
+    <message>
+        <source>Every danmaku server must have a name.</source>
+        <translation>每个弹幕服务器都必须填写名称。</translation>
+    </message>
+    <message>
+        <source>Every danmaku server must have a server URL.</source>
+        <translation>每个弹幕服务器都必须填写服务器地址。</translation>
+    </message>
+    <message>
+        <source>Server URL must be a valid http or https address.</source>
+        <translation>服务器地址必须是合法的 http 或 https 地址。</translation>
+    </message>
+</context>
+
+<context>
+    <name>DanmakuServerListItemWidget</name>
+    <message>
+        <source>Remove Server</source>
+        <translation>删除服务器</translation>
+    </message>
+    <message>
+        <source>At least one server is required.</source>
+        <translation>至少需要保留一个服务器。</translation>
+    </message>
+    <message>
+        <source>App ID: %1</source>
+        <translation>App ID：%1</translation>
+    </message>
+    <message>
+        <source>App Secret: %1</source>
+        <translation>App Secret：%1</translation>
+    </message>
+</context>
+
+<context>
+    <name>PagePlayer</name>
+    <message>
+        <source>Danmaku</source>
+        <translation>弹幕</translation>
+    </message>
+    <message>
+        <source>Enable Danmaku</source>
+        <translation>启用弹幕</translation>
+    </message>
+    <message>
+        <source>Display streaming danmaku in the embedded player</source>
+        <translation>在内置播放器中显示流式弹幕</translation>
+    </message>
+    <message>
+        <source>Auto Load Danmaku</source>
+        <translation>自动加载弹幕</translation>
+    </message>
+    <message>
+        <source>Automatically search and load danmaku when playback starts</source>
+        <translation>播放开始时自动搜索并加载弹幕</translation>
+    </message>
+    <message>
+        <source>Auto Match Danmaku</source>
+        <translation>自动匹配弹幕</translation>
+    </message>
+    <message>
+        <source>Automatically choose the best danmaku match when no cached manual result exists</source>
+        <translation>当没有已缓存的手动匹配结果时，自动选择最合适的弹幕条目</translation>
+    </message>
+    <message>
+        <source>DandanPlay Open API</source>
+        <translation>弹弹Play 开放 API</translation>
+    </message>
+    <message>
+        <source>Danmaku Server</source>
+        <translation>弹幕服务器</translation>
+    </message>
+    <message>
+        <source>Manage</source>
+        <translation>管理</translation>
+    </message>
+    <message>
+        <source>Prefer Online</source>
+        <translation>优先在线</translation>
+    </message>
+    <message>
+        <source>Prefer Local</source>
+        <translation>优先本地</translation>
+    </message>
+    <message>
+        <source>Online Only</source>
+        <translation>仅在线</translation>
+    </message>
+    <message>
+        <source>Local Only</source>
+        <translation>仅本地</translation>
+    </message>
+    <message>
+        <source>Danmaku Source</source>
+        <translation>弹幕来源</translation>
+    </message>
+    <message>
+        <source>Choose whether local danmaku files or online danmaku should be preferred during matching</source>
+        <translation>选择在匹配弹幕时优先使用本地弹幕文件还是在线弹幕结果</translation>
+    </message>
+    <message>
+        <source>Local Danmaku Folder</source>
+        <translation>本地弹幕文件夹</translation>
+    </message>
+    <message>
+        <source>Place .ass, .json, or .xml danmaku files here. Matching uses the current media title and manual keyword, and the selected danmaku source mode decides whether local files or online results are preferred first.
+Folder: %1</source>
+        <translation>将 .ass、.json 或 .xml 弹幕文件放到这里。匹配时会使用当前媒体标题和手动匹配关键词，并按所选的弹幕来源策略决定优先使用本地文件还是在线结果。
+文件夹：%1</translation>
+    </message>
+    <message>
+        <source>Open Folder</source>
+        <translation>打开文件夹</translation>
+    </message>
+    <message>
+        <source>Current server: %1
+Address: %2</source>
+        <translation>当前服务器：%1
+地址：%2</translation>
+    </message>
+    <message>
+        <source>App ID and App Secret are required for official DandanPlay Open API access</source>
+        <translation>使用官方弹弹Play 开放 API 必须提供 App ID 和 App Secret</translation>
+    </message>
+    <message>
+        <source>Danmaku Provider</source>
+        <translation>弹幕服务</translation>
+    </message>
+    <message>
+        <source>Select which danmaku service to query for matches and comments</source>
+        <translation>选择用于匹配和获取弹幕的服务</translation>
+    </message>
+    <message>
+        <source>Load Related Comments</source>
+        <translation>加载关联弹幕</translation>
+    </message>
+    <message>
+        <source>Include related third-party comment sources when the provider supports it</source>
+        <translation>当服务支持时，一并加载关联的第三方弹幕来源</translation>
+    </message>
+    <message>
+        <source>Dual Subtitle Mode</source>
+        <translation>双字幕模式</translation>
+    </message>
+    <message>
+        <source>Keep regular subtitles visible alongside danmaku when possible</source>
+        <translation>在条件允许时让普通字幕与弹幕同时显示</translation>
+    </message>
+    <message>
+        <source>Danmaku Opacity</source>
+        <translation>弹幕透明度</translation>
+    </message>
+    <message>
+        <source>Control the transparency of rendered danmaku</source>
+        <translation>控制弹幕渲染后的透明度</translation>
+    </message>
+    <message>
+        <source>Danmaku Size</source>
+        <translation>弹幕大小</translation>
+    </message>
+    <message>
+        <source>Scale the ASS font size used for danmaku rendering</source>
+        <translation>调整弹幕 ASS 渲染使用的字体大小</translation>
+    </message>
+    <message>
+        <source>Display Area</source>
+        <translation>显示区域</translation>
+    </message>
+    <message>
+        <source>Limit how much of the screen height danmaku can occupy</source>
+        <translation>限制弹幕可占用的屏幕高度比例</translation>
+    </message>
+    <message>
+        <source>Danmaku Density</source>
+        <translation>弹幕密度</translation>
+    </message>
+    <message>
+        <source>Reduce or increase the number of simultaneous lanes</source>
+        <translation>减少或增加同时显示的弹幕轨道数量</translation>
+    </message>
+    <message>
+        <source>Danmaku Speed</source>
+        <translation>弹幕速度</translation>
+    </message>
+    <message>
+        <source>Adjust how quickly scrolling danmaku travels across the screen</source>
+        <translation>调整滚动弹幕在屏幕上的移动速度</translation>
+    </message>
+    <message>
+        <source>Danmaku Offset</source>
+        <translation>弹幕偏移</translation>
+    </message>
+    <message>
+        <source>Shift danmaku timing earlier or later to align with playback</source>
+        <translation>将弹幕时间整体提前或延后，以便和播放画面对齐</translation>
+    </message>
+    <message>
+        <source>Hide Scrolling Danmaku</source>
+        <translation>隐藏滚动弹幕</translation>
+    </message>
+    <message>
+        <source>Hide standard right-to-left scrolling comments</source>
+        <translation>隐藏标准从右向左滚动的弹幕</translation>
+    </message>
+    <message>
+        <source>Hide Top Danmaku</source>
+        <translation>隐藏顶部弹幕</translation>
+    </message>
+    <message>
+        <source>Hide fixed danmaku positioned at the top of the screen</source>
+        <translation>隐藏固定显示在顶部的弹幕</translation>
+    </message>
+    <message>
+        <source>Hide Bottom Danmaku</source>
+        <translation>隐藏底部弹幕</translation>
+    </message>
+    <message>
+        <source>Hide fixed danmaku positioned at the bottom of the screen</source>
+        <translation>隐藏固定显示在底部的弹幕</translation>
+    </message>
+    <message>
+        <source>Blocked Keywords</source>
+        <translation>屏蔽关键词</translation>
+    </message>
+    <message>
+        <source>Filter out danmaku containing these keywords</source>
+        <translation>过滤掉包含这些关键词的弹幕</translation>
+    </message>
+    <message>
+        <source>Provider Base URL</source>
+        <translation>服务地址</translation>
+    </message>
+    <message>
+        <source>Set a custom Danmaku API endpoint for official or compatible services</source>
+        <translation>设置官方或兼容弹幕服务使用的 API 地址</translation>
+    </message>
+    <message>
+        <source>Danmaku App ID</source>
+        <translation>弹幕 App ID</translation>
+    </message>
+    <message>
+        <source>Optional</source>
+        <translation>可选</translation>
+    </message>
+    <message>
+        <source>Optional App ID for authenticated DandanPlay Open API requests</source>
+        <translation>用于已鉴权弹弹Play 开放 API 请求的可选 App ID</translation>
+    </message>
+    <message>
+        <source>Optional App ID used by the selected danmaku server</source>
+        <translation>当前所选弹幕服务器使用的可选 App ID</translation>
+    </message>
+    <message>
+        <source>Danmaku App Secret</source>
+        <translation>弹幕 App Secret</translation>
+    </message>
+    <message>
+        <source>Optional App Secret used to sign DandanPlay Open API requests</source>
+        <translation>用于签名弹弹Play 开放 API 请求的可选 App Secret</translation>
+    </message>
+    <message>
+        <source>Optional App Secret used by the selected danmaku server</source>
+        <translation>当前所选弹幕服务器使用的可选 App Secret</translation>
+    </message>
+    <message>
+        <source>Danmaku Cache Duration</source>
+        <translation>弹幕缓存时间</translation>
+    </message>
+    <message>
+        <source>Reuse online match results, cached comment payloads, and generated ASS files for this long</source>
+        <translation>在这段时间内复用在线匹配结果、已缓存的弹幕数据和生成的 ASS 文件</translation>
+    </message>
+    <message>
+        <source>Clear Danmaku Cache</source>
+        <translation>清理弹幕缓存</translation>
+    </message>
+    <message>
+        <source>Remove cached online matches, cached comment payloads, and generated ASS files</source>
+        <translation>移除已缓存的在线匹配结果、弹幕数据和生成的 ASS 文件</translation>
+    </message>
+    <message>
+        <source>Danmaku cache cleared</source>
+        <translation>弹幕缓存已清理</translation>
+    </message>
+    <message>
+        <source>Slow</source>
+        <translation>慢</translation>
+    </message>
+    <message>
+        <source>Normal</source>
+        <translation>正常</translation>
+    </message>
+    <message>
+        <source>Fast</source>
+        <translation>快</translation>
+    </message>
+</context>
+
+<context>
+    <name>PlayerSubtitleSettingsDialog</name>
+    <message>
+        <source>Auto</source>
+        <translation>自动</translation>
+    </message>
+    <message>
+        <source>Subtitle Settings</source>
+        <translation>字幕设置</translation>
+    </message>
+    <message>
+        <source>Adjust subtitle rendering without leaving playback. Changes are saved and applied immediately.</source>
+        <translation>无需离开播放页即可调整字幕渲染设置。修改会立即保存并实时生效。</translation>
+    </message>
+    <message>
+        <source>Subtitle Font</source>
+        <translation>字幕字体</translation>
+    </message>
+    <message>
+        <source>Choose the font family used for subtitle rendering</source>
+        <translation>选择字幕渲染使用的字体</translation>
+    </message>
+    <message>
+        <source>Subtitle Timing</source>
+        <translation>字幕时间</translation>
+    </message>
+    <message>
+        <source>Subtitle Size</source>
+        <translation>字幕大小</translation>
+    </message>
+    <message>
+        <source>Subtitle Position</source>
+        <translation>字幕位置</translation>
+    </message>
+    <message>
+        <source>Subtitle Scale</source>
+        <translation>字幕缩放</translation>
+    </message>
+    <message>
+        <source>Outline Size</source>
+        <translation>描边大小</translation>
+    </message>
+    <message>
+        <source>Shadow Offset</source>
+        <translation>阴影偏移</translation>
+    </message>
+</context>
+
+<context>
+    <name>MediaListModel</name>
+    <message>
+        <source>Season %1</source>
+        <translation>第 %1 季</translation>
+    </message>
+    <message>
+        <source>%1 min</source>
+        <translation>%1 分钟</translation>
+    </message>
+    <message>
+        <source>%1 Episodes</source>
+        <translation>%1 集</translation>
+    </message>
+</context>
+
+<context>
+    <name>PagePlayer</name>
+    <message>
+        <source>Right Sidebar</source>
+        <translation>右侧边栏</translation>
+    </message>
+    <message>
+        <source>Bottom HUD</source>
+        <translation>底部 HUD</translation>
+    </message>
+    <message>
+        <source>Media Switcher Position</source>
+        <translation>媒体切换位置</translation>
+    </message>
+    <message>
+        <source>Choose whether recent movies and season or episode switching appear in the right sidebar or the bottom HUD</source>
+        <translation>选择最近电影与电视剧季集切换显示在右侧边栏还是底部 HUD</translation>
+    </message>
+</context>
+
+<context>
+    <name>PlayerView</name>
+    <message>
+        <source>Seasons &amp; Episodes</source>
+        <translation>季与剧集</translation>
+    </message>
+    <message>
+        <source>Switch season and episode</source>
+        <translation>切换季和剧集</translation>
+    </message>
+    <message>
+        <source>Switch media</source>
+        <translation>切换媒体</translation>
+    </message>
+    <message>
+        <source>Media Switcher</source>
+        <translation>媒体切换</translation>
+    </message>
+    <message>
+        <source>Loading...</source>
+        <translation>加载中...</translation>
+    </message>
+    <message>
+        <source>  S%1E%2  %3</source>
+        <translation>  S%1E%2  %3</translation>
+    </message>
+    <message>
+        <source>%1 - S%2E%3 - %4</source>
+        <translation>%1 - S%2E%3 - %4</translation>
+    </message>
+    <message>
+        <source>%1 - %2</source>
+        <translation>%1 - %2</translation>
+    </message>
+</context>
+
+<context>
+    <name>PlayerMediaSwitcherPanel</name>
+    <message>
+        <source>Continue Watching</source>
+        <translation>继续观看</translation>
+    </message>
+    <message>
+        <source>Seasons</source>
+        <translation>季</translation>
+    </message>
+    <message>
+        <source>Episodes</source>
+        <translation>剧集</translation>
+    </message>
+    <message>
+        <source>Loading...</source>
+        <translation>加载中...</translation>
+    </message>
+    <message>
+        <source>No active media found.</source>
+        <translation>未找到继续观看的媒体。</translation>
+    </message>
+    <message>
+        <source>No episodes found.</source>
+        <translation>未找到剧集。</translation>
+    </message>
+    <message>
+        <source>S%1E%2  %3</source>
+        <translation>S%1E%2  %3</translation>
+    </message>
+    <message>
+        <source>Episode %1  %2</source>
+        <translation>第 %1 集  %2</translation>
+    </message>
+    <message>
+        <source>%1 - S%2E%3 - %4</source>
+        <translation>%1 - S%2E%3 - %4</translation>
+    </message>
+    <message>
+        <source>%1 - %2</source>
+        <translation>%1 - %2</translation>
+    </message>
+    <message>
+        <source>%1 - %2 - %3</source>
+        <translation>%1 - %2 - %3</translation>
+    </message>
+    <message>
+        <source>Season %1</source>
+        <translation>第 %1 季</translation>
     </message>
 </context>
 

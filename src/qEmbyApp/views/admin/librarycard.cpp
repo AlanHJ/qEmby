@@ -1,9 +1,11 @@
 #include "librarycard.h"
 #include "librarygrid.h"
+#include "../../components/libraryactionmenu.h"
 #include "../../managers/thememanager.h"
 
 #include <QPainter>
 #include <QPainterPath>
+#include <QContextMenuEvent>
 #include <QMouseEvent>
 #include <QApplication>
 #include <QHBoxLayout>
@@ -81,6 +83,40 @@ void LibraryCard::clearScanProgress()
 {
     m_scanProgress = -1;
     update();
+}
+
+LibraryContextMenuRequest LibraryCard::showContextMenu(const QPoint& globalPos)
+{
+    LibraryActionMenu menu(m_folder, isScanActive(), this);
+    return menu.execRequest(globalPos);
+}
+
+void LibraryCard::dispatchContextMenuRequest(
+    const LibraryContextMenuRequest& request)
+{
+    if (!request.isValid()) {
+        return;
+    }
+
+    switch (request.action) {
+    case LibraryContextMenuAction::None:
+        return;
+    case LibraryContextMenuAction::EditImages:
+        emit editImagesRequested(m_folderIdx);
+        return;
+    case LibraryContextMenuAction::RefreshMetadata:
+        emit refreshMetadataRequested(m_folderIdx);
+        return;
+    case LibraryContextMenuAction::ScanLibraryFiles:
+        emit scanLibraryFilesRequested(m_folderIdx);
+        return;
+    }
+}
+
+void LibraryCard::contextMenuEvent(QContextMenuEvent* event)
+{
+    dispatchContextMenuRequest(showContextMenu(event->globalPos()));
+    event->accept();
 }
 
 void LibraryCard::paintEvent(QPaintEvent* event)

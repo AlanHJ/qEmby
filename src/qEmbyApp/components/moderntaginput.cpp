@@ -309,6 +309,29 @@ void ModernTagInput::showPresetCompactMenu() {
         });
     }
 
+    const QStringList customValues = customSelectedValues();
+    if (!customValues.isEmpty()) {
+        if (!m_presets.isEmpty()) {
+            menu->addSeparator();
+        }
+
+        for (const QString &value : customValues) {
+            auto *action = menu->addAction(displayTextForValue(value));
+            action->setCheckable(true);
+            action->setChecked(true);
+
+            connect(action, &QAction::toggled, this,
+                    [this, value](bool checked) {
+                if (checked && !m_selectedValues.contains(value)) {
+                    m_selectedValues.append(value);
+                } else if (!checked) {
+                    m_selectedValues.removeAll(value);
+                }
+                scheduleRebuild(true);
+            });
+        }
+    }
+
     
     menu->popup(m_moreBtn->mapToGlobal(QPoint(0, m_moreBtn->height() + 2)));
 
@@ -355,8 +378,9 @@ void ModernTagInput::showPresetPopup() {
     listLayout->setSpacing(0);
 
     
+    const QStringList customValues = customSelectedValues();
     QList<TagPresetOptionRow *> optionRows;
-    optionRows.reserve(m_presets.size());
+    optionRows.reserve(m_presets.size() + customValues.size());
 
     for (const auto &preset : m_presets) {
         auto *optionRow = new TagPresetOptionRow(preset.label, listWidget);
@@ -368,6 +392,25 @@ void ModernTagInput::showPresetPopup() {
                 m_selectedValues.append(val);
             } else if (!checked) {
                 m_selectedValues.removeAll(val);
+            }
+            scheduleRebuild(true);
+        });
+
+        listLayout->addWidget(optionRow);
+        optionRows.append(optionRow);
+    }
+
+    for (const QString &value : customValues) {
+        auto *optionRow =
+            new TagPresetOptionRow(displayTextForValue(value), listWidget);
+        optionRow->setChecked(true);
+
+        connect(optionRow->checkBox(), &QCheckBox::toggled, this,
+                [this, value](bool checked) {
+            if (checked && !m_selectedValues.contains(value)) {
+                m_selectedValues.append(value);
+            } else if (!checked) {
+                m_selectedValues.removeAll(value);
             }
             scheduleRebuild(true);
         });
@@ -434,6 +477,25 @@ QString ModernTagInput::displayTextForValue(const QString &value) const {
     }
 
     return value;
+}
+
+QStringList ModernTagInput::customSelectedValues() const {
+    QStringList customValues;
+    for (const QString &value : m_selectedValues) {
+        bool isPreset = false;
+        for (const auto &preset : m_presets) {
+            if (preset.value == value) {
+                isPreset = true;
+                break;
+            }
+        }
+
+        if (!isPreset && !customValues.contains(value)) {
+            customValues.append(value);
+        }
+    }
+
+    return customValues;
 }
 
 QString ModernTagInput::selectionToolTip() const {

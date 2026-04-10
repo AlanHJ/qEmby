@@ -67,6 +67,20 @@ public:
     void setTileSize(const QSize &size) { m_tileSize = size; }
     void setStyle(CardStyle style) { m_style = style; }
     void setHighlightedItemId(const QString &id) { m_highlightedItemId = id; }
+    void setTextPixelSizes(int titlePx, int subTitlePx)
+    {
+        m_titleFontPixelSize = titlePx;
+        m_subTitleFontPixelSize = subTitlePx;
+    }
+    void setContentPadding(int padding)
+    {
+        m_contentPadding = padding < 0 ? 0 : padding;
+    }
+    int contentPadding() const { return m_contentPadding; }
+    void setShowMoreButtonForNonPlayableTiles(bool enabled)
+    {
+        m_showMoreButtonForNonPlayableTiles = enabled;
+    }
 
 signals:
     
@@ -84,6 +98,10 @@ private:
     QString m_highlightedItemId; 
     mutable MediaCardThemeHelper *m_themeHelper; 
     mutable QSet<QWidget*> m_installedViewports; 
+    bool m_showMoreButtonForNonPlayableTiles = false;
+    int m_titleFontPixelSize = 13;
+    int m_subTitleFontPixelSize = 12;
+    int m_contentPadding = 8;
 };
 
 #endif 

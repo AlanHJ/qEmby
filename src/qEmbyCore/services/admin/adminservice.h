@@ -3,6 +3,7 @@
 
 #include "../../qEmbyCore_global.h"
 #include "../../models/admin/adminmodels.h"
+#include <QByteArray>
 #include <QJsonArray>
 #include <QObject>
 #include <QList>
@@ -137,10 +138,23 @@ public:
     
     
     
+    QCoro::Task<QList<RemoteSearchResult>> searchRemoteMetadata(
+        QString remoteSearchType, QString itemId, QJsonObject searchInfo,
+        QString searchProviderName = QString(),
+        bool includeDisabledProviders = false);
+    QCoro::Task<QJsonObject> getItemMetadata(QString itemId);
+    QCoro::Task<QList<ItemImageInfo>> getItemImages(QString itemId);
+    QCoro::Task<void> applyRemoteSearchResult(QString itemId,
+                                              RemoteSearchResult result);
     QCoro::Task<void> updateItemMetadata(const QString& itemId, const QJsonObject& itemData);
-    QCoro::Task<void> refreshItemMetadata(const QString& itemId);
-    QCoro::Task<void> uploadItemImage(const QString& itemId, const QString& imageType, const QByteArray& imageData, const QString& mimeType);
-    QCoro::Task<void> deleteItemImage(const QString& itemId, const QString& imageType);
+    QCoro::Task<void> refreshItemMetadata(const QString& itemId,
+                                          bool replaceAllMetadata = false,
+                                          bool replaceAllImages = false);
+    QCoro::Task<void> uploadItemImage(QString itemId, QString imageType,
+                                      QByteArray imageData, QString mimeType,
+                                      int imageIndex = -1);
+    QCoro::Task<void> deleteItemImage(QString itemId, QString imageType,
+                                      int imageIndex = -1);
 
     
     

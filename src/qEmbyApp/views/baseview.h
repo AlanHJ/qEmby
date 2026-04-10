@@ -7,6 +7,7 @@
 #include <QPoint>
 #include <QPointer> 
 #include <qcorotask.h>
+#include "../components/cardcontextmenurequest.h"
 #include <models/media/mediaitem.h> 
 
 class QEmbyCore;
@@ -18,6 +19,12 @@ public:
     explicit BaseView(QEmbyCore* core, QWidget *parent = nullptr);
     virtual ~BaseView() = default;
 
+    
+    virtual bool handleBackNavigation() { return false; }
+
+    
+    virtual void prepareForStackLeave() {}
+
 public Q_SLOTS:
     virtual void scrollToTop() {}
 
@@ -27,6 +34,15 @@ public Q_SLOTS:
     virtual void handlePlayRequested(const MediaItem& item);
     virtual void handleFavoriteRequested(const MediaItem& item);
     virtual void handleMoreMenuRequested(const MediaItem& item, const QPoint& globalPos);
+    virtual void handleAddToPlaylistRequested(const MediaItem& item);
+    virtual void handleRemoveFromPlaylistRequested(const MediaItem& item);
+    virtual void handleDeletePlaylistRequested(const MediaItem& item);
+    virtual void handleEditMetadataRequested(const MediaItem& item);
+    virtual void handleEditImagesRequested(const MediaItem& item);
+    virtual void handleIdentifyRequested(const MediaItem& item);
+    virtual void handleRefreshMetadataRequested(const MediaItem& item);
+    virtual void handleDownloadRequested(const MediaItem& item);
+    virtual void handleRemoveMediaRequested(const MediaItem& item);
 
     
     virtual void handleMarkPlayedRequested(const MediaItem& item);
@@ -49,17 +65,13 @@ Q_SIGNALS:
     
     void navigateToSeason(const QString& seriesId, const QString& seasonId, const QString& seasonName);
 
-    
-    void _internalFavoriteTask(MediaItem item); 
-    void _internalPlayTask(MediaItem item); 
-    
-    
-    void _internalMarkPlayedTask(MediaItem item);
-    void _internalMarkUnplayedTask(MediaItem item);
-    void _internalRemoveFromResumeTask(MediaItem item);
-    void _internalExternalPlayTask(MediaItem item, QString playerPath);
-
 protected:
+    
+    virtual CardContextMenuRequest showCardContextMenu(const MediaItem& item,
+                                                       const QPoint& globalPos);
+    virtual void dispatchCardContextMenuRequest(
+        const MediaItem& item, const CardContextMenuRequest& request);
+
     
     
     
@@ -74,6 +86,27 @@ protected:
     QCoro::Task<void> refreshAndBroadcastItem(const QString& itemId);
 
     QEmbyCore* m_core;
+
+private:
+    void launchTask(QCoro::Task<void>&& task);
+
+    QCoro::Task<void> executeToggleFavorite(MediaItem item);
+    QCoro::Task<void> executePlay(MediaItem item);
+    QCoro::Task<void> executeExternalPlay(MediaItem item, QString playerPath);
+    QCoro::Task<void> executeMarkPlayed(MediaItem item);
+    QCoro::Task<void> executeMarkUnplayed(MediaItem item);
+    QCoro::Task<void> executeRemoveFromResume(MediaItem item);
+    QCoro::Task<void> executeAddToPlaylist(MediaItem item, QString playlistId,
+                                           QString playlistName);
+    QCoro::Task<void> executeRemoveFromPlaylist(MediaItem item);
+    QCoro::Task<void> executeDeletePlaylist(MediaItem item);
+    QCoro::Task<void> executeEditMetadata(MediaItem item);
+    QCoro::Task<void> executeServerRefreshAndReloadItem(
+        QString itemId, QString itemName, bool triggerServerRefresh,
+        bool replaceAllMetadata = false, bool replaceAllImages = false);
+    QCoro::Task<void> executeRemoveMedia(MediaItem item);
+    QCoro::Task<MediaItem> resolvePlaybackItem(MediaItem item);
+    bool isJellyfinServer() const;
 };
 
 #endif 

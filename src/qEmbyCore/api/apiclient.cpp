@@ -1,5 +1,7 @@
 #include "apiclient.h"
 
+#include <utility>
+
 ApiClient::ApiClient(const ServerProfile& profile, NetworkManager* nm, QObject* parent)
     : QObject(parent), m_profile(profile), m_network(nm) {}
 
@@ -48,6 +50,16 @@ QCoro::Task<QJsonObject> ApiClient::post(const QString& path, const QJsonObject&
 QCoro::Task<QJsonObject> ApiClient::postArray(const QString& path, const QJsonArray& payload) {
     QString fullUrl = m_profile.url + path;
     co_return co_await m_network->postArray(fullUrl, getAuthHeaders(), payload,
+                                            requestOptions());
+}
+
+QCoro::Task<QJsonObject> ApiClient::postBytes(const QString& path,
+                                              QByteArray payload,
+                                              QString contentType) {
+    QString fullUrl = m_profile.url + path;
+    co_return co_await m_network->postBytes(fullUrl, getAuthHeaders(),
+                                            std::move(payload),
+                                            std::move(contentType),
                                             requestOptions());
 }
 

@@ -71,6 +71,7 @@ private:
     void emitChange();
     void updateClearButtonVisibility();
     QString displayTextForValue(const QString &value) const;
+    QStringList customSelectedValues() const;
     QString selectionToolTip() const;
     int availableChipWidth() const;
     QPushButton *createChipButton(const QString &text,

@@ -10,6 +10,7 @@ class ServerManager;
 class AuthService;
 class MediaService; 
 class AdminService; 
+class DanmakuService;
 
 class QEMBYCORE_EXPORT QEmbyCore : public QObject
 {
@@ -23,6 +24,7 @@ public:
     AuthService* authService() const;
     MediaService* mediaService() const; 
     AdminService* adminService() const; 
+    DanmakuService* danmakuService() const;
 
 private:
     
@@ -31,6 +33,7 @@ private:
     AuthService* m_authService;
     MediaService* m_mediaService; 
     AdminService* m_adminService; 
+    DanmakuService* m_danmakuService;
 };
 
 #endif 

@@ -9,6 +9,7 @@
 #include <QUrl>
 #include <QUrlQuery>
 #include <stdexcept>
+#include <utility>
 
 namespace {
 
@@ -118,6 +119,16 @@ QString normalizeLibraryOptionsFolderId(ServerProfile::ServerType serverType,
     return QStringLiteral("%1-%2-%3-%4-%5")
         .arg(trimmedId.mid(0, 8), trimmedId.mid(8, 4), trimmedId.mid(12, 4),
              trimmedId.mid(16, 4), trimmedId.mid(20, 12));
+}
+
+QString buildItemImagePath(QString itemId, QString imageType, int imageIndex) {
+    itemId = itemId.trimmed();
+    imageType = imageType.trimmed();
+    QString path = QStringLiteral("/Items/%1/Images/%2").arg(itemId, imageType);
+    if (imageIndex >= 0) {
+        path += QStringLiteral("/%1").arg(imageIndex);
+    }
+    return path;
 }
 
 } 
@@ -1171,14 +1182,14 @@ QCoro::Task<QJsonArray> AdminService::getUserPlaylists()
         path = QString("/Users/%1/Items?ParentId=%2"
                        "&IncludeItemTypes=Playlist"
                        "&Recursive=false"
-                       "&Fields=ChildCount,DateCreated"
+                       "&Fields=ChildCount,DateCreated,MediaType"
                        "&SortBy=DateCreated&SortOrder=Descending")
                    .arg(profile.userId, playlistViewId);
     } else {
         usedLegacyFallback = true;
         path = QString("/Users/%1/Items?IncludeItemTypes=Playlist"
                        "&Recursive=true"
-                       "&Fields=ChildCount,DateCreated"
+                       "&Fields=ChildCount,DateCreated,MediaType"
                        "&SortBy=DateCreated&SortOrder=Descending")
                    .arg(profile.userId);
 
@@ -1270,13 +1281,24 @@ QCoro::Task<QString> AdminService::createPlaylist(const QString& name, const QSt
     ensureValidProfile();
     ServerProfile profile = m_serverManager->activeProfile();
 
+    qDebug() << "[AdminService] createPlaylist"
+             << "| name:" << name
+             << "| mediaType:" << mediaType
+             << "| userId:" << profile.userId;
+
     QJsonObject payload;
     payload["Name"] = name;
     payload["UserId"] = profile.userId;
     payload["MediaType"] = mediaType;
 
     QJsonObject response = co_await m_serverManager->activeClient()->post("/Playlists", payload);
-    co_return response["Id"].toString();
+    const QString createdId = response["Id"].toString();
+
+    qDebug() << "[AdminService] createPlaylist completed"
+             << "| id:" << createdId
+             << "| name:" << name
+             << "| mediaType:" << mediaType;
+    co_return createdId;
 }
 
 QCoro::Task<QJsonObject> AdminService::getPlaylistItems(const QString& playlistId)
@@ -1291,11 +1313,27 @@ QCoro::Task<QJsonObject> AdminService::getPlaylistItems(const QString& playlistI
 QCoro::Task<void> AdminService::addToPlaylist(const QString& playlistId, const QStringList& itemIds)
 {
     ensureValidProfile();
+    if (playlistId.trimmed().isEmpty() || itemIds.isEmpty()) {
+        qWarning() << "[AdminService] addToPlaylist skipped"
+                   << "| playlistId:" << playlistId
+                   << "| itemCount:" << itemIds.size();
+        co_return;
+    }
+
     ServerProfile profile = m_serverManager->activeProfile();
     QString ids = itemIds.join(",");
     QString path = QString("/Playlists/%1/Items?Ids=%2&UserId=%3")
                        .arg(playlistId, ids, profile.userId);
+
+    qDebug() << "[AdminService] addToPlaylist"
+             << "| playlistId:" << playlistId
+             << "| itemIds:" << itemIds
+             << "| userId:" << profile.userId;
     co_await m_serverManager->activeClient()->post(path, QJsonObject());
+
+    qDebug() << "[AdminService] addToPlaylist completed"
+             << "| playlistId:" << playlistId
+             << "| itemCount:" << itemIds.size();
 }
 
 QCoro::Task<void> AdminService::removeFromPlaylist(const QString& playlistId, const QStringList& entryIds)
@@ -1365,45 +1403,343 @@ QCoro::Task<void> AdminService::removeFromCollection(const QString& collectionId
 
 
 
+QCoro::Task<QList<RemoteSearchResult>> AdminService::searchRemoteMetadata(
+    QString remoteSearchType, QString itemId, QJsonObject searchInfo,
+    QString searchProviderName, bool includeDisabledProviders)
+{
+    ensureValidProfile();
+
+    remoteSearchType = remoteSearchType.trimmed();
+    itemId = itemId.trimmed();
+    searchProviderName = searchProviderName.trimmed();
+
+    if (remoteSearchType.isEmpty() || itemId.isEmpty()) {
+        qWarning() << "[AdminService] searchRemoteMetadata skipped"
+                   << "| remoteSearchType:" << remoteSearchType
+                   << "| itemId:" << itemId;
+        co_return {};
+    }
+
+    QJsonObject payload;
+    payload.insert(QStringLiteral("ItemId"), itemId);
+    payload.insert(QStringLiteral("SearchInfo"), searchInfo);
+    payload.insert(QStringLiteral("IncludeDisabledProviders"),
+                   includeDisabledProviders);
+    if (!searchProviderName.isEmpty()) {
+        payload.insert(QStringLiteral("SearchProviderName"),
+                       searchProviderName);
+    }
+
+    const QString path =
+        QStringLiteral("/Items/RemoteSearch/%1").arg(remoteSearchType);
+    const QJsonObject providerIds =
+        searchInfo.value(QStringLiteral("ProviderIds")).toObject();
+    qDebug() << "[AdminService] searchRemoteMetadata"
+             << "| remoteSearchType:" << remoteSearchType
+             << "| itemId:" << itemId
+             << "| queryName:" << searchInfo.value(QStringLiteral("Name")).toString()
+             << "| year:" << searchInfo.value(QStringLiteral("Year")).toInt()
+             << "| providerIds:"
+             << QString::fromUtf8(
+                    QJsonDocument(providerIds).toJson(QJsonDocument::Compact))
+             << "| searchProviderName:" << searchProviderName
+             << "| includeDisabledProviders:" << includeDisabledProviders;
+
+    const QJsonObject response =
+        co_await m_serverManager->activeClient()->post(path, payload);
+    const QJsonArray items = extractItemsArray(response);
+
+    QList<RemoteSearchResult> results;
+    results.reserve(items.size());
+    for (const QJsonValue& value : items) {
+        const QJsonObject obj = value.toObject();
+        if (obj.isEmpty()) {
+            continue;
+        }
+
+        results.append(RemoteSearchResult::fromJson(obj));
+    }
+
+    qDebug() << "[AdminService] searchRemoteMetadata completed"
+             << "| remoteSearchType:" << remoteSearchType
+             << "| itemId:" << itemId
+             << "| resultCount:" << results.size();
+    co_return results;
+}
+
+QCoro::Task<QJsonObject> AdminService::getItemMetadata(QString itemId)
+{
+    ensureValidProfile();
+
+    itemId = itemId.trimmed();
+    if (itemId.isEmpty()) {
+        qWarning() << "[AdminService] getItemMetadata skipped: empty itemId";
+        co_return {};
+    }
+
+    const ServerProfile profile = m_serverManager->activeProfile();
+    qDebug() << "[AdminService] getItemMetadata"
+             << "| userId:" << profile.userId
+             << "| itemId:" << itemId;
+
+    const QJsonObject itemData = co_await m_serverManager->activeClient()->get(
+        QString("/Users/%1/Items/%2").arg(profile.userId, itemId));
+
+    qDebug() << "[AdminService] getItemMetadata completed"
+             << "| itemId:" << itemId
+             << "| name:" << itemData.value(QStringLiteral("Name")).toString()
+             << "| type:" << itemData.value(QStringLiteral("Type")).toString()
+             << "| sortName:"
+             << itemData.value(QStringLiteral("SortName")).toString()
+             << "| providerIds:"
+             << QString::fromUtf8(
+                    QJsonDocument(itemData.value(QStringLiteral("ProviderIds"))
+                                      .toObject())
+                        .toJson(QJsonDocument::Compact))
+             << "| lockedFields:"
+             << itemData.value(QStringLiteral("LockedFields")).toArray()
+             << "| lockData:"
+             << itemData.value(QStringLiteral("LockData")).toBool(false);
+    co_return itemData;
+}
+
+QCoro::Task<void> AdminService::applyRemoteSearchResult(
+    QString itemId, RemoteSearchResult result)
+{
+    ensureValidProfile();
+
+    itemId = itemId.trimmed();
+    if (itemId.isEmpty()) {
+        qWarning() << "[AdminService] applyRemoteSearchResult skipped: empty itemId";
+        co_return;
+    }
+
+    QUrlQuery query;
+    query.addQueryItem(QStringLiteral("replaceAllImages"),
+                       QStringLiteral("true"));
+    const QString path = QStringLiteral("/Items/RemoteSearch/Apply/%1?%2")
+                             .arg(itemId, query.toString(QUrl::FullyEncoded));
+
+    const QJsonObject payload = result.toJson();
+    qDebug() << "[AdminService] applyRemoteSearchResult"
+             << "| itemId:" << itemId
+             << "| resultName:" << result.name
+             << "| searchProvider:" << result.searchProviderName
+             << "| providerIds:" << result.providerIdSummary()
+             << "| imageUrl:" << result.imageUrl
+             << "| payloadKeys:" << payload.keys()
+             << "| path:" << path;
+
+    co_await m_serverManager->activeClient()->post(
+        path, payload);
+}
+
 QCoro::Task<void> AdminService::updateItemMetadata(const QString& itemId, const QJsonObject& itemData)
 {
     ensureValidProfile();
+    qDebug() << "[AdminService] updateItemMetadata"
+             << "| itemId:" << itemId
+             << "| name:" << itemData.value(QStringLiteral("Name")).toString()
+             << "| type:" << itemData.value(QStringLiteral("Type")).toString()
+             << "| sortName:"
+             << itemData.value(QStringLiteral("SortName")).toString()
+             << "| providerIds:"
+             << QString::fromUtf8(
+                    QJsonDocument(itemData.value(QStringLiteral("ProviderIds"))
+                                      .toObject())
+                        .toJson(QJsonDocument::Compact))
+             << "| lockData:"
+             << itemData.value(QStringLiteral("LockData")).toBool(false)
+             << "| keyCount:" << itemData.keys().size();
     co_await m_serverManager->activeClient()->post(
         QString("/Items/%1").arg(itemId), itemData);
 }
 
-QCoro::Task<void> AdminService::refreshItemMetadata(const QString& itemId)
+QCoro::Task<QList<ItemImageInfo>> AdminService::getItemImages(QString itemId)
 {
     ensureValidProfile();
-    QJsonObject payload;
-    payload["Recursive"] = true;
-    payload["MetadataRefreshMode"] = "FullRefresh";
-    payload["ImageRefreshMode"] = "FullRefresh";
-    payload["ReplaceAllMetadata"] = false;
-    payload["ReplaceAllImages"] = false;
-    co_await m_serverManager->activeClient()->post(
-        QString("/Items/%1/Refresh").arg(itemId), payload);
+
+    itemId = itemId.trimmed();
+    if (itemId.isEmpty()) {
+        qWarning() << "[AdminService] getItemImages skipped: empty itemId";
+        co_return {};
+    }
+
+    qDebug() << "[AdminService] getItemImages"
+             << "| itemId:" << itemId;
+
+    const QJsonObject response =
+        co_await m_serverManager->activeClient()->get(
+            QStringLiteral("/Items/%1/Images").arg(itemId));
+
+    QJsonArray imagesArray;
+    if (response.contains(QStringLiteral("data")) &&
+        response.value(QStringLiteral("data")).isArray()) {
+        imagesArray = response.value(QStringLiteral("data")).toArray();
+    } else if (response.contains(QStringLiteral("Items")) &&
+               response.value(QStringLiteral("Items")).isArray()) {
+        imagesArray = response.value(QStringLiteral("Items")).toArray();
+    }
+
+    QList<ItemImageInfo> images;
+    for (const QJsonValue& value : imagesArray) {
+        if (!value.isObject()) {
+            continue;
+        }
+        images.append(ItemImageInfo::fromJson(value.toObject()));
+    }
+
+    qDebug() << "[AdminService] getItemImages completed"
+             << "| itemId:" << itemId
+             << "| count:" << images.size();
+    co_return images;
 }
 
-QCoro::Task<void> AdminService::uploadItemImage(const QString& itemId, const QString& imageType,
-                                                  const QByteArray& imageData, const QString& mimeType)
+QCoro::Task<void> AdminService::refreshItemMetadata(const QString& itemId,
+                                                    bool replaceAllMetadata,
+                                                    bool replaceAllImages)
 {
     ensureValidProfile();
+
+    const QString trimmedItemId = itemId.trimmed();
+    if (trimmedItemId.isEmpty()) {
+        qWarning() << "[AdminService] refreshItemMetadata skipped: empty itemId";
+        co_return;
+    }
+
+    QUrlQuery query;
+    query.addQueryItem(QStringLiteral("Recursive"), QStringLiteral("true"));
+    query.addQueryItem(QStringLiteral("MetadataRefreshMode"),
+                       QStringLiteral("FullRefresh"));
+    query.addQueryItem(QStringLiteral("ImageRefreshMode"),
+                       QStringLiteral("FullRefresh"));
+    query.addQueryItem(QStringLiteral("ReplaceAllMetadata"),
+                       replaceAllMetadata ? QStringLiteral("true")
+                                          : QStringLiteral("false"));
+    query.addQueryItem(QStringLiteral("ReplaceAllImages"),
+                       replaceAllImages ? QStringLiteral("true")
+                                        : QStringLiteral("false"));
+
+    const QString path = QStringLiteral("/Items/%1/Refresh?%2")
+                             .arg(trimmedItemId,
+                                  query.toString(QUrl::FullyEncoded));
+
+    qDebug() << "[AdminService] refreshItemMetadata"
+             << "| itemId:" << trimmedItemId
+             << "| replaceAllMetadata:" << replaceAllMetadata
+             << "| replaceAllImages:" << replaceAllImages
+             << "| path:" << path;
+
     
     
-    QString base64Data = QString::fromLatin1(imageData.toBase64());
-    QJsonObject payload;
-    payload["Data"] = base64Data;
-    payload["ContentType"] = mimeType;
-    co_await m_serverManager->activeClient()->post(
-        QString("/Items/%1/Images/%2").arg(itemId, imageType), payload);
+    co_await m_serverManager->activeClient()->post(path, QJsonObject());
 }
 
-QCoro::Task<void> AdminService::deleteItemImage(const QString& itemId, const QString& imageType)
+QCoro::Task<void> AdminService::uploadItemImage(QString itemId,
+                                                QString imageType,
+                                                QByteArray imageData,
+                                                QString mimeType,
+                                                int imageIndex)
 {
     ensureValidProfile();
+
+    itemId = itemId.trimmed();
+    imageType = imageType.trimmed();
+    mimeType = mimeType.trimmed();
+    if (itemId.isEmpty() || imageType.isEmpty() || imageData.isEmpty()) {
+        qWarning() << "[AdminService] uploadItemImage skipped"
+                   << "| itemId:" << itemId
+                   << "| imageType:" << imageType
+                   << "| imageIndex:" << imageIndex
+                   << "| dataSize:" << imageData.size();
+        co_return;
+    }
+
+    if (mimeType.isEmpty()) {
+        mimeType = QStringLiteral("application/octet-stream");
+    }
+
+    const QString path = buildItemImagePath(itemId, imageType, imageIndex);
+    const ServerProfile profile = m_serverManager->activeProfile();
+    const QByteArray encodedBody = imageData.toBase64();
+
+    qDebug() << "[AdminService] uploadItemImage"
+             << "| itemId:" << itemId
+             << "| imageType:" << imageType
+             << "| imageIndex:" << imageIndex
+             << "| mimeType:" << mimeType
+             << "| dataSize:" << imageData.size()
+             << "| base64Size:" << encodedBody.size()
+             << "| serverType:"
+             << (profile.type == ServerProfile::Jellyfin ? "Jellyfin"
+                                                         : "Emby")
+             << "| requestBody: raw-base64";
+
+    try {
+        qDebug() << "[AdminService] uploadItemImage primary attempt"
+                 << "| itemId:" << itemId
+                 << "| imageType:" << imageType
+                 << "| imageIndex:" << imageIndex
+                 << "| contentType: text/plain";
+        co_await m_serverManager->activeClient()->postBytes(
+            path, encodedBody, QStringLiteral("text/plain"));
+        co_return;
+    } catch (const std::exception& e) {
+        qWarning() << "[AdminService] uploadItemImage primary attempt failed"
+                   << "| itemId:" << itemId
+                   << "| imageType:" << imageType
+                   << "| imageIndex:" << imageIndex
+                   << "| contentType: text/plain"
+                   << "| error:" << e.what();
+    }
+
+    try {
+        qWarning() << "[AdminService] uploadItemImage retrying with fallback header"
+                   << "| itemId:" << itemId
+                   << "| imageType:" << imageType
+                   << "| imageIndex:" << imageIndex
+                   << "| contentType:" << mimeType;
+        co_await m_serverManager->activeClient()->postBytes(
+            path, encodedBody, mimeType);
+
+        qWarning() << "[AdminService] uploadItemImage fallback header succeeded"
+                   << "| itemId:" << itemId
+                   << "| imageType:" << imageType
+                   << "| imageIndex:" << imageIndex
+                   << "| contentType:" << mimeType;
+    } catch (const std::exception& e) {
+        qWarning() << "[AdminService] uploadItemImage fallback header failed"
+                   << "| itemId:" << itemId
+                   << "| imageType:" << imageType
+                   << "| imageIndex:" << imageIndex
+                   << "| contentType:" << mimeType
+                   << "| error:" << e.what();
+        throw;
+    }
+}
+
+QCoro::Task<void> AdminService::deleteItemImage(QString itemId, QString imageType,
+                                                int imageIndex)
+{
+    ensureValidProfile();
+
+    itemId = itemId.trimmed();
+    imageType = imageType.trimmed();
+    if (itemId.isEmpty() || imageType.isEmpty()) {
+        qWarning() << "[AdminService] deleteItemImage skipped"
+                   << "| itemId:" << itemId
+                   << "| imageType:" << imageType
+                   << "| imageIndex:" << imageIndex;
+        co_return;
+    }
+
+    qDebug() << "[AdminService] deleteItemImage"
+             << "| itemId:" << itemId
+             << "| imageType:" << imageType
+             << "| imageIndex:" << imageIndex;
+
     co_await m_serverManager->activeClient()->deleteResource(
-        QString("/Items/%1/Images/%2").arg(itemId, imageType));
+        buildItemImagePath(itemId, imageType, imageIndex));
 }
 
 

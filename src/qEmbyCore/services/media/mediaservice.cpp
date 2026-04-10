@@ -3,11 +3,13 @@
 #include "../../config/config_keys.h"
 #include "../../config/configstore.h"
 #include "../manager/servermanager.h"
+#include <QBuffer>
 #include <QCoreApplication>
 #include <QDebug>
 #include <QDir>
 #include <QFile>
 #include <QImage>
+#include <QImageReader>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -18,9 +20,11 @@
 #include <QSettings>
 #include <QStandardPaths>
 #include <QUrl>
+#include <QUrlQuery>
 #include <QUuid>
 #include <qcoronetwork.h>
 #include <stdexcept>
+#include <utility>
 
 namespace
 {
@@ -35,6 +39,165 @@ template <typename T> QList<T> parseJsonArray(const QJsonArray &array)
 }
 
 constexpr int kRecommendCacheFormatVersion = 2;
+
+QString findUserViewIdByCollectionType(const QList<MediaItem> &views,
+                                       QString collectionType)
+{
+    collectionType = collectionType.trimmed();
+    if (collectionType.isEmpty())
+    {
+        return {};
+    }
+
+    for (const MediaItem &view : views)
+    {
+        if (view.collectionType.compare(collectionType, Qt::CaseInsensitive) == 0
+            && !view.id.isEmpty())
+        {
+            return view.id;
+        }
+    }
+
+    return {};
+}
+
+int effectivePort(const QUrl& url)
+{
+    if (url.port() > 0) {
+        return url.port();
+    }
+
+    if (url.scheme().compare(QStringLiteral("https"), Qt::CaseInsensitive) == 0) {
+        return 443;
+    }
+    if (url.scheme().compare(QStringLiteral("http"), Qt::CaseInsensitive) == 0) {
+        return 80;
+    }
+    return -1;
+}
+
+bool isSameOrigin(const QUrl& left, const QUrl& right)
+{
+    return left.scheme().compare(right.scheme(), Qt::CaseInsensitive) == 0 &&
+           left.host().compare(right.host(), Qt::CaseInsensitive) == 0 &&
+           effectivePort(left) == effectivePort(right);
+}
+
+NetworkRequestOptions buildImageRequestOptions(const ServerProfile& profile,
+                                               const QUrl& requestUrl)
+{
+    NetworkRequestOptions options;
+    if (!profile.isValid() || !requestUrl.isValid()) {
+        return options;
+    }
+
+    const QUrl profileUrl(profile.url);
+    if (profile.ignoreSslVerification &&
+        isSameOrigin(requestUrl, profileUrl)) {
+        options.ignoreSslErrors = true;
+    }
+
+    return options;
+}
+
+struct ResolvedImageRequest {
+    QUrl url;
+
+    bool isValid() const
+    {
+        return url.isValid() && !url.scheme().trimmed().isEmpty();
+    }
+};
+
+QString sanitizeMimeType(QString mimeType)
+{
+    const int separatorIndex = mimeType.indexOf(QLatin1Char(';'));
+    if (separatorIndex >= 0) {
+        mimeType = mimeType.left(separatorIndex);
+    }
+
+    return mimeType.trimmed().toLower();
+}
+
+QString detectImageMimeType(const QByteArray& data)
+{
+    if (data.isEmpty()) {
+        return {};
+    }
+
+    QBuffer buffer;
+    buffer.setData(data);
+    if (!buffer.open(QIODevice::ReadOnly)) {
+        return {};
+    }
+
+    QImageReader reader(&buffer);
+    const QString format = QString::fromLatin1(reader.format()).trimmed().toLower();
+    if (format.isEmpty()) {
+        return {};
+    }
+
+    return QStringLiteral("image/%1").arg(format);
+}
+
+QString buildItemImagePath(QString itemId, QString imageType, int imageIndex)
+{
+    itemId = itemId.trimmed();
+    imageType = imageType.trimmed();
+
+    QString path = QStringLiteral("/Items/%1/Images/%2").arg(itemId, imageType);
+    if (imageIndex >= 0) {
+        path += QStringLiteral("/%1").arg(imageIndex);
+    }
+
+    return path;
+}
+
+QString buildImageCacheKey(QString itemId, QString imageType, int imageIndex)
+{
+    return QStringLiteral("%1|%2|%3")
+        .arg(itemId.trimmed(), imageType.trimmed())
+        .arg(imageIndex);
+}
+
+ResolvedImageRequest resolveImageRequest(const ServerManager* serverManager,
+                                        QString imageUrl)
+{
+    ResolvedImageRequest result;
+
+    imageUrl = imageUrl.trimmed();
+    if (imageUrl.isEmpty()) {
+        return result;
+    }
+
+    const ServerProfile profile =
+        serverManager ? serverManager->activeProfile() : ServerProfile{};
+    QUrl resolvedUrl(imageUrl);
+
+    if (resolvedUrl.isRelative() && profile.isValid()) {
+        QUrl baseUrl(profile.url);
+        if (baseUrl.isValid() && baseUrl.path().isEmpty()) {
+            baseUrl.setPath(QStringLiteral("/"));
+        }
+        resolvedUrl = baseUrl.resolved(QUrl(imageUrl));
+    }
+
+    if (!resolvedUrl.isValid() || resolvedUrl.scheme().trimmed().isEmpty()) {
+        return result;
+    }
+
+    if (profile.isValid() && !profile.accessToken.isEmpty() &&
+        isSameOrigin(resolvedUrl, QUrl(profile.url))) {
+        QUrlQuery query(resolvedUrl);
+        if (!query.hasQueryItem(QStringLiteral("api_key"))) {
+            query.addQueryItem(QStringLiteral("api_key"), profile.accessToken);
+            resolvedUrl.setQuery(query);
+        }
+    }
+
+    result.url = resolvedUrl;
+    return result;
+}
 } 
 
 MediaService::MediaService(ServerManager *serverManager, QObject *parent)
@@ -57,15 +220,41 @@ void MediaService::ensureValidProfile() const
     }
 }
 
-QCoro::Task<QList<MediaItem>> MediaService::getUserViews()
+QCoro::Task<QList<MediaItem>> MediaService::getUserViews(bool includeHidden)
 {
     ensureValidProfile();
     ServerProfile profile = m_serverManager->activeProfile();
 
+    if (m_userViewsCache.isValid(profile.id, profile.userId, includeHidden))
+    {
+        qDebug() << "[MediaService] getUserViews cache hit"
+                 << "| includeHidden=" << includeHidden
+                 << "| count=" << m_userViewsCache.views.size();
+        co_return m_userViewsCache.views;
+    }
+
     
-    QJsonObject response =
-        co_await m_serverManager->activeClient()->get(QString("/Users/%1/Views").arg(profile.userId));
-    co_return parseJsonArray<MediaItem>(response["Items"].toArray());
+    QString path = QString("/Users/%1/Views").arg(profile.userId);
+    if (includeHidden)
+    {
+        path += QStringLiteral("?IncludeHidden=true");
+    }
+
+    QJsonObject response = co_await m_serverManager->activeClient()->get(path);
+    const QList<MediaItem> views = parseJsonArray<MediaItem>(response["Items"].toArray());
+    updateUserViewsCache(views, profile.id, profile.userId, includeHidden);
+
+    qDebug() << "[MediaService] getUserViews fetched"
+             << "| includeHidden=" << includeHidden
+             << "| count=" << views.size()
+             << "| playlistViewId="
+             << findUserViewIdByCollectionType(views, QStringLiteral("playlists"));
+    co_return views;
+}
+
+void MediaService::clearUserViewsCache()
+{
+    m_userViewsCache.clear();
 }
 
 QCoro::Task<QList<MediaItem>> MediaService::getLibraryItems(const QString &parentId, const QString &sortBy,
@@ -80,6 +269,7 @@ QCoro::Task<QList<MediaItem>> MediaService::getLibraryItems(const QString &paren
                           QStringLiteral("CanDownload"),    QStringLiteral("PrimaryImageAspectRatio"),
                           QStringLiteral("ProductionYear"), QStringLiteral("Status"),
                           QStringLiteral("EndDate"),        QStringLiteral("RecursiveItemCount"),
+                          QStringLiteral("MediaType"),
                           QStringLiteral("DateCreated")};
     if (includeChildCount)
     {
@@ -119,7 +309,7 @@ QCoro::Task<QList<MediaItem>> MediaService::searchMedia(const QString &searchTer
     
     QString path = QString("/Users/%1/"
                            "Items?SearchTerm=%2&Recursive=true&Fields="
-                           "ProductionYear,RecursiveItemCount")
+                           "ProductionYear,RecursiveItemCount,CanDownload")
                        .arg(profile.userId, QUrl::toPercentEncoding(searchTerm));
 
     if (limit > 0)
@@ -145,7 +335,7 @@ QCoro::Task<QList<MediaItem>> MediaService::getSeasons(const QString &seriesId)
 {
     ensureValidProfile();
     QString path = QString("/Shows/%1/"
-                           "Seasons?UserId=%2&Fields=PrimaryImageAspectRatio,RecursiveItemCount&"
+                           "Seasons?UserId=%2&Fields=PrimaryImageAspectRatio,RecursiveItemCount,CanDownload&"
                            "EnableImageTypes=Primary,Backdrop,Thumb&ImageTypeLimit=1")
                        .arg(seriesId, m_serverManager->activeProfile().userId);
 
@@ -162,7 +352,7 @@ QCoro::Task<QList<MediaItem>> MediaService::getEpisodes(const QString &seriesId,
     ensureValidProfile();
     QString path = QString("/Shows/%1/"
                            "Episodes?SeasonId=%2&UserId=%3&Fields=PrimaryImageAspectRatio,"
-                           "Overview&EnableImageTypes=Primary,Backdrop,Thumb&ImageTypeLimit=1")
+                           "Overview,CanDownload&EnableImageTypes=Primary,Backdrop,Thumb&ImageTypeLimit=1")
                        .arg(seriesId, seasonId, m_serverManager->activeProfile().userId);
 
     if (!sortBy.isEmpty())
@@ -181,7 +371,7 @@ QCoro::Task<QList<MediaItem>> MediaService::getNextUp(const QString &seriesId)
 {
     ensureValidProfile();
     QString path = QString("/Shows/"
-                           "NextUp?UserId=%1&Fields=PrimaryImageAspectRatio,Overview&"
+                           "NextUp?UserId=%1&Fields=PrimaryImageAspectRatio,Overview,CanDownload&"
                            "EnableImageTypes=Primary,Backdrop,Thumb&ImageTypeLimit=1")
                        .arg(m_serverManager->activeProfile().userId);
 
@@ -194,8 +384,10 @@ QCoro::Task<QList<MediaItem>> MediaService::getNextUp(const QString &seriesId)
     co_return parseJsonArray<MediaItem>(response["Items"].toArray());
 }
 
-QCoro::Task<QPixmap> MediaService::fetchImage(const QString &itemId, const QString &imageType, const QString &imageTag,
-                                              int maxWidth)
+QCoro::Task<QPixmap> MediaService::fetchImage(const QString &itemId,
+                                              const QString &imageType,
+                                              const QString &imageTag,
+                                              int maxWidth, int imageIndex)
 {
     ServerProfile profile = m_serverManager->activeProfile();
     if (!profile.isValid())
@@ -211,20 +403,29 @@ QCoro::Task<QPixmap> MediaService::fetchImage(const QString &itemId, const QStri
     else if (quality == "original")
         effectiveMaxWidth = 0; 
 
+    const QString trimmedItemId = itemId.trimmed();
+    const QString trimmedImageType = imageType.trimmed();
+    const QString imagePath =
+        buildItemImagePath(trimmedItemId, trimmedImageType, imageIndex);
+    const QString imageCacheKey =
+        buildImageCacheKey(trimmedItemId, trimmedImageType, imageIndex);
+    const quint64 cacheVersion =
+        m_invalidatedImageRequestVersions.value(imageCacheKey, 0);
+
     QString urlStr;
     if (effectiveMaxWidth > 0)
     {
         if (!imageTag.isEmpty())
         {
-            urlStr = QString("%1/Items/%2/Images/%3?tag=%4&maxWidth=%5&api_key=%6")
-                         .arg(profile.url, itemId, imageType, imageTag)
+            urlStr = QString("%1%2?tag=%3&maxWidth=%4&api_key=%5")
+                         .arg(profile.url, imagePath, imageTag)
                          .arg(effectiveMaxWidth)
                          .arg(profile.accessToken);
         }
         else
         {
-            urlStr = QString("%1/Items/%2/Images/%3?maxWidth=%4&api_key=%5")
-                         .arg(profile.url, itemId, imageType)
+            urlStr = QString("%1%2?maxWidth=%3&api_key=%4")
+                         .arg(profile.url, imagePath)
                          .arg(effectiveMaxWidth)
                          .arg(profile.accessToken);
         }
@@ -234,21 +435,39 @@ QCoro::Task<QPixmap> MediaService::fetchImage(const QString &itemId, const QStri
         
         if (!imageTag.isEmpty())
         {
-            urlStr = QString("%1/Items/%2/Images/%3?tag=%4&api_key=%5")
-                         .arg(profile.url, itemId, imageType, imageTag, profile.accessToken);
+            urlStr = QString("%1%2?tag=%3&api_key=%4")
+                         .arg(profile.url, imagePath, imageTag,
+                              profile.accessToken);
         }
         else
         {
-            urlStr =
-                QString("%1/Items/%2/Images/%3?api_key=%4").arg(profile.url, itemId, imageType, profile.accessToken);
+            urlStr = QString("%1%2?api_key=%3")
+                         .arg(profile.url, imagePath, profile.accessToken);
         }
     }
 
+    if (cacheVersion > 0) {
+        urlStr += QStringLiteral("&qemby_image_rev=%1").arg(cacheVersion);
+        qDebug() << "[MediaService] fetchImage using invalidated cache version"
+                 << "| itemId=" << trimmedItemId
+                 << "| imageType=" << trimmedImageType
+                 << "| imageIndex=" << imageIndex
+                 << "| version=" << cacheVersion;
+    }
+
     QNetworkRequest request((QUrl(urlStr)));
-    request.setAttribute(QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::PreferCache);
+    const NetworkRequestOptions requestOptions =
+        buildImageRequestOptions(profile, request.url());
+    NetworkManager::applyRequestOptions(request, requestOptions);
+    request.setAttribute(QNetworkRequest::CacheLoadControlAttribute,
+                         cacheVersion > 0 ? QNetworkRequest::PreferNetwork
+                                          : QNetworkRequest::PreferCache);
     request.setAttribute(QNetworkRequest::Http2AllowedAttribute, true);
 
-    QNetworkReply *reply = co_await m_imageManager->get(request);
+    QNetworkReply *reply = m_imageManager->get(request);
+    NetworkManager::attachReplyHandlers(reply, requestOptions,
+                                        QStringLiteral("GET_IMAGE"));
+    co_await reply;
 
     QPixmap result;
     if (reply->error() == QNetworkReply::NoError)
@@ -260,9 +479,142 @@ QCoro::Task<QPixmap> MediaService::fetchImage(const QString &itemId, const QStri
         {
             result = QPixmap::fromImage(image);
         }
+        else
+        {
+            qWarning() << "[MediaService] fetchImage returned invalid image"
+                       << "| itemId=" << trimmedItemId
+                       << "| imageType=" << trimmedImageType
+                       << "| imageIndex=" << imageIndex
+                       << "| bytes=" << data.size();
+        }
+    }
+    else
+    {
+        const int httpStatus =
+            reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        qWarning() << "[MediaService] fetchImage failed"
+                   << "| itemId=" << trimmedItemId
+                   << "| imageType=" << trimmedImageType
+                   << "| imageIndex=" << imageIndex
+                   << "| url=" << request.url().toString(QUrl::RemoveQuery)
+                   << "| error="
+                   << NetworkManager::buildReplyErrorMessage(reply, httpStatus);
     }
 
     reply->deleteLater();
+    co_return result;
+}
+
+void MediaService::invalidateImageCache(QString itemId, QString imageType,
+                                        int imageIndex)
+{
+    itemId = itemId.trimmed();
+    imageType = imageType.trimmed();
+    if (itemId.isEmpty() || imageType.isEmpty()) {
+        qWarning() << "[MediaService] invalidateImageCache skipped"
+                   << "| itemId=" << itemId
+                   << "| imageType=" << imageType
+                   << "| imageIndex=" << imageIndex;
+        return;
+    }
+
+    const quint64 nextVersion = ++m_nextImageRequestVersion;
+    m_invalidatedImageRequestVersions.insert(
+        buildImageCacheKey(itemId, imageType, imageIndex), nextVersion);
+    if (imageIndex >= 0) {
+        m_invalidatedImageRequestVersions.insert(
+            buildImageCacheKey(itemId, imageType, -1), nextVersion);
+    }
+
+    qDebug() << "[MediaService] invalidateImageCache"
+             << "| itemId=" << itemId
+             << "| imageType=" << imageType
+             << "| imageIndex=" << imageIndex
+             << "| version=" << nextVersion;
+}
+
+QCoro::Task<QPixmap> MediaService::fetchImageByUrl(QString imageUrl)
+{
+    try {
+        const DownloadedImageData downloadedImage =
+            co_await downloadImageByUrl(std::move(imageUrl));
+
+        QImage image;
+        image.loadFromData(downloadedImage.data);
+        if (image.isNull()) {
+            qWarning() << "[MediaService] fetchImageByUrl returned invalid image"
+                       << "| bytes=" << downloadedImage.data.size();
+            co_return QPixmap();
+        }
+
+        co_return QPixmap::fromImage(image);
+    } catch (const std::exception& e) {
+        qWarning() << "[MediaService] fetchImageByUrl failed"
+                   << "| error=" << e.what();
+        co_return QPixmap();
+    }
+}
+
+QCoro::Task<DownloadedImageData> MediaService::downloadImageByUrl(QString imageUrl)
+{
+    const ResolvedImageRequest resolvedRequest =
+        resolveImageRequest(m_serverManager, imageUrl);
+    if (!resolvedRequest.isValid()) {
+        qWarning() << "[MediaService] downloadImageByUrl skipped invalid url"
+                   << "| imageUrl=" << imageUrl;
+        throw std::runtime_error(tr("Invalid image URL").toStdString());
+    }
+
+    QNetworkRequest request(resolvedRequest.url);
+    const ServerProfile profile =
+        m_serverManager ? m_serverManager->activeProfile() : ServerProfile{};
+    const NetworkRequestOptions requestOptions =
+        buildImageRequestOptions(profile, resolvedRequest.url);
+    NetworkManager::applyRequestOptions(request, requestOptions);
+    request.setAttribute(QNetworkRequest::CacheLoadControlAttribute,
+                         QNetworkRequest::PreferCache);
+    request.setAttribute(QNetworkRequest::Http2AllowedAttribute, true);
+
+    qDebug() << "[MediaService] downloadImageByUrl"
+             << "| url=" << resolvedRequest.url.toString(QUrl::RemoveQuery);
+
+    QNetworkReply* reply = m_imageManager->get(request);
+    NetworkManager::attachReplyHandlers(reply, requestOptions,
+                                        QStringLiteral("GET_IMAGE_URL"));
+    co_await reply;
+
+    if (reply->error() != QNetworkReply::NoError) {
+        const int httpStatus =
+            reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const QString errorString =
+            NetworkManager::buildReplyErrorMessage(reply, httpStatus).trimmed();
+        qWarning() << "[MediaService] downloadImageByUrl failed"
+                   << "| url=" << resolvedRequest.url.toString(QUrl::RemoveQuery)
+                   << "| error=" << errorString;
+        reply->deleteLater();
+        throw std::runtime_error(errorString.toStdString());
+    }
+
+    DownloadedImageData result;
+    result.data = reply->readAll();
+    result.mimeType =
+        sanitizeMimeType(reply->header(QNetworkRequest::ContentTypeHeader).toString());
+    reply->deleteLater();
+
+    if (!result.mimeType.startsWith(QStringLiteral("image/"))) {
+        result.mimeType = detectImageMimeType(result.data);
+    }
+
+    if (result.data.isEmpty() ||
+        !result.mimeType.startsWith(QStringLiteral("image/"))) {
+        qWarning() << "[MediaService] downloadImageByUrl returned invalid image"
+                   << "| url=" << resolvedRequest.url.toString(QUrl::RemoveQuery)
+                   << "| bytes=" << result.data.size()
+                   << "| mimeType=" << result.mimeType;
+        throw std::runtime_error(
+            tr("Downloaded data is not a valid image").toStdString());
+    }
+
     co_return result;
 }
 
@@ -271,7 +623,7 @@ QCoro::Task<QList<MediaItem>> MediaService::getResumeItems(int limit, const QStr
     ensureValidProfile();
     QString path = QString("/Users/%1/Items/"
                            "Resume?Recursive=true&Fields=ProductionYear,"
-                           "RecursiveItemCount&MediaTypes=Video")
+                           "RecursiveItemCount,CanDownload&MediaTypes=Video")
                        .arg(m_serverManager->activeProfile().userId);
     if (limit > 0)
         path += QString("&Limit=%1").arg(limit);
@@ -290,7 +642,7 @@ QCoro::Task<QList<MediaItem>> MediaService::getLatestItems(int limit, const QStr
     
     QString path = QString("/Users/%1/"
                            "Items?Recursive=true&Fields=ProductionYear,"
-                           "RecursiveItemCount&IncludeItemTypes=Movie,Series")
+                           "RecursiveItemCount,CanDownload&IncludeItemTypes=Movie,Series")
                        .arg(m_serverManager->activeProfile().userId);
     if (limit > 0)
         path += QString("&Limit=%1").arg(limit);
@@ -342,7 +694,7 @@ QCoro::Task<QList<MediaItem>> MediaService::getRecommendedMovies(int limit, cons
     
     QString path = QString("/Users/%1/Items?IncludeItemTypes=Movie,Series"
                            "&Recursive=true"
-                           "&Fields=ProductionYear,RecursiveItemCount,PrimaryImageAspectRatio"
+                           "&Fields=ProductionYear,RecursiveItemCount,PrimaryImageAspectRatio,CanDownload"
                            "&EnableImageTypes=Primary,Backdrop,Thumb"
                            "&ImageTypeLimit=1")
                        .arg(currentUserId);
@@ -371,7 +723,7 @@ QCoro::Task<QList<MediaItem>> MediaService::getFavoriteMovies(int limit, const Q
     ensureValidProfile();
     QString path = QString("/Users/%1/"
                            "Items?Recursive=true&Filters=IsFavorite&"
-                           "IncludeItemTypes=Movie&Fields=ProductionYear")
+                           "IncludeItemTypes=Movie&Fields=ProductionYear,CanDownload")
                        .arg(m_serverManager->activeProfile().userId);
     if (limit > 0)
         path += QString("&Limit=%1").arg(limit);
@@ -390,7 +742,7 @@ QCoro::Task<QList<MediaItem>> MediaService::getFavoriteSeries(int limit, const Q
     ensureValidProfile();
     QString path = QString("/Users/%1/"
                            "Items?Recursive=true&Filters=IsFavorite&IncludeItemTypes=Series&"
-                           "Fields=ProductionYear,RecursiveItemCount")
+                           "Fields=ProductionYear,RecursiveItemCount,CanDownload")
                        .arg(m_serverManager->activeProfile().userId);
     if (limit > 0)
         path += QString("&Limit=%1").arg(limit);
@@ -481,13 +833,16 @@ QCoro::Task<QList<MediaItem>> MediaService::getFavoritePeople(int limit, const Q
 QCoro::Task<MediaItem> MediaService::getItemDetail(const QString &itemId)
 {
     ensureValidProfile();
+    const ServerProfile profile = m_serverManager->activeProfile();
     QString path = QString("/Users/%1/Items/"
                            "%2?Fields=MediaStreams,MediaSources,People,Overview,Genres,"
-                           "ProductionYear,OfficialRating,Tags,Studios,ExternalUrls")
-                       .arg(m_serverManager->activeProfile().userId, itemId);
+                           "ProductionYear,OfficialRating,Tags,Studios,ExternalUrls,CanDownload")
+                       .arg(profile.userId, itemId);
 
     QJsonObject response = co_await m_serverManager->activeClient()->get(path);
-    co_return MediaItem::fromJson(response);
+    MediaItem item = MediaItem::fromJson(response);
+    updateUserViewsCache(item, profile.id, profile.userId);
+    co_return item;
 }
 
 QCoro::Task<bool> MediaService::toggleFavorite(const QString &itemId, bool isFavorite)
@@ -537,7 +892,7 @@ QCoro::Task<QList<MediaItem>> MediaService::getSimilarItems(const QString &itemI
     ensureValidProfile();
     QString path = QString("/Items/%1/"
                            "Similar?UserId=%2&Limit=%3&Fields="
-                           "PrimaryImageAspectRatio,ProductionYear")
+                           "PrimaryImageAspectRatio,ProductionYear,CanDownload")
                        .arg(itemId, m_serverManager->activeProfile().userId)
                        .arg(limit);
 
@@ -550,7 +905,7 @@ QCoro::Task<QList<MediaItem>> MediaService::getItemCollections(const QString &it
     ensureValidProfile();
     QString path = QString("/Users/%1/"
                            "Items?IncludeItemTypes=Playlist,BoxSet&Recursive="
-                           "true&ListItemIds=%2&Fields=PrimaryImageAspectRatio")
+                           "true&ListItemIds=%2&Fields=PrimaryImageAspectRatio,CanDownload")
                        .arg(m_serverManager->activeProfile().userId, itemId);
 
     QJsonObject response = co_await m_serverManager->activeClient()->get(path);
@@ -562,7 +917,7 @@ QCoro::Task<QList<MediaItem>> MediaService::getCollectionItems(const QString &co
     ensureValidProfile();
     QString path = QString("/Users/%1/"
                            "Items?ParentId=%2&Fields=PrimaryImageAspectRatio,ProductionYear,"
-                           "RecursiveItemCount&SortBy=SortName")
+                           "RecursiveItemCount,CanDownload&SortBy=SortName")
                        .arg(m_serverManager->activeProfile().userId, collectionId);
 
     QJsonObject response = co_await m_serverManager->activeClient()->get(path);
@@ -608,7 +963,7 @@ QCoro::Task<QList<MediaItem>> MediaService::getItemsByPerson(const QString &pers
     QString path = QString("/Users/%1/"
                            "Items?Recursive=true&PersonIds=%2&IncludeItemTypes="
                            "Movie,Series,Episode&Fields=PrimaryImageAspectRatio,"
-                           "ProductionYear,RecursiveItemCount")
+                           "ProductionYear,RecursiveItemCount,CanDownload")
                        .arg(m_serverManager->activeProfile().userId, personId);
 
     if (!sortBy.isEmpty())
@@ -627,7 +982,7 @@ QCoro::Task<QList<MediaItem>> MediaService::getItemsByFilter(const QString &genr
     ensureValidProfile();
     QString path = QString("/Users/%1/Items?Recursive=true"
                            "&IncludeItemTypes=Movie,Series"
-                           "&Fields=PrimaryImageAspectRatio,ProductionYear,RecursiveItemCount"
+                           "&Fields=PrimaryImageAspectRatio,ProductionYear,RecursiveItemCount,CanDownload"
                            "&EnableImageTypes=Primary,Backdrop,Thumb&ImageTypeLimit=1")
                        .arg(m_serverManager->activeProfile().userId);
 
@@ -865,6 +1220,119 @@ void MediaService::clearRecommendCache()
 {
     m_recommendCache.clear();
     Q_EMIT recommendCacheCleared();
+}
+
+void MediaService::removeRecommendCacheItem(const QString& itemId)
+{
+    const QString trimmedItemId = itemId.trimmed();
+    if (trimmedItemId.isEmpty() || !m_serverManager ||
+        !m_serverManager->activeProfile().isValid()) {
+        return;
+    }
+
+    const ServerProfile profile = m_serverManager->activeProfile();
+    int cacheDurationHours =
+        ConfigStore::instance()
+            ->get<QString>(ConfigKeys::DataCacheDuration, "24")
+            .toInt();
+    if (cacheDurationHours <= 0) {
+        cacheDurationHours = 24;
+    }
+
+    bool hasUsableCache =
+        m_recommendCache.isValid(profile.id, profile.userId, cacheDurationHours);
+    if (!hasUsableCache) {
+        hasUsableCache =
+            m_recommendCache.loadFromDisk(profile.id, profile.userId,
+                                          cacheDurationHours);
+    }
+
+    if (!hasUsableCache) {
+        qDebug() << "[MediaService] Skip recommend cache item removal"
+                 << "| reason=no-usable-cache"
+                 << "| itemId=" << trimmedItemId;
+        return;
+    }
+
+    const int previousCount = m_recommendCache.items.size();
+    for (int i = m_recommendCache.items.size() - 1; i >= 0; --i) {
+        if (m_recommendCache.items.at(i).id == trimmedItemId) {
+            m_recommendCache.items.removeAt(i);
+        }
+    }
+
+    if (m_recommendCache.items.size() == previousCount) {
+        qDebug() << "[MediaService] Skip recommend cache item removal"
+                 << "| reason=item-not-found"
+                 << "| itemId=" << trimmedItemId
+                 << "| cachedCount=" << previousCount;
+        return;
+    }
+
+    if (m_recommendCache.items.isEmpty()) {
+        m_recommendCache.clear();
+    } else {
+        m_recommendCache.saveToDisk();
+    }
+
+    qDebug() << "[MediaService] Removed item from recommend cache"
+             << "| itemId=" << trimmedItemId
+             << "| previousCount=" << previousCount
+             << "| currentCount=" << m_recommendCache.items.size();
+}
+
+void MediaService::updateUserViewsCache(QList<MediaItem> views, QString serverId,
+                                        QString userId, bool includesHidden)
+{
+    m_userViewsCache.views = std::move(views);
+    m_userViewsCache.serverId = std::move(serverId);
+    m_userViewsCache.userId = std::move(userId);
+    m_userViewsCache.includesHidden = includesHidden;
+}
+
+void MediaService::updateUserViewsCache(MediaItem view, QString serverId,
+                                        QString userId)
+{
+    const QString viewId = view.id.trimmed();
+    const QString viewType = view.type.trimmed();
+    const QString collectionType = view.collectionType.trimmed();
+
+    if (viewId.isEmpty() || collectionType.isEmpty())
+    {
+        return;
+    }
+
+    if (!m_userViewsCache.isValid(serverId, userId, false)
+        || m_userViewsCache.views.isEmpty())
+    {
+        qDebug() << "[MediaService] Skipping partial user view cache update"
+                 << "| reason=base-cache-missing"
+                 << "| itemId=" << viewId
+                 << "| itemType=" << viewType
+                 << "| collectionType=" << collectionType;
+        return;
+    }
+
+    for (MediaItem &cachedView : m_userViewsCache.views)
+    {
+        if (cachedView.id == viewId)
+        {
+            cachedView = std::move(view);
+            qDebug() << "[MediaService] Patched cached user view"
+                     << "| itemId=" << viewId
+                     << "| itemType=" << viewType
+                     << "| collectionType=" << collectionType
+                     << "| cachedCount=" << m_userViewsCache.views.size();
+            return;
+        }
+    }
+
+    qDebug() << "[MediaService] Skipping partial user view cache update"
+             << "| reason=view-not-found"
+             << "| itemId=" << viewId
+             << "| itemType=" << viewType
+             << "| collectionType=" << collectionType
+             << "| cachedCount=" << m_userViewsCache.views.size();
 }
 
 

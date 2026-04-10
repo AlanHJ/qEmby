@@ -8,6 +8,7 @@
 #include <models/media/playbackinfo.h>
 #include "../components/playerwindow.h"
 #include "../components/moderntoast.h"
+#include "../utils/playerpreferenceutils.h"
 #include <QProcess>
 #include <QFile>
 #include <QFileInfo>
@@ -375,6 +376,12 @@ void PlaybackManager::launchExternalPlayer(const QString& mediaId, const QString
         
         
         
+    }
+
+    if (hasSourceInfo && selectedSubIdx < 0) {
+        subtitleDisabled = PlayerPreferenceUtils::isSubtitleDisabled(
+            ConfigStore::instance()->get<QString>(ConfigKeys::PlayerSubLang,
+                                                  "auto"));
     }
 
     

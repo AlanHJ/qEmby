@@ -5,6 +5,7 @@
 #include "../../components/mpvwidget.h"
 #include "../../components/modernslider.h"
 #include "../../components/loadingoverlay.h" 
+#include "../../components/playerdanmakucontroller.h"
 #include <models/media/mediaitem.h> 
 
 #include <QVariant>
@@ -22,14 +23,22 @@
 #include <QMenu>
 #include <QKeyEvent>
 #include <QProgressBar>
+#include <QHash>
+#include <QPointer>
 
 class QEmbyCore;
+class PlayerOverlayDialog;
+class PlayerMediaSwitcherPanel;
+class PlayerOsdLayer;
+class PlayerLongPressHandler;
+class PlayerStatisticsOverlay;
 
 class PlayerView : public BaseView {
     Q_OBJECT
 public:
     explicit PlayerView(QEmbyCore *core, QWidget *parent = nullptr);
     ~PlayerView() override;
+    void prepareForStackLeave() override;
 
     
     void playMedia(const QString &mediaId, const QString &title, const QString &streamUrl, long long startPositionTicks = 0, const QVariant& sourceInfoVar = QVariant());
@@ -67,6 +76,11 @@ private slots:
     void showSpeedMenu();
     void showAudioMenu();
     void showSubtitleMenu();
+    void showDanmakuMenu();
+    void showDanmakuIdentifyDialog();
+    void loadLocalDanmakuFile();
+    void openSubtitleSettingsDialog();
+    void openDanmakuSettingsDialog();
     void showSettingsMenu(); 
     
     void cycleVideoScale();
@@ -77,34 +91,62 @@ private slots:
     void reportProgressToServer();
     void onBackClicked();
 
-    
-    void showMiniOsd(const QString& type);
-    void hideMiniOsd();
+
     
     
     void updateLoadingState();
+    void updateDanmakuButtonState();
 
 private:
     void setupUi();
     void updateTitleElision();
+    void updateOverlayLayout();
+    void clearMediaSwitcherCache();
+    void applyMediaSwitcherMode();
+    void updateMediaSwitcherButton();
+    bool shouldShowDanmakuHudControls() const;
+    bool useHudMediaSwitcher() const;
+    QString formatMediaSwitcherPlaybackTitle(const MediaItem &item) const;
+    void populateRightSidebarFromCache();
+    void showHudMediaSwitcher();
+    void hideHudMediaSwitcher();
+    void syncHudMediaSwitcherContent();
     
     
     void setupRightSidebar();
     
     
     QCoro::Task<void> showRightSidebar();
+    QCoro::Task<void> ensureMediaSwitcherDataLoaded();
+    QCoro::Task<void> switchFromMediaSwitcher(QString mediaId,
+                                              QString title,
+                                              long long startPositionTicks);
     
-    void hideRightSidebar();
+    void hideRightSidebar(bool immediate = false);
+    void setEffectivePlaybackSpeed(double speed);
+    void handlePointerActivity(const QPoint &globalPos);
+    void setCursorHidden(bool hidden);
+    bool areControlsFullyVisible() const;
+
+    void stopTransientUiAnimations(bool immediate = false);
+    void beginViewTeardown();
 
     QPushButton* createHudButton(const QString& iconPath, const QSize& size = QSize(24, 24));
     QString formatTime(double seconds, double totalSeconds) const;
+    void applySubtitleStyleSettings();
     
     void showToast(const QString& msg);
-    void updateInfoDisplay();
+    void updateStatisticsDisplay();
     void setScaleIcon(); 
+    QString formatDanmakuProviderLabel(QString provider) const;
+    QString buildDanmakuSummaryText() const;
+    QString buildDanmakuTooltipText() const;
+    void closeActivePlayerDialog();
+    void trackPlayerDialog(PlayerOverlayDialog *dialog);
 
     void showCenteredPopup(QWidget* popup, QPushButton* btn); 
     QWidget* m_activePopup = nullptr; 
+    QPointer<PlayerOverlayDialog> m_activePlayerDialog;
 
     
     static QCoro::Task<void> executeFetchLogo(QPointer<PlayerView> safeThis, QEmbyCore* core, QString mediaId);
@@ -114,7 +156,7 @@ private:
     
     QWidget *m_topHUD;
     QWidget *m_bottomHUD;
-    QLabel  *m_infoOverlay; 
+    PlayerStatisticsOverlay *m_statisticsOverlay;
     LoadingOverlay *m_loadingOverlay; 
 
     
@@ -125,13 +167,9 @@ private:
     QGraphicsOpacityEffect *m_speedOpacity;
 
     
-    QWidget *m_osdContainer;
-    QProgressBar *m_osdSeekLine;
-    QLabel *m_osdSeekTimeLabel;
-    QLabel *m_osdVolumeLabel;
-    QGraphicsOpacityEffect *m_osdOpacity;
-    QPropertyAnimation *m_osdAnim;
-    QTimer *m_osdHideTimer;
+    PlayerOsdLayer *m_osdLayer = nullptr;
+    
+    PlayerLongPressHandler *m_longPressHandler = nullptr;
 
     
     QWidget *m_rightSidebar;
@@ -166,12 +204,18 @@ private:
     QLabel *m_toastLabel;
     QTimer *m_toastTimer;
 
-    QPushButton *m_speedBtn;
-    QPushButton *m_audioBtn;
-    QPushButton *m_subtitleBtn;
-    QPushButton *m_settingsBtn;
-    QPushButton *m_scaleBtn;      
-    QPushButton *m_fullscreenBtn; 
+    QPushButton *m_speedBtn = nullptr;
+    QPushButton *m_mediaSwitchBtn = nullptr;
+    QPushButton *m_audioBtn = nullptr;
+    QPushButton *m_subtitleBtn = nullptr;
+    QPushButton *m_danmakuBtn = nullptr;
+    QPushButton *m_settingsBtn = nullptr;
+    QPushButton *m_scaleBtn = nullptr;      
+    QPushButton *m_fullscreenBtn = nullptr; 
+    PlayerMediaSwitcherPanel *m_mediaSwitchDrawer = nullptr;
+    int m_bottomHudBaseHeight = 110;
+
+    PlayerDanmakuController *m_danmakuController = nullptr;
 
     QGraphicsOpacityEffect *m_topOpacity;
     QGraphicsOpacityEffect *m_bottomOpacity;
@@ -181,17 +225,13 @@ private:
     QTimer *m_mousePollTimer;
     
     
-    QTimer *m_seekTimer;
-    
-    
     QTimer *m_bufferTimer;
-
-    int m_seekDirection = 0;
-    double m_seekRate = 2.0;
 
     QString m_currentMediaId;
     QString m_currentMediaSourceId; 
     QString m_currentPlaySessionId; 
+    MediaItem m_currentMediaItem;
+    MediaSourceInfo m_currentMediaSourceInfo;
     
     
     QString m_originalStreamUrl; 
@@ -213,15 +253,16 @@ private:
     bool m_isMuted = false;
 
     bool m_showNetworkSpeed = true; 
-    bool m_showInfoOverlay = false; 
+    bool m_showStatisticsOverlay = false; 
     bool m_hasSetVideoSize = false; 
     bool m_hasReportedStop = false; 
+    bool m_isViewTearingDown = false;
     bool m_isRightSidebarVisible = false; 
     
     
-    QString m_sidebarPendingItemId;
-    QString m_sidebarPendingTitle;
-    long long m_sidebarPendingTicks = 0;
+    QString m_switcherPendingItemId;
+    QString m_switcherPendingTitle;
+    long long m_switcherPendingTicks = 0;
     
     
     bool m_isSeriesMode = false;
@@ -229,7 +270,11 @@ private:
     QString m_seriesName;
 
     
-    QString m_sidebarCachedForMediaId;
+    QString m_switcherCacheMediaId;
+    bool m_switcherCacheReady = false;
+    QList<MediaItem> m_switcherResumeItems;
+    QList<MediaItem> m_switcherSeriesSeasons;
+    QHash<QString, QList<MediaItem>> m_switcherSeasonEpisodes;
 
     QString m_fullTitle;
     

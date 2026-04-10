@@ -6,6 +6,9 @@
 #include "../../managers/externalplayerdetector.h"
 #include "../../managers/playbackmanager.h"
 #include "../../managers/thememanager.h" 
+#include "../../utils/mediaitemutils.h"
+#include "../../utils/mediasourcepreferenceutils.h"
+#include "../../utils/playerpreferenceutils.h"
 #include "mediacarddelegate.h"
 #include <QFileInfo>
 #include <QFont>
@@ -656,121 +659,23 @@ QCoro::Task<void> SeasonView::executeExternalPlay(MediaItem targetItem, QString 
         if (actualItem.mediaSources.isEmpty())
             co_return;
 
-        
-        int sourceIdx = 0;
-        if (actualItem.mediaSources.size() > 1)
-        {
-            QString versionPref = ConfigStore::instance()->get<QString>(ConfigKeys::PlayerPreferredVersion).trimmed();
-            if (!versionPref.isEmpty())
-            {
-                QStringList keywords = versionPref.split(',', Qt::SkipEmptyParts);
-                for (const QString &kw : keywords)
-                {
-                    QString keyword = kw.trimmed();
-                    if (keyword.isEmpty())
-                        continue;
-                    bool found = false;
-                    for (int i = 0; i < actualItem.mediaSources.size(); ++i)
-                    {
-                        if (actualItem.mediaSources[i].name.contains(keyword, Qt::CaseInsensitive))
-                        {
-                            sourceIdx = i;
-                            found = true;
-                            break;
-                        }
-                    }
-                    if (found)
-                        break;
-                }
-            }
-        }
+        int sourceIdx = MediaSourcePreferenceUtils::resolvePreferredMediaSourceIndex(
+            actualItem.mediaSources,
+            ConfigStore::instance()->get<QString>(ConfigKeys::PlayerPreferredVersion).trimmed());
 
         if (sourceIdx >= actualItem.mediaSources.size())
             sourceIdx = 0;
         MediaSourceInfo modifiedSource = actualItem.mediaSources[sourceIdx];
 
-        
-        QString prefAudioLang = ConfigStore::instance()->get<QString>(ConfigKeys::PlayerAudioLang, "auto");
-        QString prefSubLang = ConfigStore::instance()->get<QString>(ConfigKeys::PlayerSubLang, "auto");
-
-        {
-            int bestAudioIdx = -1;
-            int bestSubIdx = -1;
-            int firstSubIdx = -1;
-            bool hasDefaultSub = false;
-            bool audioFound = false, subFound = false;
-
-            for (const auto &stream : modifiedSource.mediaStreams)
-            {
-                if (stream.type == "Audio" && !audioFound && prefAudioLang != "auto" &&
-                    stream.language.compare(prefAudioLang, Qt::CaseInsensitive) == 0)
-                {
-                    bestAudioIdx = stream.index;
-                    audioFound = true;
-                }
-                else if (stream.type == "Subtitle")
-                {
-                    if (firstSubIdx < 0)
-                        firstSubIdx = stream.index;
-                    if (stream.isDefault)
-                        hasDefaultSub = true;
-                    if (!subFound && prefSubLang != "auto" && prefSubLang != "none" &&
-                        stream.language.compare(prefSubLang, Qt::CaseInsensitive) == 0)
-                    {
-                        bestSubIdx = stream.index;
-                        subFound = true;
-                    }
-                }
-            }
-
-            if (bestAudioIdx >= 0)
-            {
-                for (auto &stream : modifiedSource.mediaStreams)
-                {
-                    if (stream.type == "Audio")
-                        stream.isDefault = (stream.index == bestAudioIdx);
-                }
-            }
-
-            if (prefSubLang == "none")
-            {
-                for (auto &stream : modifiedSource.mediaStreams)
-                {
-                    if (stream.type == "Subtitle")
-                        stream.isDefault = false;
-                }
-            }
-            else if (bestSubIdx >= 0)
-            {
-                for (auto &stream : modifiedSource.mediaStreams)
-                {
-                    if (stream.type == "Subtitle")
-                        stream.isDefault = (stream.index == bestSubIdx);
-                }
-            }
-            else if (firstSubIdx >= 0 && !hasDefaultSub)
-            {
-                for (auto &stream : modifiedSource.mediaStreams)
-                {
-                    if (stream.type == "Subtitle")
-                        stream.isDefault = (stream.index == firstSubIdx);
-                }
-            }
-        }
+        PlayerPreferenceUtils::applyPreferredStreamRules(
+            modifiedSource,
+            ConfigStore::instance()->get<QString>(ConfigKeys::PlayerAudioLang, "auto"),
+            ConfigStore::instance()->get<QString>(ConfigKeys::PlayerSubLang, "auto"));
 
         QString streamUrl = m_core->mediaService()->getStreamUrl(actualItem.id, modifiedSource.id);
 
-        
-        QString playTitle = actualItem.name;
-        if (actualItem.type == "Episode")
-        {
-            QString seriesName = actualItem.seriesName.isEmpty() ? m_seriesTitleLabel->text() : actualItem.seriesName;
-            playTitle = QString("%1 - S%2:E%3 - %4")
-                            .arg(seriesName)
-                            .arg(actualItem.parentIndexNumber)
-                            .arg(actualItem.indexNumber)
-                            .arg(actualItem.name);
-        }
+        const QString playTitle =
+            MediaItemUtils::playbackTitle(actualItem, m_seriesTitleLabel->text());
 
         long long startTicks = actualItem.userData.playbackPositionTicks;
         PlaybackManager::instance()->startExternalPlayback(playerPath, actualItem.id, playTitle, streamUrl, startTicks,
@@ -799,121 +704,23 @@ QCoro::Task<void> SeasonView::executeInternalPlay(MediaItem targetItem)
         if (actualItem.mediaSources.isEmpty())
             co_return;
 
-        
-        int sourceIdx = 0;
-        if (actualItem.mediaSources.size() > 1)
-        {
-            QString versionPref = ConfigStore::instance()->get<QString>(ConfigKeys::PlayerPreferredVersion).trimmed();
-            if (!versionPref.isEmpty())
-            {
-                QStringList keywords = versionPref.split(',', Qt::SkipEmptyParts);
-                for (const QString &kw : keywords)
-                {
-                    QString keyword = kw.trimmed();
-                    if (keyword.isEmpty())
-                        continue;
-                    bool found = false;
-                    for (int i = 0; i < actualItem.mediaSources.size(); ++i)
-                    {
-                        if (actualItem.mediaSources[i].name.contains(keyword, Qt::CaseInsensitive))
-                        {
-                            sourceIdx = i;
-                            found = true;
-                            break;
-                        }
-                    }
-                    if (found)
-                        break;
-                }
-            }
-        }
+        int sourceIdx = MediaSourcePreferenceUtils::resolvePreferredMediaSourceIndex(
+            actualItem.mediaSources,
+            ConfigStore::instance()->get<QString>(ConfigKeys::PlayerPreferredVersion).trimmed());
 
         if (sourceIdx >= actualItem.mediaSources.size())
             sourceIdx = 0;
         MediaSourceInfo modifiedSource = actualItem.mediaSources[sourceIdx];
 
-        
-        QString prefAudioLang = ConfigStore::instance()->get<QString>(ConfigKeys::PlayerAudioLang, "auto");
-        QString prefSubLang = ConfigStore::instance()->get<QString>(ConfigKeys::PlayerSubLang, "auto");
-
-        {
-            int bestAudioIdx = -1;
-            int bestSubIdx = -1;
-            int firstSubIdx = -1;
-            bool hasDefaultSub = false;
-            bool audioFound = false, subFound = false;
-
-            for (const auto &stream : modifiedSource.mediaStreams)
-            {
-                if (stream.type == "Audio" && !audioFound && prefAudioLang != "auto" &&
-                    stream.language.compare(prefAudioLang, Qt::CaseInsensitive) == 0)
-                {
-                    bestAudioIdx = stream.index;
-                    audioFound = true;
-                }
-                else if (stream.type == "Subtitle")
-                {
-                    if (firstSubIdx < 0)
-                        firstSubIdx = stream.index;
-                    if (stream.isDefault)
-                        hasDefaultSub = true;
-                    if (!subFound && prefSubLang != "auto" && prefSubLang != "none" &&
-                        stream.language.compare(prefSubLang, Qt::CaseInsensitive) == 0)
-                    {
-                        bestSubIdx = stream.index;
-                        subFound = true;
-                    }
-                }
-            }
-
-            if (bestAudioIdx >= 0)
-            {
-                for (auto &stream : modifiedSource.mediaStreams)
-                {
-                    if (stream.type == "Audio")
-                        stream.isDefault = (stream.index == bestAudioIdx);
-                }
-            }
-
-            if (prefSubLang == "none")
-            {
-                for (auto &stream : modifiedSource.mediaStreams)
-                {
-                    if (stream.type == "Subtitle")
-                        stream.isDefault = false;
-                }
-            }
-            else if (bestSubIdx >= 0)
-            {
-                for (auto &stream : modifiedSource.mediaStreams)
-                {
-                    if (stream.type == "Subtitle")
-                        stream.isDefault = (stream.index == bestSubIdx);
-                }
-            }
-            else if (firstSubIdx >= 0 && !hasDefaultSub)
-            {
-                for (auto &stream : modifiedSource.mediaStreams)
-                {
-                    if (stream.type == "Subtitle")
-                        stream.isDefault = (stream.index == firstSubIdx);
-                }
-            }
-        }
+        PlayerPreferenceUtils::applyPreferredStreamRules(
+            modifiedSource,
+            ConfigStore::instance()->get<QString>(ConfigKeys::PlayerAudioLang, "auto"),
+            ConfigStore::instance()->get<QString>(ConfigKeys::PlayerSubLang, "auto"));
 
         QString streamUrl = m_core->mediaService()->getStreamUrl(actualItem.id, modifiedSource.id);
 
-        
-        QString playTitle = actualItem.name;
-        if (actualItem.type == "Episode")
-        {
-            QString seriesName = actualItem.seriesName.isEmpty() ? m_seriesTitleLabel->text() : actualItem.seriesName;
-            playTitle = QString("%1 - S%2:E%3 - %4")
-                            .arg(seriesName)
-                            .arg(actualItem.parentIndexNumber)
-                            .arg(actualItem.indexNumber)
-                            .arg(actualItem.name);
-        }
+        const QString playTitle =
+            MediaItemUtils::playbackTitle(actualItem, m_seriesTitleLabel->text());
 
         long long startTicks = actualItem.userData.playbackPositionTicks;
         PlaybackManager::instance()->startInternalPlayback(actualItem.id, playTitle, streamUrl, startTicks,

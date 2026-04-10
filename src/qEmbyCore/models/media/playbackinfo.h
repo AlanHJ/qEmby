@@ -2,6 +2,7 @@
 #define PLAYBACKINFO_H
 
 #include "../../qEmbyCore_global.h"
+#include <QDateTime>
 #include <QString>
 #include <QList>
 #include <QJsonObject>
@@ -104,6 +105,8 @@ struct QEMBYCORE_EXPORT MediaSourceInfo {
     Q_PROPERTY(long long size MEMBER size)
     Q_PROPERTY(QString directStreamUrl MEMBER directStreamUrl)
     Q_PROPERTY(long long runTimeTicks MEMBER runTimeTicks)
+    Q_PROPERTY(QDateTime dateCreated MEMBER dateCreated)
+    Q_PROPERTY(QDateTime dateModified MEMBER dateModified)
 
 public:
     QString id;
@@ -113,6 +116,8 @@ public:
     long long size = 0;     
     QString directStreamUrl;
     long long runTimeTicks = 0;
+    QDateTime dateCreated;
+    QDateTime dateModified;
     QList<MediaStreamInfo> mediaStreams;
 
     static MediaSourceInfo fromJson(const QJsonObject& json);

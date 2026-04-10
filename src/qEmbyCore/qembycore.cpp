@@ -4,6 +4,7 @@
 #include "services/auth/authservice.h"
 #include "services/media/mediaservice.h" 
 #include "services/admin/adminservice.h" 
+#include "services/danmaku/danmakuservice.h"
 
 QEmbyCore::QEmbyCore(QObject *parent)
     : QObject(parent)
@@ -22,6 +23,9 @@ QEmbyCore::QEmbyCore(QObject *parent)
 
     
     m_adminService = new AdminService(m_serverManager, this);
+
+    
+    m_danmakuService = new DanmakuService(m_networkManager, m_serverManager, this);
 }
 
 QEmbyCore::~QEmbyCore()
@@ -49,4 +53,9 @@ MediaService* QEmbyCore::mediaService() const
 AdminService* QEmbyCore::adminService() const
 {
     return m_adminService;
+}
+
+DanmakuService* QEmbyCore::danmakuService() const
+{
+    return m_danmakuService;
 }

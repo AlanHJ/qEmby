@@ -139,8 +139,11 @@ struct QEMBYCORE_EXPORT MediaItem {
     Q_PROPERTY(QString collectionType MEMBER collectionType)
     Q_PROPERTY(QString collectionId MEMBER collectionId)     
     Q_PROPERTY(QString collectionName MEMBER collectionName) 
+    Q_PROPERTY(QString playlistId MEMBER playlistId)
+    Q_PROPERTY(QString playlistItemId MEMBER playlistItemId)
     Q_PROPERTY(QString seriesId MEMBER seriesId)             
     Q_PROPERTY(QString seriesName MEMBER seriesName)         
+    Q_PROPERTY(QVariantMap providerIds MEMBER providerIds)
     Q_PROPERTY(int productionYear MEMBER productionYear)
     Q_PROPERTY(QString overview MEMBER overview)
     Q_PROPERTY(QString officialRating MEMBER officialRating)
@@ -148,6 +151,7 @@ struct QEMBYCORE_EXPORT MediaItem {
     Q_PROPERTY(QString dateCreated MEMBER dateCreated)
     Q_PROPERTY(QString dateCreatedRaw MEMBER dateCreatedRaw)
     Q_PROPERTY(int criticRating MEMBER criticRating)
+    Q_PROPERTY(bool canDownload MEMBER canDownload)
 
     
     Q_PROPERTY(QString container MEMBER container)
@@ -173,8 +177,11 @@ public:
     QString collectionType;
     QString collectionId;
     QString collectionName;
+    QString playlistId;      
+    QString playlistItemId;  
     QString seriesId;      
     QString seriesName;    
+    QVariantMap providerIds; 
 
     
     int productionYear = 0;
@@ -186,6 +193,7 @@ public:
     long long runTimeTicks = 0;
     double communityRating = 0.0;
     int criticRating = 0;  
+    bool canDownload = false;
 
     
     QString container;     

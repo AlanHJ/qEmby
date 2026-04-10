@@ -10,6 +10,7 @@ class QEmbyCore;
 class QListView;
 class MediaListModel;
 class QPropertyAnimation;
+class ShimmerWidget;
 
 class MediaGridWidget : public QWidget {
     Q_OBJECT
@@ -20,6 +21,9 @@ public:
 
     
     void setCardStyle(MediaCardDelegate::CardStyle style);
+
+    
+    void setLoading(bool loading);
 
     
     void updateItem(const MediaItem& item);
@@ -62,6 +66,9 @@ private:
     
     QPropertyAnimation* m_vScrollAnim;
     int m_vScrollTarget;
+
+    
+    ShimmerWidget* m_shimmer = nullptr;
 };
 
 #endif 

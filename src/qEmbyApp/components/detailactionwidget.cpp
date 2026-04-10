@@ -1,5 +1,7 @@
 #include "detailactionwidget.h"
 #include "../managers/externalplayerdetector.h"
+#include "../utils/mediasourcepreferenceutils.h"
+#include "../utils/playerpreferenceutils.h"
 #include "modernmenubutton.h"
 #include "splitplayerbutton.h"
 #include <QFileInfo>
@@ -224,28 +226,13 @@ void DetailActionWidget::setSources(const QList<MediaSourceInfo> &sources,
                                  src.id);
     }
 
-    
     int bestIndex = currentIndex;
     if (sources.size() > 1) {
-      QString versionPref =
+      bestIndex = MediaSourcePreferenceUtils::resolvePreferredMediaSourceIndex(
+          sources,
           ConfigStore::instance()
               ->get<QString>(ConfigKeys::PlayerPreferredVersion)
-              .trimmed();
-      if (!versionPref.isEmpty()) {
-        QStringList keywords = versionPref.split(',', Qt::SkipEmptyParts);
-        for (const QString &kw : keywords) {
-          QString keyword = kw.trimmed();
-          if (keyword.isEmpty())
-            continue;
-          for (int i = 0; i < sources.size(); ++i) {
-            if (sources[i].name.contains(keyword, Qt::CaseInsensitive)) {
-              bestIndex = i;
-              goto versionFound;
-            }
-          }
-        }
-      versionFound:;
-      }
+              .trimmed());
     }
 
     m_versionComboBox->setCurrentIndex(bestIndex);
@@ -270,10 +257,17 @@ void DetailActionWidget::setStreams(const MediaSourceInfo &source) {
       ConfigKeys::PlayerAudioLang, "auto");
   QString prefSubLang =
       ConfigStore::instance()->get<QString>(ConfigKeys::PlayerSubLang, "auto");
+  const int preferredAudioStreamIndex =
+      PlayerPreferenceUtils::findPreferredStreamIndex(
+          source.mediaStreams, "Audio", prefAudioLang);
+  const int preferredSubtitleStreamIndex =
+      PlayerPreferenceUtils::findPreferredStreamIndex(
+          source.mediaStreams, "Subtitle", prefSubLang);
+  const bool subtitleDisabled =
+      PlayerPreferenceUtils::isSubtitleDisabled(prefSubLang);
 
   int defaultAudioIdx = 0;
   int defaultSubIdx = 0; 
-  bool audioMatchedByPref = false;
   bool subMatchedByPref = false;
   bool subMatchedByDefault = false; 
 
@@ -303,12 +297,10 @@ void DetailActionWidget::setStreams(const MediaSourceInfo &source) {
                                secondLineParts.join("  ·  "), stream.index);
 
       int curIdx = m_audioComboBox->count() - 1;
-      
-      if (!audioMatchedByPref && prefAudioLang != "auto" &&
-          stream.language.compare(prefAudioLang, Qt::CaseInsensitive) == 0) {
+      if (preferredAudioStreamIndex >= 0 &&
+          stream.index == preferredAudioStreamIndex) {
         defaultAudioIdx = curIdx;
-        audioMatchedByPref = true;
-      } else if (!audioMatchedByPref && stream.isDefault) {
+      } else if (preferredAudioStreamIndex < 0 && stream.isDefault) {
         defaultAudioIdx = curIdx;
       }
     } else if (stream.type == "Subtitle") {
@@ -336,12 +328,12 @@ void DetailActionWidget::setStreams(const MediaSourceInfo &source) {
                                   secondLineParts.join("  ·  "), stream.index);
 
       int curIdx = m_subtitleComboBox->count() - 1;
-      
-      if (!subMatchedByPref && prefSubLang != "auto" && prefSubLang != "none" &&
-          stream.language.compare(prefSubLang, Qt::CaseInsensitive) == 0) {
+      if (preferredSubtitleStreamIndex >= 0 &&
+          stream.index == preferredSubtitleStreamIndex) {
         defaultSubIdx = curIdx;
         subMatchedByPref = true;
-      } else if (!subMatchedByPref && stream.isDefault) {
+      } else if (preferredSubtitleStreamIndex < 0 && !subMatchedByPref &&
+                 stream.isDefault) {
         defaultSubIdx = curIdx;
         subMatchedByDefault = true;
       }
@@ -349,7 +341,7 @@ void DetailActionWidget::setStreams(const MediaSourceInfo &source) {
   }
 
   
-  if (prefSubLang == "none") {
+  if (subtitleDisabled) {
     defaultSubIdx = 0; 
   } else if (!subMatchedByPref && !subMatchedByDefault &&
              m_subtitleComboBox->count() > 1) {

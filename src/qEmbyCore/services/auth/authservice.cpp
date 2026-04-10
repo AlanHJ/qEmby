@@ -5,6 +5,16 @@
 #include <qcoronetwork.h>
 #include <stdexcept>
 
+namespace {
+
+bool resolveContentDownloadPermission(const QJsonObject& policyObj)
+{
+    return policyObj["EnableContentDownloading"].toBool(
+        policyObj["EnableMediaDownloading"].toBool(true));
+}
+
+} 
+
 AuthService::AuthService(NetworkManager* networkManager, ServerManager* serverManager, QObject *parent)
     : QObject(parent), m_networkManager(networkManager), m_serverManager(serverManager)
 {
@@ -74,8 +84,10 @@ QCoro::Task<ServerProfile> AuthService::login(const QString& serverUrl,
 
     QJsonObject policyObj = userObj["Policy"].toObject();
     tempProfile.isAdmin = policyObj["IsAdministrator"].toBool();
- 
+    tempProfile.canDownloadMedia = resolveContentDownloadPermission(policyObj);
 
+    
+    
     {
         QStringList iconCandidates;
         if (tempProfile.type == ServerProfile::Jellyfin) {
@@ -130,7 +142,7 @@ QCoro::Task<ServerProfile> AuthService::login(const QString& serverUrl,
         }
     }
 
-    // 所有流程走完，落盘保存
+    
     m_serverManager->addServer(tempProfile);
     m_serverManager->setActiveServer(tempProfile.id);
 
@@ -171,6 +183,24 @@ QCoro::Task<ServerProfile> AuthService::validateSession(const QString& serverId)
     
     
     co_await tempClient.get("/System/Info");
+
+    try {
+        const QJsonObject userResp =
+            co_await tempClient.get(QStringLiteral("/Users/%1").arg(targetProfile.userId));
+        const QJsonObject policyObj = userResp.value(QStringLiteral("Policy")).toObject();
+        targetProfile.userName = userResp.value(QStringLiteral("Name")).toString(
+            targetProfile.userName);
+        targetProfile.isAdmin = policyObj.value(QStringLiteral("IsAdministrator"))
+                                    .toBool(targetProfile.isAdmin);
+        targetProfile.canDownloadMedia =
+            resolveContentDownloadPermission(policyObj);
+        m_serverManager->addServer(targetProfile);
+    } catch (const std::exception& e) {
+        qWarning() << "[AuthService] Failed to refresh current user policy during"
+                      " session validation"
+                   << "| userId:" << targetProfile.userId
+                   << "| error:" << e.what();
+    }
 
     
     m_serverManager->setActiveServer(targetProfile.id);
