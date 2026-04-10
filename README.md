@@ -64,9 +64,12 @@
 - [x] Media search with history
 - [x] TV series & movies support
 - [x] Server administration dashboard
-- [ ] Playlist support (add/remove items)
-- [ ] Media identification & metadata refresh
-- [ ] Metadata and image editing
+- [x] Playlist support (add/remove items)
+- [x] Media identification & metadata refresh
+- [x] Metadata and image editing
+- [x] Danmaku (bullet comments) system
+- [x] Download manager
+- [ ] AI-powered subtitle generation
 - [ ] Linux platform support
 - [ ] macOS platform support
 
@@ -207,9 +210,12 @@ This project is licensed under the [MIT License](LICENSE).
 - [x] 媒体搜索与搜索历史
 - [x] 电视剧、电影支持
 - [x] 服务器管理仪表盘
-- [ ] 支持添加到播放列表和从播放列表中移除
-- [ ] 支持识别来更新元数据
-- [ ] 支持修改元数据和图片
+- [x] 支持添加到播放列表和从播放列表中移除
+- [x] 支持识别来更新元数据
+- [x] 支持修改元数据和图片
+- [x] 弹幕系统（搜索、匹配、设置、渲染）
+- [x] 下载管理器
+- [ ] AI 字幕生成
 - [ ] Linux 平台适配
 - [ ] macOS 平台适配
 
