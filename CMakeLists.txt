@@ -8,7 +8,6 @@ set(CMAKE_AUTORCC ON)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_PREFIX_PATH "E:/Qt6/6.9.2/msvc2022_64/lib/cmake")
 # set(CMAKE_PREFIX_PATH "/path/to/Qt6/lib/cmake")  # Set your Qt6 installation path here, or pass it via cmake -DCMAKE_PREFIX_PATH=...
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets Core Network Concurrent OpenGLWidgets LinguistTools WebSockets)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets Core Network Concurrent OpenGLWidgets LinguistTools WebSockets)
