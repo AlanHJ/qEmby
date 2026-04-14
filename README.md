@@ -14,7 +14,7 @@
   <a href="https://github.com/AlanHJ/qEmby/releases/latest"><img src="https://img.shields.io/github/v/release/AlanHJ/qEmby?include_prereleases&label=Download" alt="Release"/></a>
   <img src="https://img.shields.io/badge/Qt-6.x-green.svg" alt="Qt 6"/>
   <img src="https://img.shields.io/badge/C%2B%2B-20-orange.svg" alt="C++20"/>
-  <img src="https://img.shields.io/badge/Platform-Windows-lightgrey.svg" alt="Platform: Windows"/>
+  <img src="https://img.shields.io/badge/Platform-Windows%20|%20Linux-lightgrey.svg" alt="Platform: Windows | Linux"/>
 </p>
 
 <p align="center">
@@ -52,7 +52,7 @@
 | Platform | Status |
 |---|---|
 | Windows 10/11 x64 | ✅ Supported |
-| Linux | 🚧 Planned |
+| Linux x64 (AppImage / deb) | ✅ Supported |
 | macOS | 🚧 Planned |
 
 ## 📋 Roadmap
@@ -70,7 +70,7 @@
 - [x] Danmaku (bullet comments) system
 - [x] Download manager
 - [ ] AI-powered subtitle generation
-- [ ] Linux platform support
+- [x] Linux platform support
 - [ ] macOS platform support
 
 > This is a personal hobby project, developed out of interest. Contributions and feedback are welcome!
@@ -198,7 +198,7 @@ This project is licensed under the [MIT License](LICENSE).
 | 平台 | 状态 |
 |---|---|
 | Windows 10/11 x64 | ✅ 已适配 |
-| Linux | 🚧 计划中 |
+| Linux x64 (AppImage / deb) | ✅ 已适配 |
 | macOS | 🚧 计划中 |
 
 ## 📋 开发路线图
@@ -216,7 +216,7 @@ This project is licensed under the [MIT License](LICENSE).
 - [x] 弹幕系统（搜索、匹配、设置、渲染）
 - [x] 下载管理器
 - [ ] AI 字幕生成
-- [ ] Linux 平台适配
+- [x] Linux 平台适配
 - [ ] macOS 平台适配
 
 > 本项目为个人兴趣开发，欢迎贡献和反馈！
