@@ -56,7 +56,7 @@
 | `qEmby-0.0.2-x86_64.AppImage` | Universal Linux AppImage (no install needed, `chmod +x` and run) / 通用 Linux AppImage（无需安装，`chmod +x` 后直接运行） |
 | `qEmby_0.0.2-noble_amd64.deb` | Deb package for Ubuntu 24.04 (Noble Numbat) / Ubuntu 24.04 安装包 |
 | `qEmby_0.0.2-jammy_amd64.deb` | Deb package for Ubuntu 22.04 (Jammy Jellyfish) / Ubuntu 22.04 安装包 |
-| `qEmby_0.0.2-bookworm_amd64.deb` | Deb package for Debian 12 (Bookworm). Note: `bookworm` is the Debian 12 release codename / Debian 12 安装包（`bookworm` 为 Debian 12 发行代号） |
+| `qEmby_0.0.2-bookworm_amd64.deb` | Deb package for Debian 12 (Bookworm) / Debian 12 安装包 |
 | `qEmby_0.0.2-trixie_amd64.deb` | Deb package for Debian 13 (Trixie) / Debian 13 安装包 |
 
 > **Note / 说明：** The `.deb` filenames contain the distribution codename (e.g. `bookworm` = Debian 12, `jammy` = Ubuntu 22.04). Please download the package matching your OS version. / `.deb` 文件名中包含发行版代号（如 `bookworm` = Debian 12，`jammy` = Ubuntu 22.04），请下载与您系统版本匹配的安装包。
