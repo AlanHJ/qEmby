@@ -1,5 +1,6 @@
 #include "mediagridwidget.h"
 #include "shimmerwidget.h"
+#include "../utils/textwraputils.h"
 #include "../views/media/medialistmodel.h"
 #include <QVBoxLayout>
 #include <QListView>
@@ -76,6 +77,8 @@ MediaGridWidget::MediaGridWidget(QEmbyCore* core, QWidget* parent)
     connect(m_listView, &QListView::clicked, this, [this](const QModelIndex& index) {
         Q_EMIT itemClicked(m_listModel->getItem(index));
     });
+    connect(m_listView->verticalScrollBar(), &QScrollBar::valueChanged, this,
+            [this](int) { notifyLoadMoreIfNeeded(); });
 
     
     
@@ -147,6 +150,10 @@ void MediaGridWidget::setItems(const QList<MediaItem>& items) {
         m_shimmer->stopAnimation();
         m_shimmer->hide();
     }
+    if (!items.isEmpty()) {
+        QMetaObject::invokeMethod(this, [this]() { notifyLoadMoreIfNeeded(); },
+                                  Qt::QueuedConnection);
+    }
 }
 
 
@@ -192,9 +199,14 @@ void MediaGridWidget::resizeEvent(QResizeEvent *event) {
     if (m_shimmer && m_shimmer->isVisible()) {
         m_shimmer->setGeometry(m_listView->geometry());
     }
+    notifyLoadMoreIfNeeded();
 }
 
 bool MediaGridWidget::eventFilter(QObject* obj, QEvent* event) {
+    if (obj == m_listView->viewport() && event->type() == QEvent::ToolTip) {
+        return TextWrapUtils::showWrappedMediaItemToolTip(m_listView, event);
+    }
+
     
     if (event->type() == QEvent::Wheel && obj == m_listView->viewport()) {
         QWheelEvent* we = static_cast<QWheelEvent*>(event);
@@ -221,6 +233,24 @@ bool MediaGridWidget::eventFilter(QObject* obj, QEvent* event) {
         }
     }
     return QWidget::eventFilter(obj, event);
+}
+
+void MediaGridWidget::notifyLoadMoreIfNeeded()
+{
+    if (!m_listView || !m_listModel || m_listModel->rowCount() <= 0) {
+        return;
+    }
+
+    QScrollBar* vBar = m_listView->verticalScrollBar();
+    if (!vBar) {
+        return;
+    }
+
+    constexpr int kLoadMoreThreshold = 160;
+    const int remaining = vBar->maximum() - vBar->value();
+    if (vBar->maximum() <= 0 || remaining <= kLoadMoreThreshold) {
+        Q_EMIT loadMoreRequested();
+    }
 }
 
 void MediaGridWidget::adjustGrid() {

@@ -8,6 +8,8 @@
 #include <QSequentialAnimationGroup>
 #include <QParallelAnimationGroup>
 
+class QFont;
+
 class ModernToast : public QWidget {
     Q_OBJECT
     Q_PROPERTY(qreal textScale READ textScale WRITE setTextScale)
@@ -26,6 +28,9 @@ private:
     
     void showWithAnimation(const QString &msg, int durationMs);
     static QWidget* getMainWindow();
+    QRect resolveAnchorRect() const;
+    QRect textRect() const;
+    QSize wrappedTextSize(const QFont& font, int maxTextWidth) const;
 
     qreal textScale() const { return m_textScale; }
     void setTextScale(qreal scale);
@@ -33,6 +38,7 @@ private:
     static QPointer<ModernToast> s_instance;
 
     QString m_message;
+    QString m_wrappedMessage;
     qreal m_textScale;
 
     int m_comboCount;

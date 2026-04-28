@@ -25,6 +25,7 @@ public slots:
     void expand();
     void collapse();
     void setExpanded(bool expanded);
+    void setExpandedImmediately(bool expanded);
     
     void initExpanded();
 

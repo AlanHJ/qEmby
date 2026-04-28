@@ -645,6 +645,7 @@ QCoro::Task<QList<DanmakuMatchCandidate>> DandanplayProvider::searchCandidates(
         << "| media:" << context.displayTitle()
         << "| mediaId:" << context.mediaId
         << "| isEpisode:" << context.isEpisode()
+        << "| contentScope:" << config.contentScope
         << "| fileName:" << fileName
         << "| keywords:" << keywords.join(QStringLiteral(" | "));
 

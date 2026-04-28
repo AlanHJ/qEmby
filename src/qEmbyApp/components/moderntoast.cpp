@@ -1,12 +1,25 @@
 #include "moderntoast.h"
+#include "../utils/textwraputils.h"
 #include <QApplication>
 #include <QGraphicsDropShadowEffect>
 #include <QGuiApplication>
 #include <QScreen>
 #include <QPainter>
 #include <QStyleOption>
-#include <QFontMetrics>
 #include <QEasingCurve>
+
+namespace {
+
+constexpr int kToastFontPixelSize = 14;
+constexpr int kToastHorizontalPadding = 18;
+constexpr int kToastVerticalPadding = 10;
+constexpr int kToastBottomMargin = 120;
+constexpr int kToastMinimumWidth = 64;
+constexpr int kToastMinimumTextWidth = 120;
+constexpr int kToastAbsoluteMaxWidth = 560;
+constexpr qreal kToastRelativeMaxWidth = 0.58;
+
+} 
 
 QPointer<ModernToast> ModernToast::s_instance = nullptr;
 
@@ -171,6 +184,36 @@ void ModernToast::setTextScale(qreal scale) {
     update();
 }
 
+QRect ModernToast::resolveAnchorRect() const
+{
+    QWidget *mainWin = parentWidget();
+    if (!mainWin) {
+        mainWin = getMainWindow();
+    }
+
+    if (mainWin) {
+        return mainWin->geometry();
+    }
+
+    if (QScreen *screen = QGuiApplication::primaryScreen()) {
+        return screen->geometry();
+    }
+
+    return QRect(0, 0, 1280, 720);
+}
+
+QRect ModernToast::textRect() const
+{
+    return rect().adjusted(kToastHorizontalPadding, kToastVerticalPadding,
+                           -kToastHorizontalPadding, -kToastVerticalPadding);
+}
+
+QSize ModernToast::wrappedTextSize(const QFont& font, int maxTextWidth) const
+{
+    return TextWrapUtils::measureWrappedPlainText(m_message, font,
+                                                  maxTextWidth);
+}
+
 void ModernToast::paintEvent(QPaintEvent *event) {
     Q_UNUSED(event);
     QPainter painter(this);
@@ -198,7 +241,9 @@ void ModernToast::paintEvent(QPaintEvent *event) {
     painter.scale(m_textScale, m_textScale);
     painter.translate(-center);
 
-    painter.drawText(rect(), Qt::AlignCenter, m_message);
+    painter.drawText(textRect(),
+                     Qt::AlignHCenter | Qt::AlignVCenter | Qt::TextWordWrap,
+                     m_wrappedMessage);
 }
 
 
@@ -206,27 +251,36 @@ void ModernToast::showWithAnimation(const QString &msg, int durationMs) {
     m_message = msg;
 
     QFont currentFont = this->font();
-    currentFont.setPixelSize(14);
+    currentFont.setPixelSize(kToastFontPixelSize);
     this->setFont(currentFont);
 
-    QFontMetrics fm(currentFont);
-    QSize baseTextSize = fm.size(0, msg);
+    const QRect anchorRect = resolveAnchorRect();
+    const int availableWidth = qMax(kToastMinimumWidth,
+                                    anchorRect.width() - 48);
+    const int preferredMaxWidth =
+        qRound(anchorRect.width() * kToastRelativeMaxWidth);
+    const int maxToastWidth =
+        qMin(availableWidth,
+             qMax(220, qMin(preferredMaxWidth, kToastAbsoluteMaxWidth)));
+    const int maxTextWidth =
+        qMax(kToastMinimumTextWidth,
+             maxToastWidth - kToastHorizontalPadding * 2);
 
-    int targetW = baseTextSize.width() + 28;
-    int targetH = baseTextSize.height() + 14;
+    m_wrappedMessage =
+        TextWrapUtils::wrapPlainText(msg, currentFont, maxTextWidth);
+    const QSize wrappedSize = wrappedTextSize(currentFont, maxTextWidth);
 
-    QWidget *mainWin = parentWidget();
-    if (!mainWin) mainWin = getMainWindow();
+    const int targetW = qMax(
+        kToastMinimumWidth,
+        qMin(maxToastWidth, wrappedSize.width() + kToastHorizontalPadding * 2));
+    const int targetH =
+        qMax(currentFont.pixelSize() + kToastVerticalPadding * 2,
+             wrappedSize.height() + kToastVerticalPadding * 2);
 
-    if (mainWin) {
-        QRect geo = mainWin->geometry();
-        int px = geo.x() + (geo.width() - targetW) / 2;
-        int py = geo.y() + geo.height() - targetH - 120;
-        m_baseGeometry = QRect(px, py, targetW, targetH);
-    } else {
-        QRect screenGeo = QGuiApplication::primaryScreen()->geometry();
-        m_baseGeometry = QRect((screenGeo.width() - targetW) / 2, screenGeo.height() - targetH - 120, targetW, targetH);
-    }
+    const int px = anchorRect.x() + (anchorRect.width() - targetW) / 2;
+    const int py =
+        anchorRect.y() + anchorRect.height() - targetH - kToastBottomMargin;
+    m_baseGeometry = QRect(px, py, targetW, targetH);
 
     show();
 

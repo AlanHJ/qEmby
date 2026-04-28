@@ -22,3 +22,11 @@ target_link_libraries(qEmbyCore PUBLIC Qt${QT_VERSION_MAJOR}::Gui
 )
 
 target_compile_definitions(qEmbyCore PRIVATE QEMBYCORE_LIBRARY)
+
+include(GNUInstallDirs)
+
+install(TARGETS qEmbyCore
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+)

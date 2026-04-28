@@ -1,5 +1,6 @@
 #include "horizontallistviewgallery.h"
 #include "shimmerwidget.h"
+#include "../utils/textwraputils.h"
 #include "../views/media/medialistmodel.h"
 #include <QListView>
 #include <QVBoxLayout>
@@ -13,8 +14,7 @@
 #include <QScrollerProperties> 
 #include <QStyleOptionViewItem>
 #include <QTimer>
-#include <QHelpEvent>
-#include <QToolTip>
+#include <QDebug>
 
 HorizontalListViewGallery::HorizontalListViewGallery(QEmbyCore* core, QWidget* parent)
     : QWidget(parent), m_core(core), m_hScrollAnim(nullptr), m_hScrollTarget(0), m_cardStyle(MediaCardDelegate::Poster)
@@ -270,6 +270,50 @@ void HorizontalListViewGallery::setContentPadding(int padding)
     updateButtonPositions();
 }
 
+void HorizontalListViewGallery::setHoverControls(
+    MediaCardDelegate::HoverControls controls)
+{
+    if (m_listDelegate) {
+        m_listDelegate->setHoverControls(controls);
+        m_listView->viewport()->update();
+    }
+}
+
+void HorizontalListViewGallery::scrollToItemId(const QString &itemId)
+{
+    const QString targetItemId = itemId.trimmed();
+    if (targetItemId.isEmpty() || !m_listView || !m_listModel) {
+        return;
+    }
+
+    QTimer::singleShot(0, this, [this, targetItemId]() {
+        if (!m_listView || !m_listModel) {
+            return;
+        }
+
+        m_listView->doItemsLayout();
+        const int rowCount = m_listModel->rowCount();
+        for (int row = 0; row < rowCount; ++row) {
+            const QModelIndex index = m_listModel->index(row, 0);
+            const MediaItem item =
+                index.data(MediaListModel::ItemDataRole).value<MediaItem>();
+            if (item.id != targetItemId) {
+                continue;
+            }
+
+            qDebug() << "[HorizontalListViewGallery] Scroll to item"
+                     << "| itemId=" << targetItemId
+                     << "| row=" << row;
+            m_listView->scrollTo(index, QAbstractItemView::PositionAtCenter);
+            return;
+        }
+
+        qDebug() << "[HorizontalListViewGallery] Scroll target not found"
+                 << "| itemId=" << targetItemId
+                 << "| rowCount=" << rowCount;
+    });
+}
+
 void HorizontalListViewGallery::setHighlightedItemId(const QString &id)
 {
     if (m_listDelegate) {
@@ -357,17 +401,7 @@ bool HorizontalListViewGallery::eventFilter(QObject* obj, QEvent* event)
             m_btnRight->hide();
         }
     } else if (obj == m_listView->viewport() && event->type() == QEvent::ToolTip) {
-        auto *helpEvent = static_cast<QHelpEvent *>(event);
-        const QModelIndex index = m_listView->indexAt(helpEvent->pos());
-        const QString tooltip = index.data(Qt::ToolTipRole).toString().trimmed();
-        if (!tooltip.isEmpty()) {
-            QToolTip::showText(helpEvent->globalPos(), tooltip,
-                               m_listView->viewport(),
-                               m_listView->visualRect(index), 15000);
-        } else {
-            QToolTip::hideText();
-        }
-        return true;
+        return TextWrapUtils::showWrappedMediaItemToolTip(m_listView, event);
     } else if (event->type() == QEvent::Wheel) {
         
         QWheelEvent* wheelEvent = static_cast<QWheelEvent*>(event);

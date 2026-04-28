@@ -3,6 +3,7 @@
 #include "../../components/playerdanmakusettingsdialog.h"
 #include "../../components/playersubtitlesettingsdialog.h"
 #include "../../components/playermediaswitcherpanel.h"
+#include "../../components/nativedanmakuoverlay.h"
 #include "../../components/modernscrollpanel.h"
 #include "../../components/playerosdlayer.h"
 #include "../../components/playerlongpresshandler.h"
@@ -10,6 +11,7 @@
 #include "../../utils/mediaitemutils.h"
 #include "../../utils/mediasourcepreferenceutils.h"
 #include "../../utils/playerpreferenceutils.h"
+#include "../../utils/powerinhibitutils.h"
 #include "../../utils/subtitlestyleutils.h"
 #include <fileutils.h>
 #include "qembycore.h"
@@ -51,6 +53,15 @@
 
 namespace
 {
+bool isDanmakuEnabledConfigKey(const QString &key)
+{
+    static const QString kDanmakuEnabledSuffix =
+        QStringLiteral("/") +
+        QString::fromLatin1(ConfigKeys::PlayerDanmakuEnabled);
+    return key == QLatin1String(ConfigKeys::PlayerDanmakuEnabled) ||
+           key.endsWith(kDanmakuEnabledSuffix);
+}
+
 QString trimOrDash(QString value)
 {
     value = value.trimmed();
@@ -395,7 +406,8 @@ PlayerView::PlayerView(QEmbyCore *core, QWidget *parent)
 
                     
                     QVariant stateVar = m_mpvWidget->controller()->getProperty("demuxer-cache-state");
-                    if (stateVar.isValid() && stateVar.type() == QVariant::Map)
+                    if (stateVar.isValid() &&
+                        stateVar.metaType().id() == QMetaType::QVariantMap)
                     {
                         auto ranges = stateVar.toMap()["seekable-ranges"].toList();
                         if (!ranges.isEmpty())
@@ -492,7 +504,7 @@ PlayerView::PlayerView(QEmbyCore *core, QWidget *parent)
             [this](const QString &key, const QVariant &value)
             {
                 Q_UNUSED(value);
-                if (key == ConfigKeys::PlayerDanmakuEnabled)
+                if (isDanmakuEnabledConfigKey(key))
                 {
                     updateDanmakuButtonState();
                 }
@@ -686,6 +698,29 @@ bool PlayerView::isMediaPlaying() const
     return m_isPlaying;
 }
 
+void PlayerView::updatePowerInhibition()
+{
+    const bool shouldHold =
+        !m_isViewTearingDown && !m_hasReportedStop && m_isPlaying &&
+        !m_currentMediaId.isEmpty();
+
+    if (shouldHold == m_powerInhibitionHeld)
+    {
+        return;
+    }
+
+    if (shouldHold)
+    {
+        m_powerInhibitionHeld = PowerInhibitUtils::acquirePlaybackInhibition(
+            QStringLiteral("qEmby video playback"));
+    }
+    else
+    {
+        PowerInhibitUtils::releasePlaybackInhibition();
+        m_powerInhibitionHeld = false;
+    }
+}
+
 
 void PlayerView::pausePlayback()
 {
@@ -748,7 +783,11 @@ void PlayerView::setupUi()
     m_mpvWidget->setAutoFillBackground(true);
     m_mpvWidget->installEventFilter(this); 
     m_mpvWidget->setMouseTracking(true);
-    m_danmakuController = new PlayerDanmakuController(m_core, m_mpvWidget, this);
+    m_nativeDanmakuOverlay =
+        new NativeDanmakuOverlay(m_mpvWidget->controller(), this);
+    m_danmakuController =
+        new PlayerDanmakuController(m_core, m_mpvWidget, m_nativeDanmakuOverlay,
+                                    this);
     connect(m_danmakuController, &PlayerDanmakuController::toastRequested, this,
             [this](const QString &message) { showToast(message); });
     connect(m_danmakuController, &PlayerDanmakuController::stateChanged, this,
@@ -1101,6 +1140,14 @@ void PlayerView::setupUi()
     connect(m_mpvWidget, &MpvWidget::playbackStateChanged, this, &PlayerView::onPlaybackStateChanged);
     
     connect(m_mpvWidget->controller(), &MpvController::propertyChanged, this, &PlayerView::onMpvPropertyChanged);
+    connect(m_mpvWidget->controller(), &MpvController::endOfFile, this,
+            [this](const QString &reason)
+            {
+                qDebug() << "[PlayerView] MPV end of file"
+                         << "| reason=" << reason;
+                m_isPlaying = false;
+                updatePowerInhibition();
+            });
 
     setScaleIcon();
     updateDanmakuButtonState();
@@ -1155,6 +1202,18 @@ QString PlayerView::formatDanmakuProviderLabel(QString provider) const
     return provider.isEmpty() ? tr("Unknown Source") : provider;
 }
 
+QString PlayerView::formatDanmakuSourceServiceLabel(QString provider,
+                                                    QString serverName) const
+{
+    provider = provider.trimmed();
+    serverName = serverName.trimmed();
+    if (!serverName.isEmpty())
+    {
+        return tr("Server: %1").arg(serverName);
+    }
+    return formatDanmakuProviderLabel(provider);
+}
+
 QString PlayerView::buildDanmakuSummaryText() const
 {
     if (!m_danmakuController)
@@ -1179,9 +1238,11 @@ QString PlayerView::buildDanmakuSummaryText() const
         m_danmakuController->commentCount() > 0
             ? tr("%1 comments").arg(m_danmakuController->commentCount())
             : tr("Comment count unavailable");
+    const QString sourceService = formatDanmakuSourceServiceLabel(
+        m_danmakuController->sourceProvider(),
+        m_danmakuController->sourceServerName());
     return tr("Current: %1 | %2 | %3")
-        .arg(sourceTitle, countText,
-             formatDanmakuProviderLabel(m_danmakuController->sourceProvider()));
+        .arg(sourceTitle, countText, sourceService);
 }
 
 QString PlayerView::buildDanmakuTooltipText() const
@@ -1213,6 +1274,15 @@ QString PlayerView::buildDanmakuTooltipText() const
         m_danmakuController->commentCount() > 0
             ? tr("%1 comments").arg(m_danmakuController->commentCount())
             : tr("Comment count unavailable");
+    const QString serverName =
+        m_danmakuController->sourceServerName().trimmed();
+    if (!serverName.isEmpty())
+    {
+        return tr("Danmaku\nSource: %1\nServer: %2\nProvider: %3\nComments: %4")
+            .arg(sourceTitle, serverName,
+                 formatDanmakuProviderLabel(m_danmakuController->sourceProvider()),
+                 countText);
+    }
     return tr("Danmaku\nSource: %1\nProvider: %2\nComments: %3")
         .arg(sourceTitle,
              formatDanmakuProviderLabel(m_danmakuController->sourceProvider()),
@@ -1257,6 +1327,11 @@ void PlayerView::trackPlayerDialog(PlayerOverlayDialog *dialog)
 
 bool PlayerView::shouldShowDanmakuHudControls() const
 {
+    if (m_danmakuController)
+    {
+        return m_danmakuController->isDanmakuEnabled();
+    }
+
     return ConfigStore::instance()->get<bool>(ConfigKeys::PlayerDanmakuEnabled,
                                               false);
 }
@@ -1759,8 +1834,18 @@ void PlayerView::setupRightSidebar()
     m_rightSidebarAnim = new QPropertyAnimation(m_rightSidebar, "pos", this);
     m_rightSidebarAnim->setDuration(350);
     m_rightSidebarAnim->setEasingCurve(QEasingCurve::OutCubic);
+    connect(m_rightSidebarAnim, &QPropertyAnimation::finished, this,
+            [this]()
+            {
+                if (!m_rightSidebar || m_isRightSidebarVisible)
+                {
+                    return;
+                }
+                m_rightSidebar->hide();
+            });
 
     m_rightSidebar->installEventFilter(this);
+    m_rightSidebar->hide();
 }
 
 QCoro::Task<void> PlayerView::showRightSidebar()
@@ -1772,12 +1857,14 @@ QCoro::Task<void> PlayerView::showRightSidebar()
 
     m_isRightSidebarVisible = true;
     const int sidebarY = m_topHUD->height();
+    const QPoint hiddenPos(width() + 30, sidebarY);
 
     if (!m_rightSidebar || !m_rightSidebarAnim || !m_rightSidebarAnim->targetObject())
     {
         if (m_rightSidebar)
         {
             m_rightSidebar->move(width() - m_rightSidebar->width(), sidebarY);
+            m_rightSidebar->show();
         }
     }
     else
@@ -1786,6 +1873,11 @@ QCoro::Task<void> PlayerView::showRightSidebar()
         {
             stopPropertyAnimationSafely(m_rightSidebarAnim);
         }
+        if (!m_rightSidebar->isVisible())
+        {
+            m_rightSidebar->move(hiddenPos);
+        }
+        m_rightSidebar->show();
         m_rightSidebarAnim->setStartValue(m_rightSidebar->pos());
         m_rightSidebarAnim->setEndValue(
             QPoint(width() - m_rightSidebar->width(), sidebarY));
@@ -1837,6 +1929,13 @@ void PlayerView::hideRightSidebar(bool immediate)
             stopPropertyAnimationSafely(m_rightSidebarAnim);
         }
         m_rightSidebar->move(hiddenPos);
+        m_rightSidebar->hide();
+        return;
+    }
+
+    if (!m_rightSidebar->isVisible())
+    {
+        m_rightSidebar->move(hiddenPos);
         return;
     }
 
@@ -1859,6 +1958,7 @@ void PlayerView::stopAndReport()
         return;
     }
     m_hasReportedStop = true;
+    updatePowerInhibition();
     m_longPressHandler->setTeardown(true);
     stopTransientUiAnimations(m_isViewTearingDown);
 
@@ -1952,6 +2052,7 @@ void PlayerView::beginViewTeardown()
     }
 
     m_isViewTearingDown = true;
+    updatePowerInhibition();
     qDebug() << "[PlayerView] Begin teardown: stop timers, disconnect late signals, detach animations";
 
     if (m_reportTimer)
@@ -2140,6 +2241,7 @@ void PlayerView::setEffectivePlaybackSpeed(double speed)
         return;
     }
 
+    m_currentSpeed = speed;
     m_mpvWidget->controller()->setProperty("speed", speed);
     if (m_speedBtn)
     {
@@ -2200,6 +2302,10 @@ void PlayerView::updateOverlayLayout()
         m_bottomHudBaseHeight + (drawerHeight > 0 ? drawerHeight + 8 : 0);
 
     m_mpvWidget->setGeometry(0, 0, width(), height());
+    if (m_nativeDanmakuOverlay)
+    {
+        m_nativeDanmakuOverlay->setGeometry(0, 0, width(), height());
+    }
     m_loadingOverlay->setGeometry(0, 0, width(), height());
     m_topHUD->setGeometry(0, 0, width(), m_topHUD->height());
     m_bottomHUD->setFixedHeight(targetBottomHudHeight);
@@ -2763,6 +2869,15 @@ void PlayerView::onMpvPropertyChanged(const QString &property, const QVariant &v
             m_volumeSlider->blockSignals(false);
         }
     }
+    else if (property == "speed")
+    {
+        m_currentSpeed = value.toDouble();
+        if (m_speedBtn)
+        {
+            m_speedBtn->setText(
+                PlayerLongPressHandler::formatSpeedText(m_currentSpeed));
+        }
+    }
     else if (property == "paused-for-cache")
     {
         
@@ -3220,9 +3335,12 @@ void PlayerView::showDanmakuIdentifyDialog()
 
     const QString activeTargetId =
         m_danmakuController ? m_danmakuController->activeTargetId() : QString();
+    const QString activeEndpointId =
+        m_danmakuController ? m_danmakuController->activeEndpointId()
+                            : QString();
     auto *dialog = new PlayerDanmakuIdentifyDialog(
         m_core, m_danmakuController->mediaContext(), QString(),
-        activeTargetId, this);
+        activeTargetId, activeEndpointId, this);
     connect(dialog, &PlayerDanmakuIdentifyDialog::finished, this,
             [this, dialog](int result)
             {
@@ -3305,22 +3423,12 @@ void PlayerView::openDanmakuSettingsDialog()
     }
 
     auto *dialog = new PlayerDanmakuSettingsDialog(this);
-    connect(dialog, &PlayerDanmakuSettingsDialog::danmakuEnabledToggled, this,
-            [this](bool enabled)
-            {
-                if (!m_danmakuController)
-                {
-                    return;
-                }
-                m_danmakuController->setDanmakuEnabled(enabled);
-            });
     connect(dialog, &PlayerDanmakuSettingsDialog::liveReloadRequested, this,
             [this]()
             {
                 if (!m_danmakuController ||
                     !m_danmakuController->hasPlaybackContext() ||
-                    !ConfigStore::instance()->get<bool>(
-                        ConfigKeys::PlayerDanmakuEnabled, false))
+                    !m_danmakuController->isDanmakuEnabled())
                 {
                     return;
                 }
@@ -3336,8 +3444,7 @@ void PlayerView::openDanmakuSettingsDialog()
 
                 if (dialog->requiresReload() &&
                     m_danmakuController->hasPlaybackContext() &&
-                    ConfigStore::instance()->get<bool>(
-                        ConfigKeys::PlayerDanmakuEnabled, false))
+                    m_danmakuController->isDanmakuEnabled())
                 {
                     m_danmakuController->reload();
                 }
@@ -3851,7 +3958,7 @@ void PlayerView::playMedia(const QString &mediaId, const QString &title, const Q
     m_currentPlaySessionId.clear();
     m_currentMediaItem = resolvedItem;
     m_currentMediaSourceInfo = resolvedSourceInfo;
-    hideRightSidebar();
+    hideRightSidebar(true);
     hideHudMediaSwitcher();
     if (m_activePopup)
     {
@@ -4190,6 +4297,7 @@ void PlayerView::playMedia(const QString &mediaId, const QString &title, const Q
     m_mpvWidget->play();
 
     m_isPlaying = true;
+    updatePowerInhibition();
     m_playPauseBtn->setIcon(QIcon(":/svg/player/pause.svg"));
 
     
@@ -4487,6 +4595,7 @@ void PlayerView::onPlaybackStateChanged(bool isPaused)
     }
 
     m_isPlaying = !isPaused;
+    updatePowerInhibition();
     m_playPauseBtn->setIcon(QIcon(m_isPlaying ? ":/svg/player/pause.svg" : ":/svg/player/play.svg"));
 
     
@@ -4544,3 +4653,4 @@ QString PlayerView::formatTime(double seconds, double totalSeconds) const
         return t.toString("mm:ss");
     }
 }
+

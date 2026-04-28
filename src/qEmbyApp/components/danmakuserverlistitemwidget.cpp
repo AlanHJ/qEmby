@@ -193,10 +193,18 @@ QString DanmakuServerListItemWidget::maskedSecret(const QString &secret)
 void DanmakuServerListItemWidget::refreshCredentialsLabel()
 {
     QStringList parts;
-    if (!m_server.appId.trimmed().isEmpty()) {
+    if (m_server.builtIn &&
+        m_server.contentScope.trimmed().compare(QStringLiteral("anime"),
+                                                Qt::CaseInsensitive) == 0) {
+        parts.append(tr("Anime only"));
+    }
+    if (!m_server.builtIn && !m_server.description.trimmed().isEmpty()) {
+        parts.append(m_server.description.trimmed());
+    }
+    if (!m_server.builtIn && !m_server.appId.trimmed().isEmpty()) {
         parts.append(tr("App ID: %1").arg(m_server.appId.trimmed()));
     }
-    if (!m_server.appSecret.trimmed().isEmpty()) {
+    if (!m_server.builtIn && !m_server.appSecret.trimmed().isEmpty()) {
         parts.append(tr("App Secret: %1")
                          .arg(maskedSecret(m_server.appSecret)));
     }

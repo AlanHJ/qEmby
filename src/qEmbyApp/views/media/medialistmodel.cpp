@@ -46,6 +46,10 @@ QVariant MediaListModel::data(const QModelIndex &index, int role) const {
         return QVariant::fromValue(item);
     }
     else if (role == Qt::ToolTipRole) {
+        if (!ConfigStore::instance()->get<bool>(ConfigKeys::ShowMediaTooltips,
+                                                true)) {
+            return QVariant();
+        }
         return buildTooltipText(item);
     }
     else if (role == PosterPixmapRole) {

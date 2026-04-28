@@ -65,15 +65,31 @@ bool MpvController::init() {
     
     
     mpv_set_option_string(m_mpv, "vo", "libmpv");
+    
+    
+    
+    
+    mpv_set_option_string(m_mpv, "blend-subtitles", "video");
+    mpv_set_option_string(m_mpv, "sub-gray", "yes");
+    mpv_set_option_string(m_mpv, "sub-blur", "0");
+    mpv_set_option_string(m_mpv, "sub-gauss", "0");
+    
+    
+    mpv_set_option_string(m_mpv, "sub-hinting", "none");
+    mpv_set_option_string(m_mpv, "sub-ass-hinting", "none");
     mpv_request_log_messages(m_mpv, "info");
 
     
     
     
-    QString vsyncMode = ConfigStore::instance()->get<QString>(ConfigKeys::PlayerVideoSync, "audio");
+    QString vsyncMode = ConfigStore::instance()->get<QString>(
+        ConfigKeys::PlayerVideoSync, "display-resample");
     mpv_set_option_string(m_mpv, "video-sync", vsyncMode.toUtf8().constData());
     
     mpv_set_option_string(m_mpv, "interpolation", vsyncMode == "display-resample" ? "yes" : "no");
+    qDebug() << "[MpvController] Applied video sync mode"
+             << "| video-sync=" << vsyncMode
+             << "| interpolation=" << (vsyncMode == "display-resample");
 
     
     
@@ -164,7 +180,10 @@ bool MpvController::init() {
     observeProperty("cache-speed", MPV_FORMAT_INT64);
     observeProperty("volume", MPV_FORMAT_DOUBLE);
     observeProperty("mute", MPV_FORMAT_FLAG);
+    observeProperty("speed", MPV_FORMAT_DOUBLE);
     observeProperty("track-list", MPV_FORMAT_NODE);
+    observeProperty("sid", MPV_FORMAT_NODE);
+    observeProperty("secondary-sid", MPV_FORMAT_NODE);
     
     
     observeProperty("paused-for-cache", MPV_FORMAT_FLAG);

@@ -21,6 +21,11 @@ QString stripTrailingZeros(QString text)
     return text;
 }
 
+QString formatDecimalTenths(int value)
+{
+    return stripTrailingZeros(QString::number(value / 10.0, 'f', 1));
+}
+
 } 
 
 SliderSpec sliderSpec(SliderKind kind)
@@ -30,6 +35,12 @@ SliderSpec sliderSpec(SliderKind kind)
         return {5, 100, 1, 10, 72};
     case SliderKind::FontScale:
         return {60, 240, 1, 10, 100};
+    case SliderKind::FontWeight:
+        return {100, 900, 10, 100, 400};
+    case SliderKind::OutlineSize:
+        return {0, 60, 1, 5, 30};
+    case SliderKind::ShadowOffset:
+        return {0, 30, 1, 5, 10};
     case SliderKind::Area:
         return {10, 100, 1, 10, 70};
     case SliderKind::Density:
@@ -59,6 +70,11 @@ QString formatSliderValue(SliderKind kind, int value)
     case SliderKind::Area:
     case SliderKind::Density:
         return QStringLiteral("%1%").arg(value);
+    case SliderKind::FontWeight:
+        return QString::number(value);
+    case SliderKind::OutlineSize:
+    case SliderKind::ShadowOffset:
+        return QStringLiteral("%1 px").arg(formatDecimalTenths(value));
     case SliderKind::SpeedScale:
         return QStringLiteral("%1x").arg(
             stripTrailingZeros(QString::number(value / 100.0, 'f', 2)));
@@ -91,6 +107,22 @@ bool parseSliderValue(SliderKind kind, QString text, int &value)
             return false;
         }
         value = clampSliderValue(kind, qRound(parsed));
+        return true;
+    case SliderKind::FontWeight:
+        parsed = text.toDouble(&ok);
+        if (!ok) {
+            return false;
+        }
+        value = clampSliderValue(kind, qRound(parsed));
+        return true;
+    case SliderKind::OutlineSize:
+    case SliderKind::ShadowOffset:
+        text.remove(QStringLiteral("px"));
+        parsed = text.toDouble(&ok);
+        if (!ok) {
+            return false;
+        }
+        value = clampSliderValue(kind, qRound(parsed * 10.0));
         return true;
     case SliderKind::SpeedScale: {
         const bool explicitScale =

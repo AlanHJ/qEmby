@@ -333,6 +333,10 @@ Error: </source>
         <translation>%1 个项目</translation>
     </message>
     <message>
+        <source>%1 / %2 Items</source>
+        <translation>%1 / %2 个项目</translation>
+    </message>
+    <message>
         <source>Toggle View Mode</source>
         <translation>切换视图模式</translation>
     </message>
@@ -2091,6 +2095,14 @@ This will remove the current log and rotated backups. This action cannot be undo
         <translation>当特定类型的图片缺失时，自动使用其他可用类型的图片替代显示</translation>
     </message>
     <message>
+        <source>Show Media Tooltips</source>
+        <translation>显示媒体提示</translation>
+    </message>
+    <message>
+        <source>Show media details in tooltips when hovering over media cards</source>
+        <translation>悬停媒体卡片时，在提示框中显示媒体详细信息</translation>
+    </message>
+    <message>
         <source>Show Favorite Folders</source>
         <translation>显示收藏的文件夹</translation>
     </message>
@@ -2503,12 +2515,12 @@ This action cannot be undone.</source>
         <translation>内嵌播放器渲染后端（Render API 模式）</translation>
     </message>
     <message>
-        <source>Audio (Default)</source>
-        <translation>音频 (默认)</translation>
+        <source>Audio</source>
+        <translation>音频</translation>
     </message>
     <message>
-        <source>Display Resample</source>
-        <translation>显示重采样</translation>
+        <source>Display Resample (Default)</source>
+        <translation>显示重采样（默认）</translation>
     </message>
     <message>
         <source>Display VSync</source>
@@ -7199,6 +7211,10 @@ Size: %5</source>
         <translation>当前：%1 | %2 | %3</translation>
     </message>
     <message>
+        <source>Server: %1</source>
+        <translation>服务器：%1</translation>
+    </message>
+    <message>
         <source>Danmaku
 Source: %1
 Provider: %2
@@ -7207,6 +7223,18 @@ Comments: %3</source>
 来源标题：%1
 来源类型：%2
 弹幕条数：%3</translation>
+    </message>
+    <message>
+        <source>Danmaku
+Source: %1
+Server: %2
+Provider: %3
+Comments: %4</source>
+        <translation>弹幕
+来源标题：%1
+弹幕服务器：%2
+来源类型：%3
+弹幕条数：%4</translation>
     </message>
     <message>
         <source>Reload Danmaku</source>
@@ -7301,6 +7329,14 @@ Comments: %3</source>
         <translation>弹幕已加载</translation>
     </message>
     <message>
+        <source>Danmaku Loaded from %1 (%2)</source>
+        <translation>已从 %1 加载弹幕（%2）</translation>
+    </message>
+    <message>
+        <source>Danmaku Loaded from %1</source>
+        <translation>已从 %1 加载弹幕</translation>
+    </message>
+    <message>
         <source>No matching danmaku found</source>
         <translation>未找到匹配的弹幕</translation>
     </message>
@@ -7355,6 +7391,18 @@ Comments: %3</source>
     <message>
         <source>Source: %1</source>
         <translation>来源：%1</translation>
+    </message>
+    <message>
+        <source>Server: %1</source>
+        <translation>服务器：%1</translation>
+    </message>
+    <message>
+        <source>Danmaku Server: %1</source>
+        <translation>弹幕服务器：%1</translation>
+    </message>
+    <message>
+        <source>Provider: %1</source>
+        <translation>来源类型：%1</translation>
     </message>
     <message>
         <source>Title: %1</source>
@@ -7413,6 +7461,10 @@ Comments: %3</source>
         <translation>搜索本地或在线弹幕来源。</translation>
     </message>
     <message>
+        <source>Search local files and enabled danmaku servers.</source>
+        <translation>搜索本地文件和已启用的弹幕服务器。</translation>
+    </message>
+    <message>
         <source>Danmaku Details</source>
         <translation>弹幕详情</translation>
     </message>
@@ -7433,12 +7485,20 @@ Comments: %3</source>
         <translation>搜索中...</translation>
     </message>
     <message>
+        <source>Searching local files and enabled danmaku servers...</source>
+        <translation>正在搜索本地文件和已启用的弹幕服务器...</translation>
+    </message>
+    <message>
         <source>No matches found</source>
         <translation>未找到匹配结果</translation>
     </message>
     <message>
         <source>Found %1 matches</source>
         <translation>找到 %1 个匹配结果</translation>
+    </message>
+    <message>
+        <source>Found %1 matches from %2 danmaku servers</source>
+        <translation>从 %2 个弹幕服务器找到 %1 个匹配结果</translation>
     </message>
     <message>
         <source>Search failed</source>
@@ -7459,6 +7519,22 @@ Comments: %3</source>
     <message>
         <source>Adjust danmaku rendering without leaving playback. Changes are saved and applied immediately.</source>
         <translation>无需离开播放页即可调整弹幕渲染设置。修改会立即保存并实时生效。</translation>
+    </message>
+    <message>
+        <source>ASS Subtitle Track</source>
+        <translation>ASS 字幕轨渲染</translation>
+    </message>
+    <message>
+        <source>Native Smooth Renderer</source>
+        <translation>原生丝滑渲染</translation>
+    </message>
+    <message>
+        <source>Danmaku Renderer</source>
+        <translation>弹幕渲染方式</translation>
+    </message>
+    <message>
+        <source>Switch between the ASS subtitle track pipeline and qEmby's adaptive native danmaku renderer.</source>
+        <translation>在 ASS 字幕轨管线与 qEmby 自适应原生弹幕渲染器之间切换。</translation>
     </message>
     <message>
         <source>Enable Danmaku</source>
@@ -7489,8 +7565,16 @@ Comments: %3</source>
         <translation>弹幕大小</translation>
     </message>
     <message>
-        <source>Scale the ASS font size used for danmaku rendering</source>
-        <translation>调整弹幕渲染所使用的 ASS 字体大小</translation>
+        <source>Danmaku Font Weight</source>
+        <translation>弹幕字重</translation>
+    </message>
+    <message>
+        <source>Danmaku Outline</source>
+        <translation>弹幕描边</translation>
+    </message>
+    <message>
+        <source>Danmaku Shadow</source>
+        <translation>弹幕阴影</translation>
     </message>
     <message>
         <source>Display Area</source>
@@ -7661,8 +7745,8 @@ Comments: %3</source>
         <translation>服务器列表</translation>
     </message>
     <message>
-        <source>Each item shows the danmaku server name, address, and app credentials. Official DandanPlay Open API access requires valid App ID and App Secret.</source>
-        <translation>每个列表项会显示弹幕服务器名称、地址和 App 凭据。使用官方弹弹Play 开放 API 时，必须提供有效的 App ID 和 App Secret。</translation>
+        <source>Each item shows the danmaku server name, address, app credentials, and description. The built-in official DandanPlay server supports anime only.</source>
+        <translation>每个列表项会显示弹幕服务器名称、地址、App 凭据和说明。内置的官方弹弹Play 服务器仅支持动画。</translation>
     </message>
     <message>
         <source>Add</source>
@@ -7689,8 +7773,16 @@ Comments: %3</source>
         <translation>编辑当前服务器</translation>
     </message>
     <message>
-        <source>Update the server name, address, and app credentials for the selected danmaku server. Official DandanPlay endpoints require App ID and App Secret.</source>
-        <translation>修改当前所选弹幕服务器的名称、地址和 App 凭据。官方弹弹Play 接口要求提供 App ID 和 App Secret。</translation>
+        <source>Update the server name, address, description, and app credentials for the selected danmaku server. Official DandanPlay endpoints require App ID and App Secret and support anime only.</source>
+        <translation>修改当前所选弹幕服务器的名称、地址、说明和 App 凭据。官方弹弹Play 接口要求提供 App ID 和 App Secret，且仅支持动画。</translation>
+    </message>
+    <message>
+        <source>Description</source>
+        <translation>说明</translation>
+    </message>
+    <message>
+        <source>e.g., Supports anime only</source>
+        <translation>例如：仅支持动画</translation>
     </message>
     <message>
         <source>App ID</source>
@@ -7765,6 +7857,10 @@ Comments: %3</source>
         <translation>App ID：%1</translation>
     </message>
     <message>
+        <source>Anime only</source>
+        <translation>仅支持动画</translation>
+    </message>
+    <message>
         <source>App Secret: %1</source>
         <translation>App Secret：%1</translation>
     </message>
@@ -7783,6 +7879,22 @@ Comments: %3</source>
     <message>
         <source>Display streaming danmaku in the embedded player</source>
         <translation>在内置播放器中显示流式弹幕</translation>
+    </message>
+    <message>
+        <source>Danmaku Renderer</source>
+        <translation>弹幕渲染方式</translation>
+    </message>
+    <message>
+        <source>Choose whether danmaku is rendered through the ASS subtitle track or qEmby's adaptive native renderer</source>
+        <translation>选择通过 ASS 字幕轨还是 qEmby 自适应原生渲染器来显示弹幕</translation>
+    </message>
+    <message>
+        <source>ASS Subtitle Track</source>
+        <translation>ASS 字幕轨渲染</translation>
+    </message>
+    <message>
+        <source>Native Smooth Renderer</source>
+        <translation>原生丝滑渲染</translation>
     </message>
     <message>
         <source>Auto Load Danmaku</source>
@@ -7857,6 +7969,22 @@ Address: %2</source>
 地址：%2</translation>
     </message>
     <message>
+        <source>Current server: %1</source>
+        <translation>当前服务器：%1</translation>
+    </message>
+    <message>
+        <source>Address: %1</source>
+        <translation>地址：%1</translation>
+    </message>
+    <message>
+        <source>Supported content: Anime only</source>
+        <translation>支持内容：仅动画</translation>
+    </message>
+    <message>
+        <source>Description: %1</source>
+        <translation>说明：%1</translation>
+    </message>
+    <message>
         <source>App ID and App Secret are required for official DandanPlay Open API access</source>
         <translation>使用官方弹弹Play 开放 API 必须提供 App ID 和 App Secret</translation>
     </message>
@@ -7897,8 +8025,32 @@ Address: %2</source>
         <translation>弹幕大小</translation>
     </message>
     <message>
-        <source>Scale the ASS font size used for danmaku rendering</source>
-        <translation>调整弹幕 ASS 渲染使用的字体大小</translation>
+        <source>Danmaku Font Weight</source>
+        <translation>弹幕字重</translation>
+    </message>
+    <message>
+        <source>Adjust the font weight used for danmaku text</source>
+        <translation>调整弹幕文字使用的字重</translation>
+    </message>
+    <message>
+        <source>Danmaku Outline</source>
+        <translation>弹幕描边</translation>
+    </message>
+    <message>
+        <source>Control the outline thickness applied to danmaku text</source>
+        <translation>控制弹幕文字描边的粗细</translation>
+    </message>
+    <message>
+        <source>Danmaku Shadow</source>
+        <translation>弹幕阴影</translation>
+    </message>
+    <message>
+        <source>Control the shadow offset applied to danmaku text</source>
+        <translation>控制弹幕文字阴影的偏移量</translation>
+    </message>
+    <message>
+        <source>Scale the font size used for danmaku rendering</source>
+        <translation>调整弹幕渲染使用的字体大小</translation>
     </message>
     <message>
         <source>Display Area</source>

@@ -45,7 +45,7 @@ PlayerDanmakuSettingsDialog::PlayerDanmakuSettingsDialog(QWidget *parent)
     : PlayerOverlayDialog(parent)
 {
     setSurfaceObjectName("playerDanmakuSettingsDialog");
-    setSurfacePreferredSize(QSize(620, 500));
+    setSurfacePreferredSize(QSize(620, 560));
     setTitle(tr("Danmaku Settings"));
 
     contentLayout()->setContentsMargins(16, 8, 16, 16);
@@ -58,10 +58,6 @@ PlayerDanmakuSettingsDialog::PlayerDanmakuSettingsDialog(QWidget *parent)
         emit liveReloadRequested();
         m_requiresReload = false;
     });
-
-    m_initialEnabled =
-        ConfigStore::instance()->get<bool>(ConfigKeys::PlayerDanmakuEnabled,
-                                           false);
 
     auto bindSwitch =
         [this](ModernSwitch *control, const QString &configKey,
@@ -78,11 +74,7 @@ PlayerDanmakuSettingsDialog::PlayerDanmakuSettingsDialog(QWidget *parent)
             connect(control, &ModernSwitch::toggled, this,
                     [this, store, configKey, affectsRender](bool checked) {
                         store->set(configKey, checked);
-                        if (configKey == QLatin1String(ConfigKeys::PlayerDanmakuEnabled))
-                        {
-                            emit danmakuEnabledToggled(checked);
-                        }
-                        else if (affectsRender)
+                        if (affectsRender)
                         {
                             m_requiresReload = true;
                             scheduleLiveReload();
@@ -225,6 +217,8 @@ PlayerDanmakuSettingsDialog::PlayerDanmakuSettingsDialog(QWidget *parent)
             control->setMinimumWidth(0);
             control->setMaximumWidth(QWIDGETSIZE_MAX);
             control->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+            control->setCompactMode(true);
+            control->setAdaptiveRangeLabelPlacementEnabled(true);
             connect(control, &DanmakuOptionSlider::valueChanged, this,
                     [this](int) {
                         m_requiresReload = true;
@@ -278,29 +272,6 @@ PlayerDanmakuSettingsDialog::PlayerDanmakuSettingsDialog(QWidget *parent)
     summaryLayout->addWidget(promptLabel);
     contentLayout()->addWidget(summaryCard);
 
-    auto *switchGrid = new QGridLayout();
-    switchGrid->setContentsMargins(0, 0, 0, 0);
-    switchGrid->setHorizontalSpacing(10);
-    switchGrid->setVerticalSpacing(10);
-    switchGrid->setColumnStretch(0, 1);
-    switchGrid->setColumnStretch(1, 1);
-
-    switchGrid->addWidget(
-        createSwitchTile(":/svg/dark/danmaku.svg", tr("Enable Danmaku"),
-                         tr("Display streaming danmaku in the embedded player"),
-                         ConfigKeys::PlayerDanmakuEnabled, QVariant(false),
-                         false, QStringLiteral("playerDanmakuSwitchTile")),
-        0, 0);
-    switchGrid->addWidget(
-        createSwitchTile(
-            ":/svg/dark/danmaku-dual-subtitle.svg",
-            tr("Dual Subtitle Mode"),
-            tr("Keep regular subtitles visible alongside danmaku when possible"),
-            ConfigKeys::PlayerDanmakuDualSubtitle, QVariant(true), true,
-            QStringLiteral("playerDanmakuSwitchTile")),
-        0, 1);
-    contentLayout()->addLayout(switchGrid);
-
     auto *sliderGrid = new QGridLayout();
     sliderGrid->setContentsMargins(0, 0, 0, 0);
     sliderGrid->setHorizontalSpacing(10);
@@ -341,6 +312,22 @@ PlayerDanmakuSettingsDialog::PlayerDanmakuSettingsDialog(QWidget *parent)
                          DanmakuOptionUtils::SliderKind::OffsetMs,
                          ConfigKeys::PlayerDanmakuOffsetMs),
         1, 2);
+    sliderGrid->addWidget(
+        createSliderTile(":/svg/dark/appearance-font-size.svg",
+                         tr("Danmaku Font Weight"),
+                         DanmakuOptionUtils::SliderKind::FontWeight,
+                         ConfigKeys::PlayerDanmakuFontWeight),
+        2, 0);
+    sliderGrid->addWidget(
+        createSliderTile(":/svg/dark/window-player.svg", tr("Danmaku Outline"),
+                         DanmakuOptionUtils::SliderKind::OutlineSize,
+                         ConfigKeys::PlayerDanmakuOutlineSize),
+        2, 1);
+    sliderGrid->addWidget(
+        createSliderTile(":/svg/dark/direct-stream.svg", tr("Danmaku Shadow"),
+                         DanmakuOptionUtils::SliderKind::ShadowOffset,
+                         ConfigKeys::PlayerDanmakuShadowOffset),
+        2, 2);
     contentLayout()->addLayout(sliderGrid);
 
     auto *filterGrid = new QGridLayout();
@@ -382,12 +369,6 @@ PlayerDanmakuSettingsDialog::PlayerDanmakuSettingsDialog(QWidget *parent)
 bool PlayerDanmakuSettingsDialog::requiresReload() const
 {
     return m_requiresReload;
-}
-
-bool PlayerDanmakuSettingsDialog::danmakuEnabledChanged() const
-{
-    return ConfigStore::instance()->get<bool>(ConfigKeys::PlayerDanmakuEnabled,
-                                              false) != m_initialEnabled;
 }
 
 void PlayerDanmakuSettingsDialog::scheduleLiveReload()

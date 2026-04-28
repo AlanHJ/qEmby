@@ -43,6 +43,8 @@ public:
     void setTileSize(const QSize &size);
     void setTextPixelSizes(int titlePx, int subTitlePx);
     void setContentPadding(int padding);
+    void setHoverControls(MediaCardDelegate::HoverControls controls);
+    void scrollToItemId(const QString &itemId);
 
     
     void setHighlightedItemId(const QString &id);

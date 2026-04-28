@@ -117,6 +117,55 @@ QRect favoriteButtonRect(const QRect& moreRect)
                  moreRect.height());
 }
 
+bool shouldShowPlayButton(
+    HoverOverlayMode overlayMode, MediaCardDelegate::HoverControls controls)
+{
+    return overlayMode == HoverOverlayMode::FullControls &&
+           controls.testFlag(MediaCardDelegate::HoverControlPlay);
+}
+
+bool shouldShowFavoriteButton(
+    HoverOverlayMode overlayMode, MediaCardDelegate::HoverControls controls)
+{
+    return overlayMode == HoverOverlayMode::FullControls &&
+           controls.testFlag(MediaCardDelegate::HoverControlFavorite);
+}
+
+bool shouldShowMoreButton(
+    HoverOverlayMode overlayMode, MediaCardDelegate::HoverControls controls)
+{
+    return overlayMode != HoverOverlayMode::None &&
+           controls.testFlag(MediaCardDelegate::HoverControlMore);
+}
+
+struct HoverButtonLayout {
+    QRect playRect;
+    QRect favoriteRect;
+    QRect moreRect;
+};
+
+HoverButtonLayout buildHoverButtonLayout(
+    const QRect& targetImgRect, bool showPlayButton, bool showFavoriteButton,
+    bool showMoreButton)
+{
+    HoverButtonLayout layout;
+    if (showPlayButton) {
+        layout.playRect = centerPlayButtonRect(targetImgRect);
+    }
+
+    const QRect trailingButtonRect = moreButtonRect(targetImgRect);
+    if (showMoreButton) {
+        layout.moreRect = trailingButtonRect;
+    }
+    if (showFavoriteButton) {
+        layout.favoriteRect =
+            showMoreButton ? favoriteButtonRect(trailingButtonRect)
+                           : trailingButtonRect;
+    }
+
+    return layout;
+}
+
 } 
 
 
@@ -182,14 +231,20 @@ bool MediaCardDelegate::eventFilter(QObject *object, QEvent *event) {
                             int rightMargin = 20;
                             QRect favRect(rect.right() - rightMargin - favBtnSize, rect.center().y() - favBtnSize/2, favBtnSize, favBtnSize);
 
-                            bool inFav = favRect.contains(pos);
+                            const bool showFavoriteButton =
+                                m_hoverControls.testFlag(HoverControlFavorite);
+                            bool inFav =
+                                showFavoriteButton && favRect.contains(pos);
                             
                             
                             int playSize = 48;
                             QRect playRectCenter(baseImgRect.center().x() - playSize / 2,
                                            baseImgRect.center().y() - playSize / 2,
                                            playSize, playSize);
-                            bool inThumbPlay = playRectCenter.contains(pos);
+                            const bool showPlayButton =
+                                m_hoverControls.testFlag(HoverControlPlay);
+                            bool inThumbPlay =
+                                showPlayButton && playRectCenter.contains(pos);
 
                             if (inFav || inThumbPlay) {
                                 if (event->type() == QEvent::MouseButtonRelease) {
@@ -204,20 +259,38 @@ bool MediaCardDelegate::eventFilter(QObject *object, QEvent *event) {
                                                      m_contentPadding);
                             const QRect targetImgRect =
                                 hoverImageRect(baseImgRect);
-                            const QRect moreRect = moreButtonRect(targetImgRect);
+                            const bool showPlayButton =
+                                shouldShowPlayButton(overlayMode,
+                                                     m_hoverControls);
+                            const bool showFavoriteButton =
+                                shouldShowFavoriteButton(overlayMode,
+                                                         m_hoverControls);
+                            const bool showMoreButton =
+                                shouldShowMoreButton(overlayMode,
+                                                     m_hoverControls);
+
+                            if (!showPlayButton && !showFavoriteButton &&
+                                !showMoreButton) {
+                                return QStyledItemDelegate::eventFilter(object,
+                                                                       event);
+                            }
+
+                            const HoverButtonLayout buttonLayout =
+                                buildHoverButtonLayout(targetImgRect,
+                                                       showPlayButton,
+                                                       showFavoriteButton,
+                                                       showMoreButton);
 
                             
-                            bool inPlay = false;
-                            bool inFav = false;
-                            bool inMore = moreRect.contains(pos);
-                            if (overlayMode == HoverOverlayMode::FullControls) {
-                                const QRect playRect =
-                                    centerPlayButtonRect(targetImgRect);
-                                const QRect favRect =
-                                    favoriteButtonRect(moreRect);
-                                inPlay = playRect.contains(pos);
-                                inFav = favRect.contains(pos);
-                            }
+                            const bool inPlay =
+                                showPlayButton &&
+                                buttonLayout.playRect.contains(pos);
+                            const bool inFav =
+                                showFavoriteButton &&
+                                buttonLayout.favoriteRect.contains(pos);
+                            const bool inMore =
+                                showMoreButton &&
+                                buttonLayout.moreRect.contains(pos);
 
                             if (inPlay || inFav || inMore) {
                                 
@@ -285,9 +358,14 @@ void MediaCardDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opt
     bool isHovered = option.state & QStyle::State_MouseOver;
     const HoverOverlayMode overlayMode = hoverOverlayModeForItem(
         item, m_style, m_showMoreButtonForNonPlayableTiles);
-    const bool hasFullHoverButtons =
-        overlayMode == HoverOverlayMode::FullControls;
-    const bool hasHoverButtons = overlayMode != HoverOverlayMode::None;
+    const bool showPlayButton =
+        shouldShowPlayButton(overlayMode, m_hoverControls);
+    const bool showFavoriteButton =
+        shouldShowFavoriteButton(overlayMode, m_hoverControls);
+    const bool showMoreButton =
+        shouldShowMoreButton(overlayMode, m_hoverControls);
+    const bool hasHoverButtons =
+        showPlayButton || showFavoriteButton || showMoreButton;
 
     
     
@@ -324,7 +402,7 @@ void MediaCardDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opt
             painter->drawText(baseImgRect, Qt::AlignCenter, tr("No Image"));
         }
 
-        if (isHovered && hasFullHoverButtons) {
+        if (isHovered && showPlayButton) {
             painter->setPen(Qt::NoPen);
             painter->setBrush(QColor(0, 0, 0, 70));
             painter->drawRoundedRect(baseImgRect, imgRadius, imgRadius);
@@ -396,13 +474,19 @@ void MediaCardDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opt
         painter->drawText(descRect, Qt::AlignLeft | Qt::AlignTop | Qt::TextWordWrap, elidedDesc);
 
         
-        QRect favRect(rect.right() - rightMargin - favBtnSize, rect.center().y() - favBtnSize/2, favBtnSize, favBtnSize);
-        {
+        if (showFavoriteButton) {
+            QRect favRect(rect.right() - rightMargin - favBtnSize,
+                          rect.center().y() - favBtnSize / 2, favBtnSize,
+                          favBtnSize);
             QString themeFolder = isDarkTheme ? "dark" : "light";
-            QString favIconPath = item.isFavorite() ? QString(":/svg/%1/heart-fill.svg").arg(themeFolder) 
-                                                    : QString(":/svg/%1/heart-outline.svg").arg(themeFolder);
+            QString favIconPath =
+                item.isFavorite()
+                    ? QString(":/svg/%1/heart-fill.svg").arg(themeFolder)
+                    : QString(":/svg/%1/heart-outline.svg").arg(themeFolder);
             QIcon favIcon(favIconPath);
-            if(!favIcon.isNull()) favIcon.paint(painter, favRect.adjusted(2, 2, -2, -2));
+            if (!favIcon.isNull()) {
+                favIcon.paint(painter, favRect.adjusted(2, 2, -2, -2));
+            }
         }
 
         painter->restore();
@@ -533,68 +617,68 @@ void MediaCardDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opt
         painter->setBrush(QColor(0, 0, 0, 70));
         painter->drawRoundedRect(targetImgRect, imgRadius, imgRadius);
 
-        const QRect moreRect = moreButtonRect(targetImgRect);
+        const HoverButtonLayout buttonLayout =
+            buildHoverButtonLayout(targetImgRect, showPlayButton,
+                                   showFavoriteButton, showMoreButton);
 
-        if (hasFullHoverButtons) {
-            const QRect playRect = centerPlayButtonRect(targetImgRect);
-
+        if (showPlayButton) {
             painter->setBrush(QColor(0, 0, 0, 160));
-            painter->drawEllipse(playRect);
+            painter->drawEllipse(buttonLayout.playRect);
 
             QIcon playIcon(":/svg/player/play.svg");
             if (!playIcon.isNull()) {
-                playIcon.paint(painter, playRect.adjusted(12, 12, -12, -12), Qt::AlignCenter);
+                playIcon.paint(painter,
+                               buttonLayout.playRect.adjusted(12, 12, -12, -12),
+                               Qt::AlignCenter);
             } else {
                 QPainterPath playPath;
-                playPath.moveTo(playRect.center().x() - 4, playRect.center().y() - 8);
-                playPath.lineTo(playRect.center().x() + 10, playRect.center().y());
-                playPath.lineTo(playRect.center().x() - 4, playRect.center().y() + 8);
+                playPath.moveTo(buttonLayout.playRect.center().x() - 4,
+                                buttonLayout.playRect.center().y() - 8);
+                playPath.lineTo(buttonLayout.playRect.center().x() + 10,
+                                buttonLayout.playRect.center().y());
+                playPath.lineTo(buttonLayout.playRect.center().x() - 4,
+                                buttonLayout.playRect.center().y() + 8);
                 playPath.closeSubpath();
                 painter->setBrush(Qt::white);
                 painter->drawPath(playPath);
             }
+        }
 
-            const QRect favRect = favoriteButtonRect(moreRect);
-
+        if (showMoreButton) {
             painter->setBrush(QColor(0, 0, 0, 160));
-            painter->drawRoundedRect(moreRect, 6, 6);
-            painter->drawRoundedRect(favRect, 6, 6);
+            painter->drawRoundedRect(buttonLayout.moreRect, 6, 6);
 
             QIcon moreIcon(":/svg/dark/more-line.svg");
             if (!moreIcon.isNull()) {
-                moreIcon.paint(painter, moreRect.adjusted(4, 4, -4, -4), Qt::AlignCenter);
+                moreIcon.paint(
+                    painter,
+                    buttonLayout.moreRect.adjusted(4, 4, -4, -4),
+                    Qt::AlignCenter);
             } else {
                 painter->setBrush(Qt::white);
-                int cx = moreRect.center().x();
-                int cy = moreRect.center().y();
+                int cx = buttonLayout.moreRect.center().x();
+                int cy = buttonLayout.moreRect.center().y();
                 painter->drawEllipse(cx - 2, cy - 8, 4, 4);
                 painter->drawEllipse(cx - 2, cy - 2, 4, 4);
                 painter->drawEllipse(cx - 2, cy + 4, 4, 4);
             }
+        }
+
+        if (showFavoriteButton) {
+            painter->setBrush(QColor(0, 0, 0, 160));
+            painter->drawRoundedRect(buttonLayout.favoriteRect, 6, 6);
 
             QString favIconPath = item.isFavorite() ? ":/svg/dark/heart-fill.svg"
                                                     : ":/svg/dark/heart-outline.svg";
             QIcon favIcon(favIconPath);
             if (!favIcon.isNull()) {
-                favIcon.paint(painter, favRect.adjusted(5, 5, -5, -5), Qt::AlignCenter);
+                favIcon.paint(
+                    painter,
+                    buttonLayout.favoriteRect.adjusted(5, 5, -5, -5),
+                    Qt::AlignCenter);
             } else {
                 painter->setBrush(Qt::white);
-                painter->drawEllipse(favRect.center(), 4, 4);
-            }
-        } else {
-            painter->setBrush(QColor(0, 0, 0, 160));
-            painter->drawRoundedRect(moreRect, 6, 6);
-
-            QIcon moreIcon(":/svg/dark/more-line.svg");
-            if (!moreIcon.isNull()) {
-                moreIcon.paint(painter, moreRect.adjusted(4, 4, -4, -4), Qt::AlignCenter);
-            } else {
-                painter->setBrush(Qt::white);
-                int cx = moreRect.center().x();
-                int cy = moreRect.center().y();
-                painter->drawEllipse(cx - 2, cy - 8, 4, 4);
-                painter->drawEllipse(cx - 2, cy - 2, 4, 4);
-                painter->drawEllipse(cx - 2, cy + 4, 4, 4);
+                painter->drawEllipse(buttonLayout.favoriteRect.center(), 4, 4);
             }
         }
     }

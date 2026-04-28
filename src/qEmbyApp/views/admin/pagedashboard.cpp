@@ -23,6 +23,7 @@
 #include <QShowEvent>
 #include <QStandardItemModel>
 #include <QTimer>
+#include <QTimeZone>
 #include <QTransform>
 #include <QVBoxLayout>
 #include <QVariantAnimation>
@@ -380,7 +381,7 @@ QCoro::Task<void> PageDashboard::loadData(bool isManual) {
         }
         if (!dt.isValid())
           return isoDate;
-        dt.setTimeSpec(Qt::UTC);
+        dt.setTimeZone(QTimeZone::UTC);
         return dt.toLocalTime().toString("yyyy-MM-dd HH:mm:ss");
       };
 

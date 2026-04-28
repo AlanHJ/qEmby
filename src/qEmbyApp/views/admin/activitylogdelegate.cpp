@@ -5,6 +5,7 @@
 #include <QDateTime>
 #include <QApplication>
 #include <QStyle>
+#include <QTimeZone>
 
 
 ActivityLogThemeHelper::ActivityLogThemeHelper(QWidget *parent)
@@ -146,7 +147,7 @@ QString ActivityLogDelegate::formatExactTime(const QString& isoDate) const
     }
     if (!dt.isValid()) return isoDate;
 
-    dt.setTimeSpec(Qt::UTC);
+    dt.setTimeZone(QTimeZone::UTC);
     return dt.toLocalTime().toString("yyyy-MM-dd HH:mm:ss");
 }
 

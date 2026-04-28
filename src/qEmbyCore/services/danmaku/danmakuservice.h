@@ -53,6 +53,15 @@ public:
 
 private:
     bool autoMatchEnabled(const QString &serverId) const;
+    QList<DanmakuProviderConfig> enabledProviderConfigs(
+        QString serverId = QString()) const;
+    DanmakuProviderConfig providerConfigForCandidate(
+        QString serverId,
+        const DanmakuMatchCandidate &candidate) const;
+    QCoro::Task<QList<DanmakuMatchCandidate>> searchCandidatesForConfig(
+        DanmakuMediaContext context,
+        DanmakuProviderConfig config,
+        QString manualKeyword = QString());
     QString assCacheKey(const DanmakuMatchCandidate &candidate,
                         const DanmakuRenderOptions &options) const;
 

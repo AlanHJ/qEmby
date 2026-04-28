@@ -35,6 +35,11 @@ private slots:
 
 private:
     void setupTopBar(QHBoxLayout* headerLayout);
+    bool isCastStyleCategory(const QString& categoryType) const;
+    QString currentViewPreferenceCategoryId() const;
+    void applyViewMode(bool isTile);
+    void saveViewPreference();
+    void restoreViewPreference();
 
     
     QCoro::Task<void> refreshData();

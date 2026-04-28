@@ -16,6 +16,7 @@
 #include <config/config_keys.h>
 #include <config/configstore.h>
 #include <qembycore.h>
+#include <services/manager/servermanager.h>
 #include <services/media/mediaservice.h>
 
 
@@ -173,6 +174,7 @@ void CategoryView::setupTopBar(QHBoxLayout *headerLayout) {
   connect(m_viewSwitchBtn, &QPushButton::clicked, this, [this](bool checked) {
     m_mediaGrid->setCardStyle(checked ? MediaCardDelegate::LibraryTile
                                       : MediaCardDelegate::Poster);
+    saveViewPreference();
     onFilterChanged();
   });
 
@@ -186,6 +188,76 @@ void CategoryView::setupTopBar(QHBoxLayout *headerLayout) {
   filterLayout->addWidget(m_statsLabel);
 
   headerLayout->addWidget(filterBarWidget);
+}
+
+bool CategoryView::isCastStyleCategory(const QString &categoryType) const {
+  return categoryType == "Favorite_Person" || categoryType == "Person";
+}
+
+QString CategoryView::currentViewPreferenceCategoryId() const {
+  const QString categoryType = m_currentCategory.trimmed();
+  if (categoryType.isEmpty() || isCastStyleCategory(categoryType)) {
+    return QString();
+  }
+
+  return QStringLiteral("category_%1").arg(categoryType);
+}
+
+void CategoryView::applyViewMode(bool isTile) {
+  m_viewSwitchBtn->blockSignals(true);
+  m_viewSwitchBtn->setChecked(isTile);
+  m_viewSwitchBtn->blockSignals(false);
+  m_mediaGrid->setCardStyle(isTile ? MediaCardDelegate::LibraryTile
+                                   : MediaCardDelegate::Poster);
+}
+
+void CategoryView::saveViewPreference() {
+  if (!m_core || !m_core->serverManager()) {
+    return;
+  }
+
+  const QString serverId = m_core->serverManager()->activeProfile().id;
+  const QString categoryId = currentViewPreferenceCategoryId();
+  if (serverId.isEmpty() || categoryId.isEmpty()) {
+    return;
+  }
+
+  const QString viewMode = m_viewSwitchBtn->isChecked()
+                               ? QStringLiteral("tile")
+                               : QStringLiteral("poster");
+  auto *store = ConfigStore::instance();
+  store->set(
+      ConfigKeys::forCategory(serverId, categoryId, ConfigKeys::CategoryViewMode),
+      viewMode);
+
+  qDebug() << "[CategoryView] View preference saved:"
+           << "server=" << serverId << "category=" << categoryId
+           << "mode=" << viewMode;
+}
+
+void CategoryView::restoreViewPreference() {
+  auto *store = ConfigStore::instance();
+  const QString defaultViewMode =
+      store->get<QString>(ConfigKeys::DefaultLibraryView, QStringLiteral("poster"));
+
+  QString viewMode = defaultViewMode;
+  if (m_core && m_core->serverManager()) {
+    const QString serverId = m_core->serverManager()->activeProfile().id;
+    const QString categoryId = currentViewPreferenceCategoryId();
+    if (!serverId.isEmpty() && !categoryId.isEmpty()) {
+      viewMode = store->get<QString>(
+          ConfigKeys::forCategory(serverId, categoryId, ConfigKeys::CategoryViewMode),
+          defaultViewMode);
+      qDebug() << "[CategoryView] View preference restored:"
+               << "server=" << serverId << "category=" << categoryId
+               << "mode=" << viewMode << "default=" << defaultViewMode;
+    } else {
+      qDebug() << "[CategoryView] View preference fallback to default:"
+               << "mode=" << defaultViewMode;
+    }
+  }
+
+  applyViewMode(viewMode == QLatin1String("tile"));
 }
 
 
@@ -224,17 +296,11 @@ QCoro::Task<void> CategoryView::loadCategory(const QString &categoryType,
   m_sortButton->blockSignals(false);
 
   
-  bool isTile = (ConfigStore::instance()->get<QString>(ConfigKeys::DefaultLibraryView, "poster") == "tile");
-  m_viewSwitchBtn->blockSignals(true);
-  m_viewSwitchBtn->setChecked(isTile);
-  m_viewSwitchBtn->blockSignals(false);
-
-  
-  if (categoryType == "Favorite_Person" || categoryType == "Person") {
+  if (isCastStyleCategory(categoryType)) {
     m_mediaGrid->setCardStyle(MediaCardDelegate::Cast);
     m_viewSwitchBtn->setVisible(false); 
   } else {
-    m_mediaGrid->setCardStyle(isTile ? MediaCardDelegate::LibraryTile : MediaCardDelegate::Poster);
+    restoreViewPreference();
     m_viewSwitchBtn->setVisible(true);
   }
 

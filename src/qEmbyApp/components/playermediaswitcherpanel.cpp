@@ -115,6 +115,7 @@ PlayerMediaSwitcherPanel::PlayerMediaSwitcherPanel(QEmbyCore *core,
     m_movieGallery->setTileSize(QSize(90, 154));
     m_movieGallery->setTextPixelSizes(10, 9);
     m_movieGallery->setContentPadding(5);
+    m_movieGallery->setHoverControls(MediaCardDelegate::HoverControlPlay);
     m_movieGallery->setFixedHeight(kMovieGalleryHeight);
     layout->addWidget(m_movieGallery);
 
@@ -128,6 +129,8 @@ PlayerMediaSwitcherPanel::PlayerMediaSwitcherPanel(QEmbyCore *core,
     m_seasonGallery->setTileSize(QSize(74, 132));
     m_seasonGallery->setTextPixelSizes(10, 9);
     m_seasonGallery->setContentPadding(4);
+    m_seasonGallery->setHoverControls(
+        MediaCardDelegate::HoverControls());
     m_seasonGallery->setFixedHeight(kSeasonGalleryHeight);
     layout->addWidget(m_seasonGallery);
 
@@ -141,6 +144,7 @@ PlayerMediaSwitcherPanel::PlayerMediaSwitcherPanel(QEmbyCore *core,
     m_episodeGallery->setTileSize(QSize(154, 102));
     m_episodeGallery->setTextPixelSizes(10, 9);
     m_episodeGallery->setContentPadding(6);
+    m_episodeGallery->setHoverControls(MediaCardDelegate::HoverControlPlay);
     m_episodeGallery->setFixedHeight(kEpisodeGalleryHeight);
     layout->addWidget(m_episodeGallery);
 
@@ -324,6 +328,11 @@ void PlayerMediaSwitcherPanel::populateMovieGallery() {
     setStatusMessage(QString());
     m_movieGallery->setItems(m_movieItems);
     m_movieGallery->setHighlightedItemId(m_currentMediaId);
+    const QString targetMovieId =
+        m_currentMediaId.isEmpty() && !m_movieItems.isEmpty()
+            ? m_movieItems.first().id
+            : m_currentMediaId;
+    m_movieGallery->scrollToItemId(targetMovieId);
 
     if (m_movieItems.isEmpty()) {
         setStatusMessage(tr("No active media found."));
@@ -332,16 +341,31 @@ void PlayerMediaSwitcherPanel::populateMovieGallery() {
 
 void PlayerMediaSwitcherPanel::populateSeasonGallery() {
     setStatusMessage(QString());
+    const QString selectedSeasonId = currentSelectedSeasonId();
     m_seasonGallery->setItems(m_seasons);
-    m_seasonGallery->setHighlightedItemId(currentSelectedSeasonId());
+    m_seasonGallery->setHighlightedItemId(selectedSeasonId);
+    m_seasonGallery->scrollToItemId(selectedSeasonId);
 }
 
 void PlayerMediaSwitcherPanel::populateEpisodeGallery() {
     setStatusMessage(QString());
     const QList<MediaItem> episodes =
         m_episodesBySeasonId.value(currentSelectedSeasonId());
+    QString targetEpisodeId = m_currentMediaId;
+    bool hasCurrentEpisode = false;
+    for (const MediaItem &episode : episodes) {
+        if (episode.id == m_currentMediaId) {
+            hasCurrentEpisode = true;
+            break;
+        }
+    }
+    if (!hasCurrentEpisode && !episodes.isEmpty()) {
+        targetEpisodeId = episodes.first().id;
+    }
+
     m_episodeGallery->setItems(episodes);
     m_episodeGallery->setHighlightedItemId(m_currentMediaId);
+    m_episodeGallery->scrollToItemId(targetEpisodeId);
 
     if (episodes.isEmpty()) {
         setStatusMessage(tr("No episodes found."));

@@ -4,6 +4,7 @@
 #include <QStyledItemDelegate>
 #include <QWidget>
 #include <QColor>
+#include <QFlags>
 #include <QSet>
 
 
@@ -59,6 +60,16 @@ public:
         EpisodeList  
     };
 
+    enum HoverControl {
+        HoverControlNone = 0x0,
+        HoverControlPlay = 0x1,
+        HoverControlFavorite = 0x2,
+        HoverControlMore = 0x4,
+        HoverControlAll =
+            HoverControlPlay | HoverControlFavorite | HoverControlMore
+    };
+    Q_DECLARE_FLAGS(HoverControls, HoverControl)
+
     explicit MediaCardDelegate(CardStyle style = Poster, QObject *parent = nullptr);
 
     void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override;
@@ -81,6 +92,11 @@ public:
     {
         m_showMoreButtonForNonPlayableTiles = enabled;
     }
+    void setHoverControls(HoverControls controls)
+    {
+        m_hoverControls = controls;
+    }
+    HoverControls hoverControls() const { return m_hoverControls; }
 
 signals:
     
@@ -99,9 +115,12 @@ private:
     mutable MediaCardThemeHelper *m_themeHelper; 
     mutable QSet<QWidget*> m_installedViewports; 
     bool m_showMoreButtonForNonPlayableTiles = false;
+    HoverControls m_hoverControls = HoverControlAll;
     int m_titleFontPixelSize = 13;
     int m_subTitleFontPixelSize = 12;
     int m_contentPadding = 8;
 };
+
+Q_DECLARE_OPERATORS_FOR_FLAGS(MediaCardDelegate::HoverControls)
 
 #endif 

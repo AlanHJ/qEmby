@@ -29,6 +29,7 @@ public:
                                          DanmakuMediaContext context,
                                          QString initialKeyword,
                                          QString activeTargetId,
+                                         QString activeEndpointId,
                                          QWidget *parent = nullptr);
 
     DanmakuMatchCandidate selectedCandidate() const;
@@ -64,6 +65,7 @@ private:
     QList<DanmakuMatchCandidate> m_results;
     std::optional<QCoro::Task<void>> m_pendingTask;
     QString m_activeTargetId;
+    QString m_activeEndpointId;
 };
 
 #endif 

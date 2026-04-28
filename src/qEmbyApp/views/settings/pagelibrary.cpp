@@ -72,6 +72,13 @@ PageLibrary::PageLibrary(QEmbyCore *core, QWidget *parent)
       QVariant(true)));
 
   m_mainLayout->addWidget(new SettingsCard(
+      ":/svg/dark/appearance-library-view.svg", tr("Show Media Tooltips"),
+      tr("Show media details in tooltips when hovering over media cards"),
+      new ModernSwitch(this),
+      ConfigKeys::ShowMediaTooltips, this,
+      QVariant(true)));
+
+  m_mainLayout->addWidget(new SettingsCard(
       ":/svg/dark/folder-heart.svg", tr("Show Favorite Folders"),
       tr("Display favorite folders in the favorites page"),
       new ModernSwitch(this),

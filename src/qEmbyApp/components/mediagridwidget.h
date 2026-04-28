@@ -40,6 +40,7 @@ public:
 
 Q_SIGNALS:
     void itemClicked(const MediaItem& item);
+    void loadMoreRequested();
     
     
     
@@ -54,6 +55,7 @@ protected:
 
 private:
     void adjustGrid();
+    void notifyLoadMoreIfNeeded();
 
     int m_basePadding;
     MediaCardDelegate::CardStyle m_currentStyle;

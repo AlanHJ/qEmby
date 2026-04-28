@@ -9,6 +9,7 @@
 #include "../../components/settingscard.h"
 #include "../../components/settingssubpanel.h"
 #include "../../utils/danmakuoptionutils.h"
+#include "../../utils/danmakurendererutils.h"
 #include "../../managers/externalplayerdetector.h"
 #include "../../managers/thememanager.h"
 #include "config/config_keys.h"
@@ -68,13 +69,14 @@ PagePlayer::PagePlayer(QEmbyCore *core, QWidget *parent)
 
   
   auto *vsyncCombo = new ModernComboBox(this);
-  vsyncCombo->addItem(tr("Audio (Default)"), "audio");
-  vsyncCombo->addItem(tr("Display Resample"), "display-resample");
+  vsyncCombo->addItem(tr("Audio"), "audio");
+  vsyncCombo->addItem(tr("Display Resample (Default)"), "display-resample");
   vsyncCombo->addItem(tr("Display VSync"), "display-vdrop");
   m_mainLayout->addWidget(
       new SettingsCard(":/svg/dark/video-sync.svg", tr("Video Sync Mode"),
                        tr("Method for synchronizing video frames to display"),
-                       vsyncCombo, ConfigKeys::PlayerVideoSync, this));
+                       vsyncCombo, ConfigKeys::PlayerVideoSync, this,
+                       QVariant("display-resample")));
 
   auto createLanguageRuleInput = [this](bool allowNone) {
     auto *input = new ModernTagInput(this);
@@ -427,12 +429,18 @@ PagePlayer::PagePlayer(QEmbyCore *core, QWidget *parent)
   danmakuTitle->setObjectName("SettingsSubTitle");
   m_mainLayout->addWidget(danmakuTitle);
 
+  const QString danmakuEnabledKey =
+      ConfigKeys::forServer(sid, ConfigKeys::PlayerDanmakuEnabled);
+  const bool danmakuEnabled = ConfigStore::instance()->get<bool>(
+      danmakuEnabledKey,
+      ConfigStore::instance()->get<bool>(ConfigKeys::PlayerDanmakuEnabled,
+                                         false));
   auto *danmakuSwitch = new ModernSwitch(this);
   auto *danmakuSettingsCard = new SettingsCard(
       ":/svg/dark/danmaku.svg", tr("Enable Danmaku"),
       tr("Display streaming danmaku in the embedded player"),
-      danmakuSwitch, ConfigKeys::PlayerDanmakuEnabled, this,
-      QVariant(false));
+      danmakuSwitch, danmakuEnabledKey, this,
+      QVariant(danmakuEnabled));
   m_mainLayout->addWidget(danmakuSettingsCard);
 
   QList<SettingsSubPanel *> danmakuPanels;
@@ -497,6 +505,18 @@ PagePlayer::PagePlayer(QEmbyCore *core, QWidget *parent)
         return addDanmakuSubPanel(iconPath, title, description, control);
       };
 
+  auto *danmakuRendererCombo = new ModernComboBox(this);
+  danmakuRendererCombo->addItem(tr("ASS Subtitle Track"),
+                                DanmakuRendererUtils::assTrackRendererId());
+  danmakuRendererCombo->addItem(
+      tr("Native Smooth Renderer"),
+      DanmakuRendererUtils::nativeSmoothRendererId());
+  addDanmakuSubPanel(
+      ":/svg/dark/danmaku.svg", tr("Danmaku Renderer"),
+      tr("Choose whether danmaku is rendered through the ASS subtitle track or qEmby's adaptive native renderer"),
+      danmakuRendererCombo, ConfigKeys::PlayerDanmakuRenderer,
+      QVariant(DanmakuRendererUtils::defaultRendererId()));
+
   auto *danmakuServerPanel =
       new SettingsSubPanel(":/svg/dark/danmaku-server.svg", this);
   auto *danmakuServerTextContainer = new QWidget(danmakuServerPanel);
@@ -553,17 +573,28 @@ PagePlayer::PagePlayer(QEmbyCore *core, QWidget *parent)
         const bool isOfficialDandanPlay =
             serverUrl.host().trimmed().compare(
                 QStringLiteral("api.dandanplay.net"), Qt::CaseInsensitive) == 0;
-        QString summary = tr("Current server: %1\nAddress: %2")
-                              .arg(serverName, selectedServer.baseUrl.trimmed());
+        QStringList summaryLines;
+        summaryLines.append(tr("Current server: %1").arg(serverName));
+        summaryLines.append(
+            tr("Address: %1").arg(selectedServer.baseUrl.trimmed()));
+        if (selectedServer.builtIn &&
+            selectedServer.contentScope.trimmed().compare(
+                QStringLiteral("anime"), Qt::CaseInsensitive) == 0) {
+          summaryLines.append(tr("Supported content: Anime only"));
+        }
+        if (!selectedServer.builtIn &&
+            !selectedServer.description.trimmed().isEmpty()) {
+          summaryLines.append(
+              tr("Description: %1").arg(selectedServer.description.trimmed()));
+        }
         if (isOfficialDandanPlay &&
             (selectedServer.appId.trimmed().isEmpty() ||
              selectedServer.appSecret.trimmed().isEmpty())) {
-          summary +=
-              QStringLiteral("\n") +
-              tr("App ID and App Secret are required for official DandanPlay Open API access");
+          summaryLines.append(
+              tr("App ID and App Secret are required for official DandanPlay Open API access"));
         }
 
-        danmakuServerDescLabel->setText(summary);
+        danmakuServerDescLabel->setText(summaryLines.join(QStringLiteral("\n")));
       };
   updateDanmakuServerSummary();
 
@@ -717,7 +748,7 @@ PagePlayer::PagePlayer(QEmbyCore *core, QWidget *parent)
 
   addDanmakuSliderSubPanel(
       ":/svg/dark/danmaku-size.svg", tr("Danmaku Size"),
-      tr("Scale the ASS font size used for danmaku rendering"),
+      tr("Scale the font size used for danmaku rendering"),
       DanmakuOptionUtils::SliderKind::FontScale,
       ConfigKeys::PlayerDanmakuFontScale);
 
@@ -800,17 +831,12 @@ PagePlayer::PagePlayer(QEmbyCore *core, QWidget *parent)
       if (!panel) {
         continue;
       }
-      panel->setExpanded(enabled);
+      panel->setExpandedImmediately(enabled);
     }
   };
 
-  const bool danmakuEnabled =
-      ConfigStore::instance()->get<bool>(ConfigKeys::PlayerDanmakuEnabled,
-                                         false);
   if (danmakuEnabled) {
-    for (auto *panel : danmakuPanels) {
-      panel->initExpanded();
-    }
+    updateDanmakuPanels(true);
   }
 
   connect(danmakuSwitch, &ModernSwitch::toggled, this,
@@ -818,8 +844,9 @@ PagePlayer::PagePlayer(QEmbyCore *core, QWidget *parent)
             updateDanmakuPanels(enabled);
           });
   connect(ConfigStore::instance(), &ConfigStore::valueChanged, this,
-          [updateDanmakuPanels](const QString &key, const QVariant &newValue) {
-            if (key == ConfigKeys::PlayerDanmakuEnabled) {
+          [danmakuEnabledKey, updateDanmakuPanels](const QString &key,
+                                                   const QVariant &newValue) {
+            if (key == danmakuEnabledKey) {
               updateDanmakuPanels(newValue.toBool());
             }
           });

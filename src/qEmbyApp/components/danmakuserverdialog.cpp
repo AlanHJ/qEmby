@@ -2,6 +2,7 @@
 
 #include "danmakuserverlistitemwidget.h"
 #include "modernmessagebox.h"
+#include "services/danmaku/danmakusettings.h"
 
 #include <QAbstractItemView>
 #include <QEvent>
@@ -21,17 +22,6 @@
 #include <utility>
 
 namespace {
-
-DanmakuServerDefinition defaultServerDefinition()
-{
-    DanmakuServerDefinition server;
-    server.id = QStringLiteral("default");
-    server.name = QStringLiteral("DandanPlay Open API");
-    server.provider = QStringLiteral("dandanplay");
-    server.baseUrl = QStringLiteral("https://api.dandanplay.net");
-    server.enabled = true;
-    return server;
-}
 
 QString fallbackServerName(const DanmakuServerDefinition &server)
 {
@@ -72,9 +62,9 @@ DanmakuServerDialog::DanmakuServerDialog(QWidget *parent)
     listLayout->addWidget(listTitle);
 
     auto *listDesc = new QLabel(
-        tr("Each item shows the danmaku server name, address, and app "
-           "credentials. Official DandanPlay Open API access requires valid "
-           "App ID and App Secret."),
+        tr("Each item shows the danmaku server name, address, app "
+           "credentials, and description. The built-in official "
+           "DandanPlay server supports anime only."),
         listPanel);
     listDesc->setObjectName("SettingsCardDesc");
     listDesc->setWordWrap(true);
@@ -116,9 +106,9 @@ DanmakuServerDialog::DanmakuServerDialog(QWidget *parent)
     editorLayout->addWidget(editorTitle);
 
     auto *editorDesc = new QLabel(
-        tr("Update the server name, address, and app credentials for the "
+        tr("Update the server name, address, description, and app credentials for the "
            "selected danmaku server. Official DandanPlay endpoints require "
-           "App ID and App Secret."),
+           "App ID and App Secret and support anime only."),
         editorPanel);
     editorDesc->setObjectName("DanmakuServerEditorDesc");
     editorDesc->setWordWrap(true);
@@ -147,23 +137,31 @@ DanmakuServerDialog::DanmakuServerDialog(QWidget *parent)
         QStringLiteral("https://api.dandanplay.net"));
     formLayout->addRow(urlLabel, m_baseUrlEdit);
 
-    auto *appIdLabel = new QLabel(tr("App ID"), editorPanel);
-    appIdLabel->setObjectName("LibraryMetadataFieldLabel");
+    m_descriptionLabel = new QLabel(tr("Description"), editorPanel);
+    m_descriptionLabel->setObjectName("LibraryMetadataFieldLabel");
+    m_descriptionEdit = new QLineEdit(editorPanel);
+    m_descriptionEdit->setObjectName("ManageLibInput");
+    m_descriptionEdit->setClearButtonEnabled(true);
+    m_descriptionEdit->setPlaceholderText(tr("e.g., Supports anime only"));
+    formLayout->addRow(m_descriptionLabel, m_descriptionEdit);
+
+    m_appIdLabel = new QLabel(tr("App ID"), editorPanel);
+    m_appIdLabel->setObjectName("LibraryMetadataFieldLabel");
     m_appIdEdit = new QLineEdit(editorPanel);
     m_appIdEdit->setObjectName("ManageLibInput");
     m_appIdEdit->setClearButtonEnabled(true);
     m_appIdEdit->setPlaceholderText(tr("Required for official DandanPlay"));
-    formLayout->addRow(appIdLabel, m_appIdEdit);
+    formLayout->addRow(m_appIdLabel, m_appIdEdit);
 
-    auto *appSecretLabel = new QLabel(tr("App Secret"), editorPanel);
-    appSecretLabel->setObjectName("LibraryMetadataFieldLabel");
+    m_appSecretLabel = new QLabel(tr("App Secret"), editorPanel);
+    m_appSecretLabel->setObjectName("LibraryMetadataFieldLabel");
     m_appSecretEdit = new QLineEdit(editorPanel);
     m_appSecretEdit->setObjectName("ManageLibInput");
     m_appSecretEdit->setClearButtonEnabled(true);
     m_appSecretEdit->setEchoMode(QLineEdit::Password);
     m_appSecretEdit->setPlaceholderText(
         tr("Required for official DandanPlay"));
-    formLayout->addRow(appSecretLabel, m_appSecretEdit);
+    formLayout->addRow(m_appSecretLabel, m_appSecretEdit);
 
     editorLayout->addLayout(formLayout);
     editorLayout->addStretch();
@@ -210,6 +208,10 @@ DanmakuServerDialog::DanmakuServerDialog(QWidget *parent)
             [this](const QString &text) { updateCurrentServerName(text); });
     connect(m_baseUrlEdit, &QLineEdit::textChanged, this,
             [this](const QString &text) { updateCurrentServerUrl(text); });
+    connect(m_descriptionEdit, &QLineEdit::textChanged, this,
+            [this](const QString &text) {
+              updateCurrentServerDescription(text);
+            });
     connect(m_appIdEdit, &QLineEdit::textChanged, this,
             [this](const QString &text) { updateCurrentServerAppId(text); });
     connect(m_appSecretEdit, &QLineEdit::textChanged, this,
@@ -218,10 +220,14 @@ DanmakuServerDialog::DanmakuServerDialog(QWidget *parent)
             });
 
     connect(m_addButton, &QPushButton::clicked, this, [this]() {
-      DanmakuServerDefinition server;
+      DanmakuServerDefinition server =
+          DanmakuSettings::builtInOfficialDandanplayServer();
       server.id = createServerId();
-      server.provider = QStringLiteral("dandanplay");
-      server.baseUrl = QStringLiteral("https://api.dandanplay.net");
+      server.builtIn = false;
+      server.contentScope.clear();
+      server.description.clear();
+      server.appId.clear();
+      server.appSecret.clear();
       server.name = tr("Danmaku Server %1").arg(m_servers.size() + 1);
       server.enabled = true;
       m_servers.append(server);
@@ -231,14 +237,15 @@ DanmakuServerDialog::DanmakuServerDialog(QWidget *parent)
       m_nameEdit->selectAll();
     });
 
-    setServers({defaultServerDefinition()}, QStringLiteral("default"));
+    setServers({DanmakuSettings::builtInOfficialDandanplayServer()},
+               QStringLiteral("default"));
 }
 
 void DanmakuServerDialog::setServers(QList<DanmakuServerDefinition> servers,
                                      QString selectedServerId)
 {
     if (servers.isEmpty()) {
-        servers.append(defaultServerDefinition());
+        servers.append(DanmakuSettings::builtInOfficialDandanplayServer());
     }
 
     for (DanmakuServerDefinition &server : servers) {
@@ -246,11 +253,27 @@ void DanmakuServerDialog::setServers(QList<DanmakuServerDefinition> servers,
         server.name = server.name.trimmed();
         server.provider = server.provider.trimmed();
         server.baseUrl = normalizeBaseUrl(server.baseUrl);
+        server.description = server.description.trimmed();
         server.appId = server.appId.trimmed();
         server.appSecret = server.appSecret.trimmed();
+        server.contentScope = server.contentScope.trimmed().toLower();
 
         if (server.id.isEmpty()) {
             server.id = createServerId();
+        }
+        if (server.builtIn) {
+            const DanmakuServerDefinition builtIn =
+                DanmakuSettings::builtInOfficialDandanplayServer();
+            server.id = builtIn.id;
+            server.provider = builtIn.provider;
+            server.baseUrl = builtIn.baseUrl;
+            server.appId = builtIn.appId;
+            server.appSecret = builtIn.appSecret;
+            server.description.clear();
+            server.contentScope = builtIn.contentScope;
+            if (server.name.isEmpty()) {
+                server.name = builtIn.name;
+            }
         }
         if (server.provider.isEmpty()) {
             server.provider = QStringLiteral("dandanplay");
@@ -280,6 +303,10 @@ QList<DanmakuServerDefinition> DanmakuServerDialog::servers() const
 
 QString DanmakuServerDialog::selectedServerId() const
 {
+    if (enabledServerCount() <= 0) {
+        return QString();
+    }
+
     const int index = preferredServerIndex(currentServerIndex());
     if (index >= 0 && index < m_servers.size()) {
         return m_servers.at(index).id;
@@ -295,13 +322,6 @@ void DanmakuServerDialog::accept()
         ModernMessageBox::warning(
             this, tr("Danmaku Servers"),
             tr("At least one danmaku server is required."), tr("OK"));
-        return;
-    }
-
-    if (enabledServerCount() <= 0) {
-        ModernMessageBox::warning(
-            this, tr("Danmaku Servers"),
-            tr("At least one enabled danmaku server is required."), tr("OK"));
         return;
     }
 
@@ -438,12 +458,18 @@ int DanmakuServerDialog::preferredServerIndex(int preferredIndex) const
 
 void DanmakuServerDialog::removeServer(int index)
 {
-    if (index < 0 || index >= m_servers.size() || m_servers.size() <= 1) {
-        if (m_servers.size() <= 1) {
-            ModernMessageBox::warning(
-                this, tr("Danmaku Servers"),
-                tr("At least one danmaku server is required."), tr("OK"));
-        }
+    if (index < 0 || index >= m_servers.size()) {
+        return;
+    }
+
+    if (m_servers.at(index).builtIn) {
+        return;
+    }
+
+    if (m_servers.size() <= 1) {
+        ModernMessageBox::warning(
+            this, tr("Danmaku Servers"),
+            tr("At least one danmaku server is required."), tr("OK"));
         return;
     }
 
@@ -522,7 +548,7 @@ void DanmakuServerDialog::refreshServerList()
         auto *item = new QListWidgetItem();
         auto *widget = new DanmakuServerListItemWidget(m_serverList);
         widget->setServer(server);
-        widget->setRemovable(m_servers.size() > 1);
+        widget->setRemovable(m_servers.size() > 1 && !server.builtIn);
         item->setData(Qt::UserRole, server.id);
         m_serverList->addItem(item);
         m_serverList->setItemWidget(item, widget);
@@ -602,7 +628,8 @@ void DanmakuServerDialog::refreshServerListItem(int index)
     }
 
     widget->setServer(m_servers.at(index));
-    widget->setRemovable(m_servers.size() > 1);
+    widget->setRemovable(m_servers.size() > 1 &&
+                         !m_servers.at(index).builtIn);
     syncServerListItemSize(index);
     updateSelectionState();
 }
@@ -666,6 +693,7 @@ void DanmakuServerDialog::loadCurrentServer()
     const DanmakuServerDefinition &server = m_servers.at(index);
     m_nameEdit->setText(server.name);
     m_baseUrlEdit->setText(server.baseUrl);
+    m_descriptionEdit->setText(server.description);
     m_appIdEdit->setText(server.appId);
     m_appSecretEdit->setText(server.appSecret);
     m_loading = false;
@@ -689,10 +717,18 @@ void DanmakuServerDialog::updateEditorState()
 {
     const int index = editingServerIndex();
     const bool hasCurrentServer = index >= 0 && index < m_servers.size();
-    m_nameEdit->setEnabled(hasCurrentServer);
-    m_baseUrlEdit->setEnabled(hasCurrentServer);
-    m_appIdEdit->setEnabled(hasCurrentServer);
-    m_appSecretEdit->setEnabled(hasCurrentServer);
+    const bool isBuiltIn = hasCurrentServer && m_servers.at(index).builtIn;
+    m_nameEdit->setEnabled(hasCurrentServer && !isBuiltIn);
+    m_baseUrlEdit->setEnabled(hasCurrentServer && !isBuiltIn);
+    m_descriptionLabel->setVisible(hasCurrentServer && !isBuiltIn);
+    m_descriptionEdit->setVisible(hasCurrentServer && !isBuiltIn);
+    m_descriptionEdit->setEnabled(hasCurrentServer && !isBuiltIn);
+    m_appIdLabel->setVisible(hasCurrentServer && !isBuiltIn);
+    m_appIdEdit->setVisible(hasCurrentServer && !isBuiltIn);
+    m_appIdEdit->setEnabled(hasCurrentServer && !isBuiltIn);
+    m_appSecretLabel->setVisible(hasCurrentServer && !isBuiltIn);
+    m_appSecretEdit->setVisible(hasCurrentServer && !isBuiltIn);
+    m_appSecretEdit->setEnabled(hasCurrentServer && !isBuiltIn);
 }
 
 void DanmakuServerDialog::updateServerEnabled(int index, bool enabled)
@@ -739,6 +775,9 @@ void DanmakuServerDialog::updateCurrentServerName(const QString &name)
     if (index < 0 || index >= m_servers.size()) {
         return;
     }
+    if (m_servers.at(index).builtIn) {
+        return;
+    }
 
     m_servers[index].name = name.trimmed();
     refreshServerListItem(index);
@@ -754,8 +793,30 @@ void DanmakuServerDialog::updateCurrentServerUrl(const QString &baseUrl)
     if (index < 0 || index >= m_servers.size()) {
         return;
     }
+    if (m_servers.at(index).builtIn) {
+        return;
+    }
 
     m_servers[index].baseUrl = baseUrl.trimmed();
+    refreshServerListItem(index);
+}
+
+void DanmakuServerDialog::updateCurrentServerDescription(
+    const QString &description)
+{
+    if (m_loading) {
+        return;
+    }
+
+    const int index = editingServerIndex();
+    if (index < 0 || index >= m_servers.size()) {
+        return;
+    }
+    if (m_servers.at(index).builtIn) {
+        return;
+    }
+
+    m_servers[index].description = description.trimmed();
     refreshServerListItem(index);
 }
 
@@ -767,6 +828,9 @@ void DanmakuServerDialog::updateCurrentServerAppId(const QString &appId)
 
     const int index = editingServerIndex();
     if (index < 0 || index >= m_servers.size()) {
+        return;
+    }
+    if (m_servers.at(index).builtIn) {
         return;
     }
 
@@ -785,6 +849,9 @@ void DanmakuServerDialog::updateCurrentServerAppSecret(
     if (index < 0 || index >= m_servers.size()) {
         return;
     }
+    if (m_servers.at(index).builtIn) {
+        return;
+    }
 
     m_servers[index].appSecret = appSecret.trimmed();
     refreshServerListItem(index);
@@ -792,11 +859,13 @@ void DanmakuServerDialog::updateCurrentServerAppSecret(
 
 void DanmakuServerDialog::updateActionState()
 {
-    const bool removable = m_servers.size() > 1;
     for (int row = 0; row < m_serverList->count(); ++row) {
         auto *widget = qobject_cast<DanmakuServerListItemWidget *>(
             m_serverList->itemWidget(m_serverList->item(row)));
         if (widget) {
+            const bool removable =
+                row < m_servers.size() && m_servers.size() > 1 &&
+                !m_servers.at(row).builtIn;
             widget->setRemovable(removable);
         }
     }

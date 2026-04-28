@@ -39,15 +39,40 @@ protected:
 private slots:
     
     QCoro::Task<void> onFilterChanged();
+    QCoro::Task<void> onLoadMoreRequested();
 
 private:
+    struct QueryState {
+        ViewMode mode = LibraryMode;
+        QString targetId;
+        QString sortBy;
+        QString sortOrder;
+        QString filters;
+        QString includeTypes;
+        QString genreFilter;
+        QString tagFilter;
+        QString studioFilter;
+        bool recursive = false;
+        bool includeChildCount = false;
+        bool needsPlaylistEnrichment = false;
+    };
+
     void setupTopBar(class QHBoxLayout* headerLayout);
     
     void updateFavBtnState();
     QCoro::Task<QList<MediaItem>> enrichPlaylistItemsForRemoval(QList<MediaItem> items);
+    QueryState buildCurrentQueryState(const QString& sortBy, const QString& sortOrder) const;
+    bool isQueryValid(const QueryState& query) const;
+    void resetPaginationState();
+    void updateStatsLabel();
+    QCoro::Task<void> loadInitialItems();
+    QString currentPreferenceTargetId() const;
+    void applyViewMode(bool isTile);
     
     void saveSortPreference();
     void restoreSortPreference();
+    void saveViewPreference();
+    void restoreViewPreference();
 
     ViewMode m_currentMode;        
     QString m_currentLibraryId;
@@ -67,6 +92,13 @@ private:
     QLabel* m_statsLabel;
 
     MediaGridWidget* m_mediaGrid;
+    QueryState m_activeQuery;
+    QList<MediaItem> m_loadedItems;
+    int m_totalItemCount = 0;
+    int m_pageSize = 0;
+    int m_requestGeneration = 0;
+    bool m_hasMoreItems = false;
+    bool m_isLoadingMore = false;
 };
 
 #endif 

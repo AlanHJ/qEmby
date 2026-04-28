@@ -17,6 +17,7 @@
 #include <QPointer>
 #include <QPushButton>
 #include <QResizeEvent>
+#include <QSet>
 #include <QShowEvent>
 #include <QSize>
 #include <QSignalBlocker>
@@ -45,6 +46,55 @@ QString providerDisplayName(const QString &provider)
                                         : provider.trimmed();
 }
 
+bool isLocalCandidate(const DanmakuMatchCandidate &candidate)
+{
+    return candidate.provider == QLatin1String("local-file");
+}
+
+QString candidateServerDisplayName(const DanmakuMatchCandidate &candidate)
+{
+    if (isLocalCandidate(candidate)) {
+        return providerDisplayName(candidate.provider);
+    }
+
+    const QString endpointName = candidate.endpointName.trimmed();
+    if (!endpointName.isEmpty()) {
+        return endpointName;
+    }
+
+    return providerDisplayName(candidate.provider);
+}
+
+QString candidateServerKey(const DanmakuMatchCandidate &candidate)
+{
+    const QString endpointId = candidate.endpointId.trimmed();
+    if (!endpointId.isEmpty()) {
+        return endpointId;
+    }
+
+    const QString endpointName = candidate.endpointName.trimmed();
+    if (!endpointName.isEmpty()) {
+        return endpointName;
+    }
+    return candidate.provider.trimmed();
+}
+
+int onlineServerCount(const QList<DanmakuMatchCandidate> &candidates)
+{
+    QSet<QString> servers;
+    for (const DanmakuMatchCandidate &candidate : candidates) {
+        if (!candidate.isValid() || isLocalCandidate(candidate)) {
+            continue;
+        }
+
+        const QString key = candidateServerKey(candidate);
+        if (!key.isEmpty()) {
+            servers.insert(key);
+        }
+    }
+    return servers.size();
+}
+
 QString candidateCountText(const DanmakuMatchCandidate &candidate)
 {
     return candidate.commentCount > 0
@@ -62,18 +112,39 @@ QString buildResultDisplayText(const DanmakuMatchCandidate &candidate)
             ? QCoreApplication::translate("PlayerDanmakuIdentifyDialog",
                                           "Unknown Danmaku")
             : candidate.displayText().trimmed();
-    const QString detail = QStringLiteral("%1  |  %2")
-                               .arg(providerDisplayName(candidate.provider),
-                                    candidateCountText(candidate));
+    QStringList detailParts;
+    if (isLocalCandidate(candidate)) {
+        detailParts.append(providerDisplayName(candidate.provider));
+    } else {
+        detailParts.append(
+            QCoreApplication::translate("PlayerDanmakuIdentifyDialog",
+                                        "Server: %1")
+                .arg(candidateServerDisplayName(candidate)));
+        detailParts.append(providerDisplayName(candidate.provider));
+    }
+    detailParts.append(candidateCountText(candidate));
+    const QString detail = detailParts.join(QStringLiteral("  |  "));
     return title + QStringLiteral("\n") + detail;
 }
 
 QString buildDetailText(const DanmakuMatchCandidate &candidate)
 {
     QStringList sections;
-    sections.append(
-        QCoreApplication::translate("PlayerDanmakuIdentifyDialog", "Source: %1")
-            .arg(providerDisplayName(candidate.provider)));
+    if (isLocalCandidate(candidate)) {
+        sections.append(
+            QCoreApplication::translate("PlayerDanmakuIdentifyDialog",
+                                        "Source: %1")
+                .arg(providerDisplayName(candidate.provider)));
+    } else {
+        sections.append(
+            QCoreApplication::translate("PlayerDanmakuIdentifyDialog",
+                                        "Danmaku Server: %1")
+                .arg(candidateServerDisplayName(candidate)));
+        sections.append(
+            QCoreApplication::translate("PlayerDanmakuIdentifyDialog",
+                                        "Provider: %1")
+                .arg(providerDisplayName(candidate.provider)));
+    }
     sections.append(
         QCoreApplication::translate("PlayerDanmakuIdentifyDialog", "Title: %1")
             .arg(candidate.title.trimmed().isEmpty()
@@ -132,12 +203,13 @@ QString buildDetailText(const DanmakuMatchCandidate &candidate)
 
 PlayerDanmakuIdentifyDialog::PlayerDanmakuIdentifyDialog(
     QEmbyCore *core, DanmakuMediaContext context, QString initialKeyword,
-    QString activeTargetId, QWidget *parent)
+    QString activeTargetId, QString activeEndpointId, QWidget *parent)
     : PlayerOverlayDialog(parent),
       m_core(core),
       m_context(std::move(context)),
       m_initialKeyword(std::move(initialKeyword)),
-      m_activeTargetId(std::move(activeTargetId))
+      m_activeTargetId(std::move(activeTargetId)),
+      m_activeEndpointId(std::move(activeEndpointId))
 {
     setSurfaceObjectName("playerDanmakuIdentifyDialog");
     setSurfacePreferredSize(QSize(820, 560));
@@ -188,8 +260,8 @@ PlayerDanmakuIdentifyDialog::PlayerDanmakuIdentifyDialog(
     contentLayout()->addLayout(searchRow);
     contentLayout()->addSpacing(10);
 
-    m_statusLabel = new QLabel(tr("Search for local or online danmaku sources."),
-                               this);
+    m_statusLabel = new QLabel(
+        tr("Search local files and enabled danmaku servers."), this);
     m_statusLabel->setObjectName("dialog-text");
     m_statusLabel->setWordWrap(true);
     contentLayout()->addWidget(m_statusLabel);
@@ -333,7 +405,7 @@ QCoro::Task<void> PlayerDanmakuIdentifyDialog::searchMatches(QString queryText)
     }
 
     m_isLoading = true;
-    updateStatusText(tr("Searching..."));
+    updateStatusText(tr("Searching local files and enabled danmaku servers..."));
     updateUiState();
 
     qDebug().noquote()
@@ -352,9 +424,17 @@ QCoro::Task<void> PlayerDanmakuIdentifyDialog::searchMatches(QString queryText)
         safeThis->m_results = results;
         safeThis->m_isLoading = false;
         safeThis->rebuildResultList();
-        safeThis->updateStatusText(
-            results.isEmpty() ? tr("No matches found")
-                              : tr("Found %1 matches").arg(results.size()));
+        if (results.isEmpty()) {
+            safeThis->updateStatusText(tr("No matches found"));
+        } else {
+            const int serverCount = onlineServerCount(results);
+            safeThis->updateStatusText(
+                serverCount > 1
+                    ? tr("Found %1 matches from %2 danmaku servers")
+                          .arg(results.size())
+                          .arg(serverCount)
+                    : tr("Found %1 matches").arg(results.size()));
+        }
         safeThis->updateUiState();
 
         qDebug().noquote()
@@ -415,9 +495,17 @@ void PlayerDanmakuIdentifyDialog::rebuildResultList()
             for (int i = 0; i < m_resultList->count(); ++i) {
                 const auto data =
                     m_resultList->item(i)->data(kDanmakuCandidateRole);
-                if (data.canConvert<DanmakuMatchCandidate>() &&
-                    data.value<DanmakuMatchCandidate>().targetId ==
-                        m_activeTargetId) {
+                if (!data.canConvert<DanmakuMatchCandidate>()) {
+                    continue;
+                }
+
+                const DanmakuMatchCandidate candidate =
+                    data.value<DanmakuMatchCandidate>();
+                const bool sameTarget = candidate.targetId == m_activeTargetId;
+                const bool sameEndpoint =
+                    m_activeEndpointId.trimmed().isEmpty() ||
+                    candidate.endpointId == m_activeEndpointId;
+                if (sameTarget && sameEndpoint) {
                     targetRow = i;
                     break;
                 }

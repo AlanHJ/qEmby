@@ -1301,7 +1301,7 @@ QCoro::Task<QString> AdminService::createPlaylist(const QString& name, const QSt
     co_return createdId;
 }
 
-QCoro::Task<QJsonObject> AdminService::getPlaylistItems(const QString& playlistId)
+QCoro::Task<QJsonObject> AdminService::getPlaylistItems(QString playlistId)
 {
     ensureValidProfile();
     ServerProfile profile = m_serverManager->activeProfile();
@@ -1310,7 +1310,7 @@ QCoro::Task<QJsonObject> AdminService::getPlaylistItems(const QString& playlistI
     co_return co_await m_serverManager->activeClient()->get(path);
 }
 
-QCoro::Task<void> AdminService::addToPlaylist(const QString& playlistId, const QStringList& itemIds)
+QCoro::Task<void> AdminService::addToPlaylist(QString playlistId, QStringList itemIds)
 {
     ensureValidProfile();
     if (playlistId.trimmed().isEmpty() || itemIds.isEmpty()) {
@@ -1336,7 +1336,7 @@ QCoro::Task<void> AdminService::addToPlaylist(const QString& playlistId, const Q
              << "| itemCount:" << itemIds.size();
 }
 
-QCoro::Task<void> AdminService::removeFromPlaylist(const QString& playlistId, const QStringList& entryIds)
+QCoro::Task<void> AdminService::removeFromPlaylist(QString playlistId, QStringList entryIds)
 {
     ensureValidProfile();
     QString ids = entryIds.join(",");

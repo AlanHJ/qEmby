@@ -9,6 +9,7 @@
 class QEMBYCORE_EXPORT DanmakuSettings final
 {
 public:
+    static DanmakuServerDefinition builtInOfficialDandanplayServer();
     static QList<DanmakuServerDefinition> loadServers(QString serverId);
     static DanmakuServerDefinition selectedServer(QString serverId);
     static QString selectedServerId(QString serverId);

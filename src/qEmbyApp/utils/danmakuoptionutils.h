@@ -8,6 +8,9 @@ namespace DanmakuOptionUtils {
 enum class SliderKind {
     Opacity,
     FontScale,
+    FontWeight,
+    OutlineSize,
+    ShadowOffset,
     Area,
     Density,
     SpeedScale,

@@ -6,6 +6,7 @@
 #include "../../components/moderntoast.h"
 #include "../../components/mediasectionwidget.h"
 #include "../../utils/dashboardsectionorderutils.h"
+#include "../../utils/textwraputils.h"
 #include "../media/mediacarddelegate.h"
 #include "../media/medialistmodel.h"
 #include <QApplication>
@@ -387,6 +388,7 @@ QListView* DashboardView::createGridListView(MediaListModel** outModel)
     listView->setFrameShape(QFrame::NoFrame);
     listView->setMouseTracking(true);
     listView->viewport()->setAttribute(Qt::WA_Hover);
+    listView->viewport()->installEventFilter(this);
     listView->setStyleSheet(
         "QListView { background: transparent; outline: none; }");
 
@@ -398,6 +400,12 @@ QListView* DashboardView::createGridListView(MediaListModel** outModel)
 
 bool DashboardView::eventFilter(QObject* obj, QEvent* event)
 {
+    if (m_libraryListView && obj == m_libraryListView->viewport() &&
+        event->type() == QEvent::ToolTip) {
+        return TextWrapUtils::showWrappedMediaItemToolTip(m_libraryListView,
+                                                          event);
+    }
+
     if (event->type() == QEvent::Wheel) {
         const bool isHorizontalViewport =
             obj->parent() &&

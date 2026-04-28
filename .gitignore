@@ -45,3 +45,7 @@ libs/libmpv/
 _agents/
 # 帖子草稿
 linuxdo_post.md
+
+# 打包输出
+dist/
+release/

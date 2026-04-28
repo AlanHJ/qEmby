@@ -391,13 +391,23 @@ void SettingsSubPanel::setExpanded(bool expanded) {
     else collapse();
 }
 
+void SettingsSubPanel::setExpandedImmediately(bool expanded) {
+    m_animation->stop();
+    m_expanded = expanded;
+    if (expanded) {
+        setPanelHeight(contentHeight());
+        show();
+    } else {
+        setPanelHeight(0);
+        hide();
+    }
+    emit expandedChanged(expanded);
+}
+
 void SettingsSubPanel::initExpanded() {
     
     
-    m_expanded = true;
-    setPanelHeight(contentHeight());
-    show();
-    emit expandedChanged(true);
+    setExpandedImmediately(true);
 }
 
 int SettingsSubPanel::panelHeight() const {

@@ -92,6 +92,7 @@ LibraryView::LibraryView(QEmbyCore *core, QWidget *parent)
     connect(m_mediaGrid, &MediaGridWidget::playRequested, this, &BaseView::handlePlayRequested);
     connect(m_mediaGrid, &MediaGridWidget::favoriteRequested, this, &BaseView::handleFavoriteRequested);
     connect(m_mediaGrid, &MediaGridWidget::moreMenuRequested, this, &BaseView::handleMoreMenuRequested);
+    connect(m_mediaGrid, &MediaGridWidget::loadMoreRequested, this, &LibraryView::onLoadMoreRequested);
     
 }
 
@@ -185,6 +186,7 @@ void LibraryView::setupTopBar(QHBoxLayout *headerLayout)
             [this](bool checked)
             {
                 m_mediaGrid->setCardStyle(checked ? MediaCardDelegate::LibraryTile : MediaCardDelegate::Poster);
+                saveViewPreference();
                 onFilterChanged();
             });
 
@@ -248,12 +250,7 @@ QCoro::Task<void> LibraryView::loadLibrary(const QString &libraryId, const QStri
     
     restoreSortPreference();
 
-    bool isTile = (ConfigStore::instance()->get<QString>(ConfigKeys::DefaultLibraryView, "poster") == "tile");
-    m_viewSwitchBtn->blockSignals(true);
-    m_viewSwitchBtn->setChecked(isTile);
-    m_viewSwitchBtn->blockSignals(false);
-
-    m_mediaGrid->setCardStyle(isTile ? MediaCardDelegate::LibraryTile : MediaCardDelegate::Poster);
+    restoreViewPreference();
 
     
     
@@ -371,12 +368,7 @@ QCoro::Task<void> LibraryView::loadPerson(const QString &personId, const QString
     
     restoreSortPreference();
 
-    bool isTile = (ConfigStore::instance()->get<QString>(ConfigKeys::DefaultLibraryView, "poster") == "tile");
-    m_viewSwitchBtn->blockSignals(true);
-    m_viewSwitchBtn->setChecked(isTile);
-    m_viewSwitchBtn->blockSignals(false);
-
-    m_mediaGrid->setCardStyle(isTile ? MediaCardDelegate::LibraryTile : MediaCardDelegate::Poster);
+    restoreViewPreference();
 
     
     const bool shimmerEnabled =
@@ -439,12 +431,7 @@ QCoro::Task<void> LibraryView::loadFiltered(const QString &filterType, const QSt
     m_sortButton->setSortItems({tr("Date Added"), tr("Date Played"), tr("Title"), tr("Runtime"), tr("Premiere Date")});
     m_sortButton->blockSignals(false);
 
-    bool isTile = (ConfigStore::instance()->get<QString>(ConfigKeys::DefaultLibraryView, "poster") == "tile");
-    m_viewSwitchBtn->blockSignals(true);
-    m_viewSwitchBtn->setChecked(isTile);
-    m_viewSwitchBtn->blockSignals(false);
-
-    m_mediaGrid->setCardStyle(isTile ? MediaCardDelegate::LibraryTile : MediaCardDelegate::Poster);
+    restoreViewPreference();
 
     
     const bool shimmerEnabled =
@@ -464,6 +451,8 @@ QCoro::Task<void> LibraryView::onFilterChanged()
 
     
     saveSortPreference();
+    ++m_requestGeneration;
+    resetPaginationState();
 
     m_mediaGrid->setItems(QList<MediaItem>());
     m_statsLabel->setText(tr("Loading..."));
@@ -496,130 +485,371 @@ QCoro::Task<void> LibraryView::onFilterChanged()
         break;
     }
     QString sortOrder = m_sortButton->isDescending() ? "Descending" : "Ascending";
+    m_activeQuery = buildCurrentQueryState(sortBy, sortOrder);
+    qDebug() << "[LibraryView] onFilterChanged"
+             << "| generation=" << m_requestGeneration
+             << "| mode=" << static_cast<int>(m_activeQuery.mode)
+             << "| targetId=" << m_activeQuery.targetId
+             << "| sortBy=" << m_activeQuery.sortBy
+             << "| sortOrder=" << m_activeQuery.sortOrder
+             << "| filters=" << m_activeQuery.filters
+             << "| includeTypes=" << m_activeQuery.includeTypes
+             << "| recursive=" << m_activeQuery.recursive;
+
+    if (!isQueryValid(m_activeQuery))
+    {
+        if (!guard)
+            co_return;
+        if (m_mediaGrid) {
+            m_mediaGrid->setLoading(false);
+        }
+        updateStatsLabel();
+        co_return;
+    }
+
+    co_await loadInitialItems();
+}
+
+LibraryView::QueryState LibraryView::buildCurrentQueryState(const QString &sortBy,
+                                                            const QString &sortOrder) const
+{
+    QueryState query;
+    query.mode = m_currentMode;
+    query.sortBy = sortBy;
+    query.sortOrder = sortOrder;
+
+    if (m_currentMode == PersonMode)
+    {
+        query.targetId = m_currentPersonId;
+        return query;
+    }
+
+    if (m_currentMode == FilteredMode)
+    {
+        if (m_filterType == "Genre")
+            query.genreFilter = m_filterValue;
+        else if (m_filterType == "Tag")
+            query.tagFilter = m_filterValue;
+        else if (m_filterType == "Studio")
+            query.studioFilter = m_filterValue;
+        return query;
+    }
+
+    query.targetId = m_currentLibraryId;
+    query.includeTypes = "Movie,Series,Audio,Video";
+    query.recursive = true;
+    query.needsPlaylistEnrichment = (m_currentMediaItem.type == "Playlist");
+
+    if (m_currentMediaItem.type == "Folder")
+    {
+        query.includeTypes.clear();
+        query.sortBy = "IsFolder,SortName";
+        query.sortOrder = "Ascending";
+        query.recursive = false;
+        return query;
+    }
+
+    if (m_currentMediaItem.type == "BoxSet" || m_currentMediaItem.type == "Playlist" ||
+        m_currentMediaItem.collectionType == "playlists" || m_currentMediaItem.collectionType == "boxsets")
+    {
+        query.includeTypes.clear();
+        query.recursive = false;
+        return query;
+    }
+
+    const int tabIdx = m_tabGroup ? m_tabGroup->checkedId() : 0;
+    if (tabIdx == 1)
+    {
+        query.sortBy = "DateCreated";
+        query.sortOrder = "Descending";
+    }
+    if (tabIdx == 2)
+    {
+        query.includeTypes = "Playlist";
+    }
+    if (tabIdx == 3)
+    {
+        query.includeTypes = "BoxSet";
+    }
+    if (tabIdx == 4)
+    {
+        query.filters = "IsFavorite";
+        query.includeTypes = "Movie,Series,Audio,Video,BoxSet,Playlist";
+    }
+    if (tabIdx == 5)
+    {
+        query.includeTypes.clear();
+        query.sortBy = "IsFolder,SortName";
+        query.sortOrder = "Ascending";
+        query.recursive = false;
+    }
+
+    return query;
+}
+
+bool LibraryView::isQueryValid(const QueryState &query) const
+{
+    switch (query.mode)
+    {
+    case PersonMode:
+    case LibraryMode:
+        return !query.targetId.trimmed().isEmpty();
+    case FilteredMode:
+        return !query.genreFilter.trimmed().isEmpty() ||
+               !query.tagFilter.trimmed().isEmpty() ||
+               !query.studioFilter.trimmed().isEmpty();
+    default:
+        return false;
+    }
+}
+
+void LibraryView::resetPaginationState()
+{
+    m_loadedItems.clear();
+    m_totalItemCount = 0;
+    m_pageSize = 0;
+    m_hasMoreItems = false;
+    m_isLoadingMore = false;
+}
+
+void LibraryView::updateStatsLabel()
+{
+    const int loadedCount = m_loadedItems.size();
+    const int totalCount = qMax(m_totalItemCount, loadedCount);
+    if (totalCount > loadedCount)
+    {
+        m_statsLabel->setText(tr("%1 / %2 Items").arg(loadedCount).arg(totalCount));
+        return;
+    }
+
+    m_statsLabel->setText(tr("%1 Items").arg(totalCount));
+}
+
+QCoro::Task<void> LibraryView::loadInitialItems()
+{
+    QPointer<LibraryView> guard(this);
+    const int generation = m_requestGeneration;
+    const QueryState query = m_activeQuery;
+
+    auto fetchPage = [this](const QueryState &pageQuery, int startIndex, int limit)
+        -> QCoro::Task<MediaQueryPage>
+    {
+        switch (pageQuery.mode)
+        {
+        case PersonMode:
+            co_return co_await m_core->mediaService()->getItemsByPersonPage(
+                pageQuery.targetId, pageQuery.sortBy, pageQuery.sortOrder,
+                startIndex, limit);
+        case FilteredMode:
+            co_return co_await m_core->mediaService()->getItemsByFilterPage(
+                pageQuery.genreFilter, pageQuery.tagFilter, pageQuery.studioFilter,
+                pageQuery.sortBy, pageQuery.sortOrder, startIndex, limit);
+        case LibraryMode:
+        default:
+            co_return co_await m_core->mediaService()->getLibraryItemsPage(
+                pageQuery.targetId, pageQuery.sortBy, pageQuery.sortOrder,
+                pageQuery.filters, pageQuery.includeTypes, startIndex, limit,
+                pageQuery.recursive, pageQuery.includeChildCount);
+        }
+    };
+
+    m_isLoadingMore = true;
 
     try
     {
-        QList<MediaItem> resultItems;
+        const MediaQueryPage probePage = co_await fetchPage(query, 0, 1);
+        if (!guard || generation != m_requestGeneration)
+            co_return;
 
-        
-        if (m_currentMode == PersonMode)
+        m_totalItemCount = qMax(probePage.totalRecordCount, probePage.items.size());
+        qDebug() << "[LibraryView] initial count probe"
+                 << "| generation=" << generation
+                 << "| returned=" << probePage.items.size()
+                 << "| total=" << m_totalItemCount;
+
+        QList<MediaItem> initialItems = probePage.items;
+        int returnedCount = probePage.items.size();
+
+        if (m_totalItemCount > probePage.items.size())
         {
-            if (m_currentPersonId.isEmpty()) {
-                if (m_mediaGrid) m_mediaGrid->setLoading(false);
+            const MediaQueryPage fullAttemptPage =
+                co_await fetchPage(query, 0, m_totalItemCount);
+            if (!guard || generation != m_requestGeneration)
                 co_return;
-            }
 
-            resultItems = co_await m_core->mediaService()->getItemsByPerson(m_currentPersonId, sortBy, sortOrder);
+            initialItems = fullAttemptPage.items;
+            returnedCount = fullAttemptPage.items.size();
+            m_totalItemCount = qMax(fullAttemptPage.totalRecordCount,
+                                    fullAttemptPage.items.size());
+
+            qDebug() << "[LibraryView] full fetch attempt"
+                     << "| generation=" << generation
+                     << "| requested=" << m_totalItemCount
+                     << "| returned=" << returnedCount
+                     << "| total=" << m_totalItemCount;
         }
-        
-        else if (m_currentMode == FilteredMode)
+
+        if (query.needsPlaylistEnrichment && !initialItems.isEmpty())
         {
-            if (m_filterValue.isEmpty()) {
-                if (m_mediaGrid) m_mediaGrid->setLoading(false);
+            initialItems =
+                co_await enrichPlaylistItemsForRemoval(std::move(initialItems));
+            if (!guard || generation != m_requestGeneration)
                 co_return;
-            }
-
-            QString genreFilter, tagFilter, studioFilter;
-            if (m_filterType == "Genre")
-                genreFilter = m_filterValue;
-            else if (m_filterType == "Tag")
-                tagFilter = m_filterValue;
-            else if (m_filterType == "Studio")
-                studioFilter = m_filterValue;
-
-            resultItems = co_await m_core->mediaService()->getItemsByFilter(genreFilter, tagFilter, studioFilter,
-                                                                            sortBy, sortOrder);
         }
-        
+
+        m_loadedItems = std::move(initialItems);
+        m_totalItemCount = qMax(m_totalItemCount, m_loadedItems.size());
+
+        if (m_loadedItems.size() < m_totalItemCount && returnedCount > 0)
+        {
+            m_pageSize = returnedCount;
+            m_hasMoreItems = true;
+            qDebug() << "[LibraryView] server-side page cap detected"
+                     << "| generation=" << generation
+                     << "| pageSize=" << m_pageSize
+                     << "| loaded=" << m_loadedItems.size()
+                     << "| total=" << m_totalItemCount;
+        }
         else
         {
-            if (m_currentLibraryId.isEmpty()) {
-                if (m_mediaGrid) m_mediaGrid->setLoading(false);
-                co_return;
-            }
-
-            QString filters = "";
-            
-            
-            QString includeTypes = "Movie,Series,Audio,Video";
-            bool isRecursive = true;
-
-            
-            if (m_currentMediaItem.type == "Folder")
+            if (m_loadedItems.size() < m_totalItemCount && returnedCount <= 0)
             {
-                includeTypes = "";
-                sortBy = "IsFolder,SortName";
-                sortOrder = "Ascending";
-                isRecursive = false; 
+                qWarning() << "[LibraryView] Initial fetch returned no items while total count is larger"
+                           << "| generation=" << generation
+                           << "| loaded=" << m_loadedItems.size()
+                           << "| total=" << m_totalItemCount;
             }
-            else if (m_currentMediaItem.type == "BoxSet" || m_currentMediaItem.type == "Playlist" ||
-                     m_currentMediaItem.collectionType == "playlists" || m_currentMediaItem.collectionType == "boxsets")
-            {
-                includeTypes = "";
-                isRecursive = false;
-            }
-            else
-            {
-                
-                int tabIdx = m_tabGroup->checkedId();
-                if (tabIdx == 1)
-                {
-                    sortBy = "DateCreated";
-                    sortOrder = "Descending";
-                }
-                if (tabIdx == 2)
-                {
-                    includeTypes = "Playlist";
-                }
-                if (tabIdx == 3)
-                {
-                    includeTypes = "BoxSet";
-                }
-                if (tabIdx == 4)
-                {
-                    filters = "IsFavorite";
-                    includeTypes = "Movie,Series,Audio,Video,BoxSet,Playlist";
-                } 
-                if (tabIdx == 5)
-                {
-                    includeTypes = "";
-                    sortBy = "IsFolder,SortName";
-                    sortOrder = "Ascending";
-                    isRecursive = false;
-                }
-            }
-
-            resultItems = co_await m_core->mediaService()->getLibraryItems(m_currentLibraryId, sortBy, sortOrder,
-                                                                           filters, includeTypes, 0, 0, isRecursive);
+            m_pageSize = 0;
+            m_hasMoreItems = false;
         }
 
-        if (!guard)
-            co_return; 
-
-        if (m_currentMediaItem.type == "Playlist")
-        {
-            resultItems = co_await enrichPlaylistItemsForRemoval(std::move(resultItems));
-            if (!guard)
-                co_return;
-        }
-
-        
-        qDebug() << "[LibraryView] items fetched" << "| count=" << resultItems.size();
-        m_statsLabel->setText(tr("%1 Items").arg(resultItems.size()));
+        updateStatsLabel();
         QElapsedTimer renderTimer;
         renderTimer.start();
-        m_mediaGrid->setItems(resultItems);
-        qDebug() << "[LibraryView] setItems completed" << "| renderTime=" << renderTimer.elapsed() << "ms";
+        m_mediaGrid->setItems(m_loadedItems);
+        m_mediaGrid->setLoading(false);
+        qDebug() << "[LibraryView] initial items applied"
+                 << "| generation=" << generation
+                 << "| loaded=" << m_loadedItems.size()
+                 << "| total=" << m_totalItemCount
+                 << "| hasMore=" << m_hasMoreItems
+                 << "| renderTime=" << renderTimer.elapsed() << "ms";
     }
     catch (const std::exception &e)
     {
-        if (!guard)
-            co_return; 
+        if (!guard || generation != m_requestGeneration)
+            co_return;
         if (m_mediaGrid) {
             m_mediaGrid->setLoading(false);
         }
         m_statsLabel->setText(tr("Error Loading Items"));
-        qDebug() << "Library View fetching error:" << e.what();
+        qDebug() << "Library View initial fetching error:" << e.what();
+    }
+
+    if (guard && generation == m_requestGeneration)
+    {
+        m_isLoadingMore = false;
+    }
+}
+
+QCoro::Task<void> LibraryView::onLoadMoreRequested()
+{
+    QPointer<LibraryView> guard(this);
+    if (m_isLoadingMore || !m_hasMoreItems || m_pageSize <= 0)
+        co_return;
+
+    const int generation = m_requestGeneration;
+    const QueryState query = m_activeQuery;
+    const int startIndex = m_loadedItems.size();
+    const int remainingCount = m_totalItemCount - startIndex;
+    if (remainingCount <= 0)
+    {
+        m_hasMoreItems = false;
+        co_return;
+    }
+
+    const int limit = qMin(m_pageSize, remainingCount);
+    auto fetchPage = [this](const QueryState &pageQuery, int pageStartIndex,
+                            int pageLimit) -> QCoro::Task<MediaQueryPage>
+    {
+        switch (pageQuery.mode)
+        {
+        case PersonMode:
+            co_return co_await m_core->mediaService()->getItemsByPersonPage(
+                pageQuery.targetId, pageQuery.sortBy, pageQuery.sortOrder,
+                pageStartIndex, pageLimit);
+        case FilteredMode:
+            co_return co_await m_core->mediaService()->getItemsByFilterPage(
+                pageQuery.genreFilter, pageQuery.tagFilter, pageQuery.studioFilter,
+                pageQuery.sortBy, pageQuery.sortOrder, pageStartIndex, pageLimit);
+        case LibraryMode:
+        default:
+            co_return co_await m_core->mediaService()->getLibraryItemsPage(
+                pageQuery.targetId, pageQuery.sortBy, pageQuery.sortOrder,
+                pageQuery.filters, pageQuery.includeTypes, pageStartIndex,
+                pageLimit, pageQuery.recursive, pageQuery.includeChildCount);
+        }
+    };
+
+    m_isLoadingMore = true;
+    qDebug() << "[LibraryView] load more START"
+             << "| generation=" << generation
+             << "| startIndex=" << startIndex
+             << "| limit=" << limit
+             << "| loaded=" << m_loadedItems.size()
+             << "| total=" << m_totalItemCount;
+
+    try
+    {
+        MediaQueryPage page = co_await fetchPage(query, startIndex, limit);
+        if (!guard || generation != m_requestGeneration)
+            co_return;
+
+        QList<MediaItem> pageItems = page.items;
+        if (query.needsPlaylistEnrichment && !pageItems.isEmpty())
+        {
+            pageItems =
+                co_await enrichPlaylistItemsForRemoval(std::move(pageItems));
+            if (!guard || generation != m_requestGeneration)
+                co_return;
+        }
+
+        if (pageItems.isEmpty())
+        {
+            m_hasMoreItems = false;
+            qWarning() << "[LibraryView] load more returned empty page"
+                       << "| generation=" << generation
+                       << "| startIndex=" << startIndex
+                       << "| limit=" << limit
+                       << "| total=" << m_totalItemCount;
+            updateStatsLabel();
+        }
+        else
+        {
+            m_loadedItems.append(pageItems);
+            m_totalItemCount = qMax(page.totalRecordCount, m_loadedItems.size());
+            m_hasMoreItems = m_loadedItems.size() < m_totalItemCount;
+
+            updateStatsLabel();
+            m_mediaGrid->setItems(m_loadedItems);
+            qDebug() << "[LibraryView] load more END"
+                     << "| generation=" << generation
+                     << "| loaded=" << m_loadedItems.size()
+                     << "| total=" << m_totalItemCount
+                     << "| hasMore=" << m_hasMoreItems;
+        }
+    }
+    catch (const std::exception &e)
+    {
+        if (!guard || generation != m_requestGeneration)
+            co_return;
+        m_statsLabel->setText(tr("Error Loading Items"));
+        qDebug() << "Library View incremental fetching error:" << e.what();
+    }
+
+    if (guard && generation == m_requestGeneration)
+    {
+        m_isLoadingMore = false;
     }
 }
 
@@ -628,6 +858,8 @@ QCoro::Task<void> LibraryView::onFilterChanged()
 
 void LibraryView::onMediaItemUpdated(const MediaItem &item)
 {
+    MediaItem mergedItem = item;
+
     
     QString currentId = (m_currentMode == PersonMode) ? m_currentPersonId : m_currentLibraryId;
     if (currentId == item.id)
@@ -637,11 +869,26 @@ void LibraryView::onMediaItemUpdated(const MediaItem &item)
         updateFavBtnState();
     }
 
+    for (MediaItem &loadedItem : m_loadedItems)
+    {
+        if (loadedItem.id == item.id)
+        {
+            if (mergedItem.playlistId.trimmed().isEmpty()) {
+                mergedItem.playlistId = loadedItem.playlistId;
+            }
+            if (mergedItem.playlistItemId.trimmed().isEmpty()) {
+                mergedItem.playlistItemId = loadedItem.playlistItemId;
+            }
+            loadedItem = mergedItem;
+            break;
+        }
+    }
+
     
     
     if (m_mediaGrid)
     {
-        m_mediaGrid->updateItem(item);
+        m_mediaGrid->updateItem(mergedItem);
     }
 }
 
@@ -651,8 +898,19 @@ void LibraryView::onMediaItemRemoved(const QString& itemId)
         return;
     }
 
+    for (int i = m_loadedItems.size() - 1; i >= 0; --i) {
+        if (m_loadedItems.at(i).id == itemId) {
+            m_loadedItems.removeAt(i);
+            break;
+        }
+    }
+
+    if (m_totalItemCount > 0) {
+        m_totalItemCount = qMax(m_loadedItems.size(), m_totalItemCount - 1);
+    }
+    m_hasMoreItems = m_loadedItems.size() < m_totalItemCount;
     m_mediaGrid->removeItem(itemId);
-    m_statsLabel->setText(tr("%1 Items").arg(m_mediaGrid->itemCount()));
+    updateStatsLabel();
 }
 
 QCoro::Task<QList<MediaItem>> LibraryView::enrichPlaylistItemsForRemoval(QList<MediaItem> items)
@@ -740,31 +998,54 @@ QCoro::Task<QList<MediaItem>> LibraryView::enrichPlaylistItemsForRemoval(QList<M
 
 
 
+QString LibraryView::currentPreferenceTargetId() const
+{
+    if (m_currentMode == PersonMode)
+    {
+        return m_currentPersonId;
+    }
+
+    if (m_currentMode == LibraryMode)
+    {
+        return m_currentLibraryId;
+    }
+
+    return QString();
+}
+
+void LibraryView::applyViewMode(bool isTile)
+{
+    m_viewSwitchBtn->blockSignals(true);
+    m_viewSwitchBtn->setChecked(isTile);
+    m_viewSwitchBtn->blockSignals(false);
+    m_mediaGrid->setCardStyle(isTile ? MediaCardDelegate::LibraryTile : MediaCardDelegate::Poster);
+}
+
 void LibraryView::saveSortPreference()
 {
     QString sid = m_core->serverManager()->activeProfile().id;
-    QString lid = (m_currentMode == PersonMode) ? m_currentPersonId : m_currentLibraryId;
-    if (sid.isEmpty() || lid.isEmpty())
+    QString targetId = currentPreferenceTargetId();
+    if (sid.isEmpty() || targetId.isEmpty())
         return;
 
     auto *store = ConfigStore::instance();
-    store->set(ConfigKeys::forLibrary(sid, lid, ConfigKeys::LibrarySortIndex), m_sortButton->currentIndex());
-    store->set(ConfigKeys::forLibrary(sid, lid, ConfigKeys::LibrarySortDescending), m_sortButton->isDescending());
+    store->set(ConfigKeys::forLibrary(sid, targetId, ConfigKeys::LibrarySortIndex), m_sortButton->currentIndex());
+    store->set(ConfigKeys::forLibrary(sid, targetId, ConfigKeys::LibrarySortDescending), m_sortButton->isDescending());
     qDebug() << "[LibraryView] Sort preference saved:"
-             << "server=" << sid << "library=" << lid << "index=" << m_sortButton->currentIndex()
+             << "server=" << sid << "target=" << targetId << "index=" << m_sortButton->currentIndex()
              << "desc=" << m_sortButton->isDescending();
 }
 
 void LibraryView::restoreSortPreference()
 {
     QString sid = m_core->serverManager()->activeProfile().id;
-    QString lid = (m_currentMode == PersonMode) ? m_currentPersonId : m_currentLibraryId;
-    if (sid.isEmpty() || lid.isEmpty())
+    QString targetId = currentPreferenceTargetId();
+    if (sid.isEmpty() || targetId.isEmpty())
         return;
 
     auto *store = ConfigStore::instance();
-    int savedIndex = store->get<int>(ConfigKeys::forLibrary(sid, lid, ConfigKeys::LibrarySortIndex), 0);
-    bool savedDesc = store->get<bool>(ConfigKeys::forLibrary(sid, lid, ConfigKeys::LibrarySortDescending), true);
+    int savedIndex = store->get<int>(ConfigKeys::forLibrary(sid, targetId, ConfigKeys::LibrarySortIndex), 0);
+    bool savedDesc = store->get<bool>(ConfigKeys::forLibrary(sid, targetId, ConfigKeys::LibrarySortDescending), true);
 
     m_sortButton->blockSignals(true);
     m_sortButton->setCurrentIndex(savedIndex);
@@ -772,5 +1053,50 @@ void LibraryView::restoreSortPreference()
     m_sortButton->blockSignals(false);
 
     qDebug() << "[LibraryView] Sort preference restored:"
-             << "server=" << sid << "library=" << lid << "index=" << savedIndex << "desc=" << savedDesc;
+             << "server=" << sid << "target=" << targetId << "index=" << savedIndex << "desc=" << savedDesc;
+}
+
+void LibraryView::saveViewPreference()
+{
+    QString sid = m_core->serverManager()->activeProfile().id;
+    QString targetId = currentPreferenceTargetId();
+    if (sid.isEmpty() || targetId.isEmpty())
+        return;
+
+    const QString viewMode =
+        m_viewSwitchBtn->isChecked() ? QStringLiteral("tile") : QStringLiteral("poster");
+
+    auto *store = ConfigStore::instance();
+    store->set(ConfigKeys::forLibrary(sid, targetId, ConfigKeys::LibraryViewMode), viewMode);
+
+    qDebug() << "[LibraryView] View preference saved:"
+             << "server=" << sid << "target=" << targetId << "mode=" << viewMode;
+}
+
+void LibraryView::restoreViewPreference()
+{
+    auto *store = ConfigStore::instance();
+    const QString defaultViewMode =
+        store->get<QString>(ConfigKeys::DefaultLibraryView, QStringLiteral("poster"));
+
+    QString sid = m_core->serverManager()->activeProfile().id;
+    QString targetId = currentPreferenceTargetId();
+    QString viewMode = defaultViewMode;
+
+    if (!sid.isEmpty() && !targetId.isEmpty())
+    {
+        viewMode =
+            store->get<QString>(ConfigKeys::forLibrary(sid, targetId, ConfigKeys::LibraryViewMode),
+                                defaultViewMode);
+        qDebug() << "[LibraryView] View preference restored:"
+                 << "server=" << sid << "target=" << targetId << "mode=" << viewMode
+                 << "default=" << defaultViewMode;
+    }
+    else
+    {
+        qDebug() << "[LibraryView] View preference fallback to default:"
+                 << "mode=" << defaultViewMode;
+    }
+
+    applyViewMode(viewMode == QLatin1String("tile"));
 }

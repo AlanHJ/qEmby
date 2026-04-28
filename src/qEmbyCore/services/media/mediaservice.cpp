@@ -38,7 +38,44 @@ template <typename T> QList<T> parseJsonArray(const QJsonArray &array)
     return list;
 }
 
-constexpr int kRecommendCacheFormatVersion = 2;
+MediaQueryPage parseMediaQueryPage(const QJsonObject& response, int startIndex,
+                                   int limit)
+{
+    MediaQueryPage page;
+    page.items = parseJsonArray<MediaItem>(response.value("Items").toArray());
+    page.startIndex = qMax(0, startIndex);
+    page.limit = limit;
+    page.totalRecordCount =
+        response.value(QStringLiteral("TotalRecordCount"))
+            .toInt(page.startIndex + page.items.size());
+    return page;
+}
+
+constexpr int kRecommendCacheFormatVersion = 3;
+
+QString appendMediaCardTooltipFields(QString fieldsCsv)
+{
+    QStringList fields =
+        fieldsCsv.split(QLatin1Char(','), Qt::SkipEmptyParts);
+
+    for (QString& field : fields) {
+        field = field.trimmed();
+    }
+
+    const QStringList tooltipFields = {
+        QStringLiteral("PremiereDate"),
+        QStringLiteral("RunTimeTicks"),
+        QStringLiteral("Overview")
+    };
+
+    for (const QString& field : tooltipFields) {
+        if (!fields.contains(field, Qt::CaseInsensitive)) {
+            fields.append(field);
+        }
+    }
+
+    return fields.join(QLatin1Char(','));
+}
 
 QString findUserViewIdByCollectionType(const QList<MediaItem> &views,
                                        QString collectionType)
@@ -262,6 +299,18 @@ QCoro::Task<QList<MediaItem>> MediaService::getLibraryItems(const QString &paren
                                                             const QString &includeItemTypes, int startIndex, int limit,
                                                             bool recursive, bool includeChildCount)
 {
+    const MediaQueryPage page =
+        co_await getLibraryItemsPage(parentId, sortBy, sortOrder, filters,
+                                     includeItemTypes, startIndex, limit,
+                                     recursive, includeChildCount);
+    co_return page.items;
+}
+
+QCoro::Task<MediaQueryPage> MediaService::getLibraryItemsPage(const QString &parentId, const QString &sortBy,
+                                                              const QString &sortOrder, const QString &filters,
+                                                              const QString &includeItemTypes, int startIndex, int limit,
+                                                              bool recursive, bool includeChildCount)
+{
     ensureValidProfile();
     ServerProfile profile = m_serverManager->activeProfile();
 
@@ -276,10 +325,13 @@ QCoro::Task<QList<MediaItem>> MediaService::getLibraryItems(const QString &paren
         fields.append(QStringLiteral("ChildCount"));
     }
 
+    const QString fieldQuery =
+        appendMediaCardTooltipFields(fields.join(QLatin1Char(',')));
+
     QString path = QString("/Users/%1/Items?ParentId=%2"
                            "&Fields=%3"
                            "&EnableImageTypes=Primary,Backdrop,Thumb&ImageTypeLimit=1")
-                       .arg(profile.userId, parentId, fields.join(','));
+                       .arg(profile.userId, parentId, fieldQuery);
 
     if (recursive)
         path += "&Recursive=true";
@@ -297,7 +349,17 @@ QCoro::Task<QList<MediaItem>> MediaService::getLibraryItems(const QString &paren
         path += QString("&Filters=%1").arg(filters);
 
     QJsonObject response = co_await m_serverManager->activeClient()->get(path);
-    co_return parseJsonArray<MediaItem>(response["Items"].toArray());
+    const MediaQueryPage page = parseMediaQueryPage(response, startIndex, limit);
+    qDebug() << "[MediaService] getLibraryItemsPage"
+             << "| parentId=" << parentId
+             << "| startIndex=" << startIndex
+             << "| limit=" << limit
+             << "| recursive=" << recursive
+             << "| includeTypes=" << includeItemTypes
+             << "| filters=" << filters
+             << "| returned=" << page.items.size()
+             << "| total=" << page.totalRecordCount;
+    co_return page;
 }
 
 QCoro::Task<QList<MediaItem>> MediaService::searchMedia(const QString &searchTerm, const QString &includeItemTypes,
@@ -306,11 +368,13 @@ QCoro::Task<QList<MediaItem>> MediaService::searchMedia(const QString &searchTer
     ensureValidProfile();
     ServerProfile profile = m_serverManager->activeProfile();
 
-    
+    const QString fieldQuery = appendMediaCardTooltipFields(
+        QStringLiteral("ProductionYear,RecursiveItemCount,CanDownload"));
     QString path = QString("/Users/%1/"
                            "Items?SearchTerm=%2&Recursive=true&Fields="
-                           "ProductionYear,RecursiveItemCount,CanDownload")
-                       .arg(profile.userId, QUrl::toPercentEncoding(searchTerm));
+                           "%3")
+                       .arg(profile.userId, QUrl::toPercentEncoding(searchTerm),
+                            fieldQuery);
 
     if (limit > 0)
         path += QString("&Limit=%1").arg(limit);
@@ -334,10 +398,13 @@ QCoro::Task<QList<MediaItem>> MediaService::searchMedia(const QString &searchTer
 QCoro::Task<QList<MediaItem>> MediaService::getSeasons(const QString &seriesId)
 {
     ensureValidProfile();
+    const QString fieldQuery = appendMediaCardTooltipFields(
+        QStringLiteral("PrimaryImageAspectRatio,RecursiveItemCount,CanDownload"));
     QString path = QString("/Shows/%1/"
-                           "Seasons?UserId=%2&Fields=PrimaryImageAspectRatio,RecursiveItemCount,CanDownload&"
+                           "Seasons?UserId=%2&Fields=%3&"
                            "EnableImageTypes=Primary,Backdrop,Thumb&ImageTypeLimit=1")
-                       .arg(seriesId, m_serverManager->activeProfile().userId);
+                       .arg(seriesId, m_serverManager->activeProfile().userId,
+                            fieldQuery);
 
     QJsonObject response = co_await m_serverManager->activeClient()->get(path);
     co_return parseJsonArray<MediaItem>(response["Items"].toArray());
@@ -350,10 +417,12 @@ QCoro::Task<QList<MediaItem>> MediaService::getEpisodes(const QString &seriesId,
                                                         const QString &sortBy, const QString &sortOrder)
 {
     ensureValidProfile();
+    const QString fieldQuery = appendMediaCardTooltipFields(
+        QStringLiteral("PrimaryImageAspectRatio,Overview,CanDownload"));
     QString path = QString("/Shows/%1/"
-                           "Episodes?SeasonId=%2&UserId=%3&Fields=PrimaryImageAspectRatio,"
-                           "Overview,CanDownload&EnableImageTypes=Primary,Backdrop,Thumb&ImageTypeLimit=1")
-                       .arg(seriesId, seasonId, m_serverManager->activeProfile().userId);
+                           "Episodes?SeasonId=%2&UserId=%3&Fields=%4&EnableImageTypes=Primary,Backdrop,Thumb&ImageTypeLimit=1")
+                       .arg(seriesId, seasonId,
+                            m_serverManager->activeProfile().userId, fieldQuery);
 
     if (!sortBy.isEmpty())
         path += QString("&SortBy=%1").arg(sortBy);
@@ -370,10 +439,12 @@ QCoro::Task<QList<MediaItem>> MediaService::getEpisodes(const QString &seriesId,
 QCoro::Task<QList<MediaItem>> MediaService::getNextUp(const QString &seriesId)
 {
     ensureValidProfile();
+    const QString fieldQuery = appendMediaCardTooltipFields(
+        QStringLiteral("PrimaryImageAspectRatio,Overview,CanDownload"));
     QString path = QString("/Shows/"
-                           "NextUp?UserId=%1&Fields=PrimaryImageAspectRatio,Overview,CanDownload&"
+                           "NextUp?UserId=%1&Fields=%2&"
                            "EnableImageTypes=Primary,Backdrop,Thumb&ImageTypeLimit=1")
-                       .arg(m_serverManager->activeProfile().userId);
+                       .arg(m_serverManager->activeProfile().userId, fieldQuery);
 
     if (!seriesId.isEmpty())
     {
@@ -621,10 +692,11 @@ QCoro::Task<DownloadedImageData> MediaService::downloadImageByUrl(QString imageU
 QCoro::Task<QList<MediaItem>> MediaService::getResumeItems(int limit, const QString &sortBy, const QString &sortOrder)
 {
     ensureValidProfile();
+    const QString fieldQuery = appendMediaCardTooltipFields(
+        QStringLiteral("ProductionYear,RecursiveItemCount,CanDownload"));
     QString path = QString("/Users/%1/Items/"
-                           "Resume?Recursive=true&Fields=ProductionYear,"
-                           "RecursiveItemCount,CanDownload&MediaTypes=Video")
-                       .arg(m_serverManager->activeProfile().userId);
+                           "Resume?Recursive=true&Fields=%2&MediaTypes=Video")
+                       .arg(m_serverManager->activeProfile().userId, fieldQuery);
     if (limit > 0)
         path += QString("&Limit=%1").arg(limit);
     if (!sortBy.isEmpty())
@@ -639,11 +711,11 @@ QCoro::Task<QList<MediaItem>> MediaService::getResumeItems(int limit, const QStr
 QCoro::Task<QList<MediaItem>> MediaService::getLatestItems(int limit, const QString &sortBy, const QString &sortOrder)
 {
     ensureValidProfile();
-    
+    const QString fieldQuery = appendMediaCardTooltipFields(
+        QStringLiteral("ProductionYear,RecursiveItemCount,CanDownload"));
     QString path = QString("/Users/%1/"
-                           "Items?Recursive=true&Fields=ProductionYear,"
-                           "RecursiveItemCount,CanDownload&IncludeItemTypes=Movie,Series")
-                       .arg(m_serverManager->activeProfile().userId);
+                           "Items?Recursive=true&Fields=%2&IncludeItemTypes=Movie,Series")
+                       .arg(m_serverManager->activeProfile().userId, fieldQuery);
     if (limit > 0)
         path += QString("&Limit=%1").arg(limit);
     if (!sortBy.isEmpty())
@@ -692,12 +764,14 @@ QCoro::Task<QList<MediaItem>> MediaService::getRecommendedMovies(int limit, cons
     }
 
     
+    const QString fieldQuery = appendMediaCardTooltipFields(
+        QStringLiteral("ProductionYear,RecursiveItemCount,PrimaryImageAspectRatio,CanDownload"));
     QString path = QString("/Users/%1/Items?IncludeItemTypes=Movie,Series"
                            "&Recursive=true"
-                           "&Fields=ProductionYear,RecursiveItemCount,PrimaryImageAspectRatio,CanDownload"
+                           "&Fields=%2"
                            "&EnableImageTypes=Primary,Backdrop,Thumb"
                            "&ImageTypeLimit=1")
-                       .arg(currentUserId);
+                       .arg(currentUserId, fieldQuery);
     path += "&Limit=1000&SortBy=Random&SortOrder=Ascending";
 
     QJsonObject response = co_await m_serverManager->activeClient()->get(path);
@@ -721,10 +795,12 @@ QCoro::Task<QList<MediaItem>> MediaService::getFavoriteMovies(int limit, const Q
                                                               const QString &sortOrder)
 {
     ensureValidProfile();
+    const QString fieldQuery = appendMediaCardTooltipFields(
+        QStringLiteral("ProductionYear,CanDownload"));
     QString path = QString("/Users/%1/"
                            "Items?Recursive=true&Filters=IsFavorite&"
-                           "IncludeItemTypes=Movie&Fields=ProductionYear,CanDownload")
-                       .arg(m_serverManager->activeProfile().userId);
+                           "IncludeItemTypes=Movie&Fields=%2")
+                       .arg(m_serverManager->activeProfile().userId, fieldQuery);
     if (limit > 0)
         path += QString("&Limit=%1").arg(limit);
     if (!sortBy.isEmpty())
@@ -740,10 +816,12 @@ QCoro::Task<QList<MediaItem>> MediaService::getFavoriteSeries(int limit, const Q
                                                               const QString &sortOrder)
 {
     ensureValidProfile();
+    const QString fieldQuery = appendMediaCardTooltipFields(
+        QStringLiteral("ProductionYear,RecursiveItemCount,CanDownload"));
     QString path = QString("/Users/%1/"
                            "Items?Recursive=true&Filters=IsFavorite&IncludeItemTypes=Series&"
-                           "Fields=ProductionYear,RecursiveItemCount,CanDownload")
-                       .arg(m_serverManager->activeProfile().userId);
+                           "Fields=%2")
+                       .arg(m_serverManager->activeProfile().userId, fieldQuery);
     if (limit > 0)
         path += QString("&Limit=%1").arg(limit);
     if (!sortBy.isEmpty())
@@ -890,11 +968,13 @@ QCoro::Task<void> MediaService::removeFromResume(const QString &itemId)
 QCoro::Task<QList<MediaItem>> MediaService::getSimilarItems(const QString &itemId, int limit)
 {
     ensureValidProfile();
+    const QString fieldQuery = appendMediaCardTooltipFields(
+        QStringLiteral("PrimaryImageAspectRatio,ProductionYear,CanDownload"));
     QString path = QString("/Items/%1/"
-                           "Similar?UserId=%2&Limit=%3&Fields="
-                           "PrimaryImageAspectRatio,ProductionYear,CanDownload")
+                           "Similar?UserId=%2&Limit=%3&Fields=%4")
                        .arg(itemId, m_serverManager->activeProfile().userId)
-                       .arg(limit);
+                       .arg(limit)
+                       .arg(fieldQuery);
 
     QJsonObject response = co_await m_serverManager->activeClient()->get(path);
     co_return parseJsonArray<MediaItem>(response["Items"].toArray());
@@ -903,10 +983,13 @@ QCoro::Task<QList<MediaItem>> MediaService::getSimilarItems(const QString &itemI
 QCoro::Task<QList<MediaItem>> MediaService::getItemCollections(const QString &itemId)
 {
     ensureValidProfile();
+    const QString fieldQuery = appendMediaCardTooltipFields(
+        QStringLiteral("PrimaryImageAspectRatio,CanDownload"));
     QString path = QString("/Users/%1/"
                            "Items?IncludeItemTypes=Playlist,BoxSet&Recursive="
-                           "true&ListItemIds=%2&Fields=PrimaryImageAspectRatio,CanDownload")
-                       .arg(m_serverManager->activeProfile().userId, itemId);
+                           "true&ListItemIds=%2&Fields=%3")
+                       .arg(m_serverManager->activeProfile().userId, itemId,
+                            fieldQuery);
 
     QJsonObject response = co_await m_serverManager->activeClient()->get(path);
     co_return parseJsonArray<MediaItem>(response["Items"].toArray());
@@ -915,10 +998,12 @@ QCoro::Task<QList<MediaItem>> MediaService::getItemCollections(const QString &it
 QCoro::Task<QList<MediaItem>> MediaService::getCollectionItems(const QString &collectionId)
 {
     ensureValidProfile();
+    const QString fieldQuery = appendMediaCardTooltipFields(
+        QStringLiteral("PrimaryImageAspectRatio,ProductionYear,RecursiveItemCount,CanDownload"));
     QString path = QString("/Users/%1/"
-                           "Items?ParentId=%2&Fields=PrimaryImageAspectRatio,ProductionYear,"
-                           "RecursiveItemCount,CanDownload&SortBy=SortName")
-                       .arg(m_serverManager->activeProfile().userId, collectionId);
+                           "Items?ParentId=%2&Fields=%3&SortBy=SortName")
+                       .arg(m_serverManager->activeProfile().userId, collectionId,
+                            fieldQuery);
 
     QJsonObject response = co_await m_serverManager->activeClient()->get(path);
     co_return parseJsonArray<MediaItem>(response["Items"].toArray());
@@ -958,33 +1043,65 @@ QCoro::Task<QList<MediaItem>> MediaService::getAdditionalParts(const QString &it
 QCoro::Task<QList<MediaItem>> MediaService::getItemsByPerson(const QString &personId, const QString &sortBy,
                                                              const QString &sortOrder)
 {
+    const MediaQueryPage page =
+        co_await getItemsByPersonPage(personId, sortBy, sortOrder);
+    co_return page.items;
+}
+
+QCoro::Task<MediaQueryPage> MediaService::getItemsByPersonPage(const QString &personId, const QString &sortBy,
+                                                               const QString &sortOrder, int startIndex, int limit)
+{
     ensureValidProfile();
-    
+    const QString fieldQuery = appendMediaCardTooltipFields(
+        QStringLiteral("PrimaryImageAspectRatio,ProductionYear,RecursiveItemCount,CanDownload"));
     QString path = QString("/Users/%1/"
                            "Items?Recursive=true&PersonIds=%2&IncludeItemTypes="
-                           "Movie,Series,Episode&Fields=PrimaryImageAspectRatio,"
-                           "ProductionYear,RecursiveItemCount,CanDownload")
-                       .arg(m_serverManager->activeProfile().userId, personId);
+                           "Movie,Series,Episode&Fields=%3")
+                       .arg(m_serverManager->activeProfile().userId, personId,
+                            fieldQuery);
 
     if (!sortBy.isEmpty())
         path += QString("&SortBy=%1").arg(sortBy);
     if (!sortOrder.isEmpty())
         path += QString("&SortOrder=%1").arg(sortOrder);
+    if (startIndex > 0)
+        path += QString("&StartIndex=%1").arg(startIndex);
+    if (limit > 0)
+        path += QString("&Limit=%1").arg(limit);
 
     QJsonObject response = co_await m_serverManager->activeClient()->get(path);
-    co_return parseJsonArray<MediaItem>(response["Items"].toArray());
+    const MediaQueryPage page = parseMediaQueryPage(response, startIndex, limit);
+    qDebug() << "[MediaService] getItemsByPersonPage"
+             << "| personId=" << personId
+             << "| startIndex=" << startIndex
+             << "| limit=" << limit
+             << "| returned=" << page.items.size()
+             << "| total=" << page.totalRecordCount;
+    co_return page;
 }
 
 QCoro::Task<QList<MediaItem>> MediaService::getItemsByFilter(const QString &genreFilter, const QString &tagFilter,
                                                              const QString &studioFilter, const QString &sortBy,
                                                              const QString &sortOrder, int limit)
 {
+    const MediaQueryPage page =
+        co_await getItemsByFilterPage(genreFilter, tagFilter, studioFilter,
+                                      sortBy, sortOrder, 0, limit);
+    co_return page.items;
+}
+
+QCoro::Task<MediaQueryPage> MediaService::getItemsByFilterPage(const QString &genreFilter, const QString &tagFilter,
+                                                               const QString &studioFilter, const QString &sortBy,
+                                                               const QString &sortOrder, int startIndex, int limit)
+{
     ensureValidProfile();
+    const QString fieldQuery = appendMediaCardTooltipFields(
+        QStringLiteral("PrimaryImageAspectRatio,ProductionYear,RecursiveItemCount,CanDownload"));
     QString path = QString("/Users/%1/Items?Recursive=true"
                            "&IncludeItemTypes=Movie,Series"
-                           "&Fields=PrimaryImageAspectRatio,ProductionYear,RecursiveItemCount,CanDownload"
+                           "&Fields=%2"
                            "&EnableImageTypes=Primary,Backdrop,Thumb&ImageTypeLimit=1")
-                       .arg(m_serverManager->activeProfile().userId);
+                       .arg(m_serverManager->activeProfile().userId, fieldQuery);
 
     if (!genreFilter.isEmpty())
         path += QString("&Genres=%1").arg(QString::fromUtf8(QUrl::toPercentEncoding(genreFilter)));
@@ -997,15 +1114,26 @@ QCoro::Task<QList<MediaItem>> MediaService::getItemsByFilter(const QString &genr
         path += QString("&SortBy=%1").arg(sortBy);
     if (!sortOrder.isEmpty())
         path += QString("&SortOrder=%1").arg(sortOrder);
+    if (startIndex > 0)
+        path += QString("&StartIndex=%1").arg(startIndex);
     if (limit > 0)
         path += QString("&Limit=%1").arg(limit);
 
-    qDebug() << "[MediaService] getItemsByFilter"
-             << "genre=" << genreFilter << "tag=" << tagFilter << "studio=" << studioFilter << "sortBy=" << sortBy
-             << "sortOrder=" << sortOrder;
+    qDebug() << "[MediaService] getItemsByFilterPage"
+             << "| genre=" << genreFilter
+             << "| tag=" << tagFilter
+             << "| studio=" << studioFilter
+             << "| sortBy=" << sortBy
+             << "| sortOrder=" << sortOrder
+             << "| startIndex=" << startIndex
+             << "| limit=" << limit;
 
     QJsonObject response = co_await m_serverManager->activeClient()->get(path);
-    co_return parseJsonArray<MediaItem>(response["Items"].toArray());
+    const MediaQueryPage page = parseMediaQueryPage(response, startIndex, limit);
+    qDebug() << "[MediaService] getItemsByFilterPage result"
+             << "| returned=" << page.items.size()
+             << "| total=" << page.totalRecordCount;
+    co_return page;
 }
 
 QString MediaService::getStreamUrl(const QString &itemId, const QString &mediaSourceId) const

@@ -62,6 +62,17 @@ struct QEMBYCORE_EXPORT DownloadedImageData {
     }
 };
 
+struct QEMBYCORE_EXPORT MediaQueryPage {
+    QList<MediaItem> items;
+    int totalRecordCount = 0;
+    int startIndex = 0;
+    int limit = 0;
+
+    bool hasMore() const {
+        return startIndex + items.size() < totalRecordCount;
+    }
+};
+
 class ServerManager;
 class QNetworkAccessManager;
 
@@ -77,6 +88,7 @@ public:
     QCoro::Task<QList<MediaItem>> getUserViews(bool includeHidden = false);
     void clearUserViewsCache();
     
+    QCoro::Task<MediaQueryPage> getLibraryItemsPage(const QString& parentId, const QString& sortBy = "IsFolder,SortName", const QString& sortOrder = "Ascending", const QString& filters = "", const QString& includeItemTypes = "", int startIndex = 0, int limit = 50, bool recursive = false, bool includeChildCount = false);
     QCoro::Task<QList<MediaItem>> getLibraryItems(const QString& parentId, const QString& sortBy = "IsFolder,SortName", const QString& sortOrder = "Ascending", const QString& filters = "", const QString& includeItemTypes = "", int startIndex = 0, int limit = 50, bool recursive = false, bool includeChildCount = false);
     
     QCoro::Task<QList<MediaItem>> getResumeItems(int limit = 12, const QString& sortBy = "", const QString& sortOrder = "");
@@ -115,7 +127,9 @@ public:
     QCoro::Task<QList<MediaItem>> getSimilarItems(const QString& itemId, int limit = 15);
     QCoro::Task<QList<MediaItem>> getItemCollections(const QString& itemId);
     QCoro::Task<QList<MediaItem>> getCollectionItems(const QString& collectionId);
+    QCoro::Task<MediaQueryPage> getItemsByPersonPage(const QString& personId, const QString& sortBy = "SortName", const QString& sortOrder = "Ascending", int startIndex = 0, int limit = 0);
     QCoro::Task<QList<MediaItem>> getItemsByPerson(const QString& personId, const QString& sortBy = "SortName", const QString& sortOrder = "Ascending");
+    QCoro::Task<MediaQueryPage> getItemsByFilterPage(const QString& genreFilter = "", const QString& tagFilter = "", const QString& studioFilter = "", const QString& sortBy = "SortName", const QString& sortOrder = "Ascending", int startIndex = 0, int limit = 0);
     QCoro::Task<QList<MediaItem>> getItemsByFilter(const QString& genreFilter = "", const QString& tagFilter = "", const QString& studioFilter = "", const QString& sortBy = "SortName", const QString& sortOrder = "Ascending", int limit = 0);
 
     QCoro::Task<QPixmap> fetchImage(const QString& itemId, const QString& imageType,

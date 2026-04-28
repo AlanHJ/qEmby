@@ -10,6 +10,7 @@
 
 class QListWidget;
 class QLineEdit;
+class QLabel;
 class QPushButton;
 class QEvent;
 class QShowEvent;
@@ -47,6 +48,7 @@ private:
     void updateServerEnabled(int index, bool enabled);
     void updateCurrentServerName(const QString &name);
     void updateCurrentServerUrl(const QString &baseUrl);
+    void updateCurrentServerDescription(const QString &description);
     void updateCurrentServerAppId(const QString &appId);
     void updateCurrentServerAppSecret(const QString &appSecret);
     void updateActionState();
@@ -62,7 +64,11 @@ private:
     QListWidget *m_serverList = nullptr;
     QLineEdit *m_nameEdit = nullptr;
     QLineEdit *m_baseUrlEdit = nullptr;
+    QLabel *m_descriptionLabel = nullptr;
+    QLineEdit *m_descriptionEdit = nullptr;
+    QLabel *m_appIdLabel = nullptr;
     QLineEdit *m_appIdEdit = nullptr;
+    QLabel *m_appSecretLabel = nullptr;
     QLineEdit *m_appSecretEdit = nullptr;
     QPushButton *m_addButton = nullptr;
 };

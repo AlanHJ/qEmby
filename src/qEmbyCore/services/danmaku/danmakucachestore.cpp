@@ -16,6 +16,8 @@ QJsonObject candidateToJson(const DanmakuMatchCandidate &candidate)
     QJsonObject obj;
     obj["provider"] = candidate.provider;
     obj["cacheScope"] = candidate.cacheScope;
+    obj["endpointId"] = candidate.endpointId;
+    obj["endpointName"] = candidate.endpointName;
     obj["targetId"] = candidate.targetId;
     obj["title"] = candidate.title;
     obj["subtitle"] = candidate.subtitle;
@@ -33,6 +35,8 @@ DanmakuMatchCandidate candidateFromJson(const QJsonObject &obj)
     DanmakuMatchCandidate candidate;
     candidate.provider = obj["provider"].toString();
     candidate.cacheScope = obj["cacheScope"].toString();
+    candidate.endpointId = obj["endpointId"].toString();
+    candidate.endpointName = obj["endpointName"].toString();
     candidate.targetId = obj["targetId"].toString();
     candidate.title = obj["title"].toString();
     candidate.subtitle = obj["subtitle"].toString();

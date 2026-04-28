@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QStringList>
+#include <QTimeZone>
 
 namespace {
 
@@ -78,7 +79,7 @@ QString formatIsoDateTime(QString isoDate) {
         return isoDate;
     }
 
-    dt.setTimeSpec(Qt::UTC);
+    dt.setTimeZone(QTimeZone::UTC);
     return dt.toLocalTime().toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
 }
 

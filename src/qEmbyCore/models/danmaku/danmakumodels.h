@@ -15,8 +15,12 @@ struct QEMBYCORE_EXPORT DanmakuServerDefinition {
     QString name;
     QString provider = QStringLiteral("dandanplay");
     QString baseUrl = QStringLiteral("https://api.dandanplay.net");
+    QString description;
     QString appId;
     QString appSecret;
+    
+    QString contentScope;
+    bool builtIn = false;
     bool enabled = true;
 
     bool isValid() const {
@@ -37,6 +41,9 @@ struct QEMBYCORE_EXPORT DanmakuProviderConfig {
     QString endpointName;
     QString appId;
     QString appSecret;
+    
+    QString contentScope;
+    bool enabled = true;
     bool withRelated = true;
     int cacheHours = 24;
 };
@@ -83,6 +90,8 @@ Q_DECLARE_METATYPE(DanmakuMediaContext)
 struct QEMBYCORE_EXPORT DanmakuMatchCandidate {
     QString provider;
     QString cacheScope;
+    QString endpointId;
+    QString endpointName;
     QString targetId;
     QString title;
     QString subtitle;
@@ -137,6 +146,9 @@ struct QEMBYCORE_EXPORT DanmakuRenderOptions {
     bool enabled = true;
     double opacity = 0.72;
     double fontScale = 1.0;
+    int fontWeight = 400;
+    double outlineSize = 3.0;
+    double shadowOffset = 1.0;
     int areaPercent = 70;
     int density = 100;
     double speedScale = 1.0;
@@ -154,16 +166,27 @@ struct QEMBYCORE_EXPORT DanmakuLoadResult {
     QString assFilePath;
     int commentCount = 0;
     QString provider;
+    QString sourceServerId;
+    QString sourceServerName;
     QString sourceTitle;
     bool needManualMatch = false;
+    QList<DanmakuComment> comments;
     DanmakuMatchResult matchResult;
 
     bool hasComments() const {
-        return success && commentCount > 0 && !assFilePath.isEmpty();
+        return commentCount > 0 && hasRenderableContent();
+    }
+
+    bool hasCommentPayload() const {
+        return !comments.isEmpty();
     }
 
     bool hasRenderableTrack() const {
         return success && !assFilePath.isEmpty();
+    }
+
+    bool hasRenderableContent() const {
+        return hasRenderableTrack() || hasCommentPayload();
     }
 };
 Q_DECLARE_METATYPE(DanmakuLoadResult)

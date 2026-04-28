@@ -22,6 +22,7 @@
 #include <QScrollBar>
 #include <QShowEvent>
 #include <QHash>
+#include <QTimeZone>
 #include <QTransform>
 #include <QVariantAnimation>
 #include <QVBoxLayout>
@@ -945,7 +946,7 @@ QCoro::Task<void> PageCollections::onOrderChanged(QStringList newOrderIds) {
               PlaylistDateUpdate update;
               update.itemId = orderedIds[windowStart + i];
               update.dateCreatedRaw =
-                  QDateTime::fromSecsSinceEpoch(dateSecs, Qt::UTC)
+                  QDateTime::fromSecsSinceEpoch(dateSecs, QTimeZone::UTC)
                       .toString(Qt::ISODateWithMs);
               updates.append(update);
             }
@@ -956,7 +957,7 @@ QCoro::Task<void> PageCollections::onOrderChanged(QStringList newOrderIds) {
               PlaylistDateUpdate update;
               update.itemId = orderedIds[windowStart + i];
               update.dateCreatedRaw =
-                  QDateTime::fromSecsSinceEpoch(dateSecs, Qt::UTC)
+                  QDateTime::fromSecsSinceEpoch(dateSecs, QTimeZone::UTC)
                       .toString(Qt::ISODateWithMs);
               updates.append(update);
             }
@@ -967,7 +968,7 @@ QCoro::Task<void> PageCollections::onOrderChanged(QStringList newOrderIds) {
               PlaylistDateUpdate update;
               update.itemId = orderedIds[windowStart + i];
               update.dateCreatedRaw =
-                  QDateTime::fromSecsSinceEpoch(dateSecs, Qt::UTC)
+                  QDateTime::fromSecsSinceEpoch(dateSecs, QTimeZone::UTC)
                       .toString(Qt::ISODateWithMs);
               updates.append(update);
             }
@@ -984,7 +985,7 @@ QCoro::Task<void> PageCollections::onOrderChanged(QStringList newOrderIds) {
               PlaylistDateUpdate update;
               update.itemId = orderedIds[windowStart + i];
               update.dateCreatedRaw =
-                  QDateTime::fromSecsSinceEpoch(dateSecs, Qt::UTC)
+                  QDateTime::fromSecsSinceEpoch(dateSecs, QTimeZone::UTC)
                       .toString(Qt::ISODateWithMs);
               updates.append(update);
             }

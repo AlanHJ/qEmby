@@ -329,6 +329,10 @@ QCoro::Task<void> BaseView::executeAddToPlaylist(MediaItem item,
     }
 
     QPointer<BaseView> safeThis(this);
+    QPointer<AdminService> adminService(m_core->adminService());
+    if (!adminService) {
+        co_return;
+    }
 
     qDebug() << "[BaseView] Adding item to playlist"
              << "| itemId=" << item.id
@@ -337,72 +341,72 @@ QCoro::Task<void> BaseView::executeAddToPlaylist(MediaItem item,
              << "| playlistId=" << playlistId
              << "| playlistName=" << playlistName;
 
-    try {
-        bool isDuplicateAdd =
-            !item.playlistId.trimmed().isEmpty() &&
-            item.playlistId.compare(playlistId, Qt::CaseInsensitive) == 0;
+    bool isDuplicateAdd =
+        !item.playlistId.trimmed().isEmpty() &&
+        item.playlistId.compare(playlistId, Qt::CaseInsensitive) == 0;
 
-        if (!isDuplicateAdd) {
-            try {
-                const QJsonObject playlistItemsResponse =
-                    co_await m_core->adminService()->getPlaylistItems(playlistId);
-                if (!safeThis) {
-                    co_return;
-                }
-
-                const QJsonArray playlistItems =
-                    playlistItemsResponse.value("Items").toArray();
-                for (const QJsonValue& value : playlistItems) {
-                    const QString existingItemId =
-                        value.toObject().value("Id").toString().trimmed();
-                    if (existingItemId.compare(item.id, Qt::CaseInsensitive) ==
-                        0) {
-                        isDuplicateAdd = true;
-                        break;
-                    }
-                }
-
-                qDebug() << "[BaseView] Playlist duplicate check completed"
-                         << "| itemId=" << item.id
-                         << "| playlistId=" << playlistId
-                         << "| duplicate=" << isDuplicateAdd
-                         << "| playlistItemCount=" << playlistItems.size();
-            } catch (const std::exception& e) {
-                if (!safeThis) {
-                    co_return;
-                }
-
-                qWarning() << "[BaseView] Playlist duplicate check failed"
-                           << "| itemId=" << item.id
-                           << "| playlistId=" << playlistId
-                           << "| error=" << e.what();
+    if (!isDuplicateAdd) {
+        try {
+            const QJsonObject playlistItemsResponse =
+                co_await adminService->getPlaylistItems(playlistId);
+            if (!safeThis || !adminService) {
+                co_return;
             }
-        }
 
-        if (isDuplicateAdd) {
-            const QString displayPlaylistName =
-                playlistName.isEmpty() ? tr("current playlist") : playlistName;
-            const bool confirmed = ModernMessageBox::question(
-                safeThis.data(), tr("Duplicate Add"),
-                tr("%1 is already in playlist %2.\n\nAdd it again?")
-                    .arg(item.name, displayPlaylistName),
-                tr("Add Again"), ModernMessageBox::tr("Cancel"),
-                ModernMessageBox::Primary, ModernMessageBox::Question);
+            const QJsonArray playlistItems =
+                playlistItemsResponse.value("Items").toArray();
+            for (const QJsonValue& value : playlistItems) {
+                const QString existingItemId =
+                    value.toObject().value("Id").toString().trimmed();
+                if (existingItemId.compare(item.id, Qt::CaseInsensitive) == 0) {
+                    isDuplicateAdd = true;
+                    break;
+                }
+            }
+
+            qDebug() << "[BaseView] Playlist duplicate check completed"
+                     << "| itemId=" << item.id
+                     << "| playlistId=" << playlistId
+                     << "| duplicate=" << isDuplicateAdd
+                     << "| playlistItemCount=" << playlistItems.size();
+        } catch (const std::exception& e) {
             if (!safeThis) {
                 co_return;
             }
-            if (!confirmed) {
-                qDebug() << "[BaseView] Duplicate add-to-playlist cancelled"
-                         << "| itemId=" << item.id
-                         << "| itemName=" << item.name
-                         << "| playlistId=" << playlistId
-                         << "| playlistName=" << playlistName;
-                co_return;
-            }
-        }
 
-        co_await m_core->adminService()->addToPlaylist(playlistId, {item.id});
+            qWarning() << "[BaseView] Playlist duplicate check failed"
+                       << "| itemId=" << item.id
+                       << "| playlistId=" << playlistId
+                       << "| error=" << e.what();
+        }
+    }
+
+    if (isDuplicateAdd) {
+        const QString displayPlaylistName =
+            playlistName.isEmpty() ? tr("current playlist") : playlistName;
+        const bool confirmed = ModernMessageBox::question(
+            safeThis.data(), tr("Duplicate Add"),
+            tr("%1 is already in playlist %2.\n\nAdd it again?")
+                .arg(item.name, displayPlaylistName),
+            tr("Add Again"), ModernMessageBox::tr("Cancel"),
+            ModernMessageBox::Primary, ModernMessageBox::Question);
         if (!safeThis) {
+            co_return;
+        }
+        if (!confirmed) {
+            qDebug() << "[BaseView] Duplicate add-to-playlist cancelled"
+                     << "| itemId=" << item.id
+                     << "| itemName=" << item.name
+                     << "| playlistId=" << playlistId
+                     << "| playlistName=" << playlistName;
+            co_return;
+        }
+    }
+
+    try {
+        const QStringList itemIds{item.id};
+        co_await adminService->addToPlaylist(playlistId, itemIds);
+        if (!safeThis || !adminService) {
             co_return;
         }
 
@@ -438,6 +442,10 @@ QCoro::Task<void> BaseView::executeRemoveFromPlaylist(MediaItem item)
     }
 
     QPointer<BaseView> safeThis(this);
+    QPointer<AdminService> adminService(m_core->adminService());
+    if (!adminService) {
+        co_return;
+    }
 
     qDebug() << "[BaseView] Removing item from playlist"
              << "| itemId=" << item.id
@@ -446,9 +454,9 @@ QCoro::Task<void> BaseView::executeRemoveFromPlaylist(MediaItem item)
              << "| playlistItemId=" << item.playlistItemId;
 
     try {
-        co_await m_core->adminService()->removeFromPlaylist(
-            item.playlistId, {item.playlistItemId});
-        if (!safeThis) {
+        const QStringList entryIds{item.playlistItemId};
+        co_await adminService->removeFromPlaylist(item.playlistId, entryIds);
+        if (!safeThis || !adminService) {
             co_return;
         }
 

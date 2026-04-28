@@ -35,6 +35,7 @@ constexpr auto kDanmakuSourceModePreferOnline = "prefer-online";
 constexpr auto kDanmakuSourceModePreferLocal = "prefer-local";
 constexpr auto kDanmakuSourceModeOnlineOnly = "online-only";
 constexpr auto kDanmakuSourceModeLocalOnly = "local-only";
+constexpr int kDanmakuAssRenderVersion = 5;
 
 QStringList parseBlockedKeywords(const QString &value)
 {
@@ -145,6 +146,97 @@ QString cacheScopeForConfig(const DanmakuProviderConfig &config)
         return endpointId;
     }
     return config.baseUrl.trimmed().toLower();
+}
+
+QString endpointDisplayName(const DanmakuProviderConfig &config)
+{
+    const QString endpointName = config.endpointName.trimmed();
+    if (!endpointName.isEmpty()) {
+        return endpointName;
+    }
+
+    const QString baseUrl = config.baseUrl.trimmed();
+    return baseUrl.isEmpty() ? config.provider.trimmed() : baseUrl;
+}
+
+DanmakuProviderConfig providerConfigFromServerDefinition(
+    const DanmakuServerDefinition &server,
+    const QString &serverId,
+    bool allowLegacyCredentialFallback)
+{
+    auto *store = ConfigStore::instance();
+    DanmakuProviderConfig config;
+    config.provider = server.provider.trimmed().isEmpty()
+                          ? QStringLiteral("dandanplay")
+                          : server.provider.trimmed();
+    config.baseUrl = server.baseUrl.trimmed().isEmpty()
+                         ? QStringLiteral("https://api.dandanplay.net")
+                         : server.baseUrl.trimmed();
+    config.endpointId = server.id.trimmed();
+    config.endpointName = server.displayName();
+    config.enabled = server.enabled;
+    config.appId = server.appId.trimmed();
+    config.appSecret = server.appSecret.trimmed();
+
+    if (server.builtIn) {
+        config.appId = server.appId.trimmed();
+        config.appSecret = server.appSecret.trimmed();
+    } else if (allowLegacyCredentialFallback) {
+        if (config.appId.isEmpty()) {
+            config.appId = store->get<QString>(
+                providerKey(serverId, ConfigKeys::DanmakuProviderAppId));
+        }
+        if (config.appSecret.isEmpty()) {
+            config.appSecret = store->get<QString>(
+                providerKey(serverId, ConfigKeys::DanmakuProviderAppSecret));
+        }
+    }
+
+    config.contentScope = server.contentScope.trimmed().toLower();
+    config.withRelated = store->get<bool>(
+        providerKey(serverId, ConfigKeys::DanmakuWithRelated), true);
+    config.cacheHours = store->get<QString>(
+                            providerKey(serverId, ConfigKeys::DanmakuCacheHours),
+                            QStringLiteral("24"))
+                            .toInt();
+    return config;
+}
+
+void applyEndpointMetadata(DanmakuMatchCandidate *candidate,
+                           const DanmakuProviderConfig &config)
+{
+    if (!candidate) {
+        return;
+    }
+
+    if (candidate->cacheScope.trimmed().isEmpty()) {
+        candidate->cacheScope = cacheScopeForConfig(config);
+    }
+    if (candidate->endpointId.trimmed().isEmpty()) {
+        candidate->endpointId = config.endpointId.trimmed();
+    }
+    if (candidate->endpointName.trimmed().isEmpty()) {
+        candidate->endpointName = endpointDisplayName(config);
+    }
+}
+
+bool candidateBelongsToConfig(const DanmakuMatchCandidate &candidate,
+                              const DanmakuProviderConfig &config)
+{
+    const QString endpointId = candidate.endpointId.trimmed();
+    if (!endpointId.isEmpty()) {
+        return endpointId == config.endpointId.trimmed();
+    }
+
+    const QString cacheScope = candidate.cacheScope.trimmed();
+    if (cacheScope.isEmpty()) {
+        return false;
+    }
+    if (cacheScope == cacheScopeForConfig(config)) {
+        return true;
+    }
+    const QString legacyBaseUrlScope = config.baseUrl.trimmed().toLower();
+    return !legacyBaseUrlScope.isEmpty() && cacheScope == legacyBaseUrlScope;
 }
 
 QString localCandidateTitle(const QFileInfo &fileInfo)
@@ -671,6 +763,20 @@ DanmakuRenderOptions DanmakuService::renderOptions() const
                             QStringLiteral("100"))
             .toDouble() /
         100.0;
+    options.fontWeight =
+        store->get<QString>(ConfigKeys::PlayerDanmakuFontWeight,
+                            QStringLiteral("400"))
+            .toInt();
+    options.outlineSize =
+        store->get<QString>(ConfigKeys::PlayerDanmakuOutlineSize,
+                            QStringLiteral("30"))
+            .toDouble() /
+        10.0;
+    options.shadowOffset =
+        store->get<QString>(ConfigKeys::PlayerDanmakuShadowOffset,
+                            QStringLiteral("10"))
+            .toDouble() /
+        10.0;
     options.areaPercent =
         store->get<QString>(ConfigKeys::PlayerDanmakuAreaPercent,
                             QStringLiteral("70"))
@@ -711,34 +817,64 @@ DanmakuProviderConfig DanmakuService::providerConfig(QString serverId) const
     if (serverId.trimmed().isEmpty()) {
         serverId = m_serverManager->activeProfile().id;
     }
-    auto *store = ConfigStore::instance();
     const DanmakuServerDefinition selectedServer =
         DanmakuSettings::selectedServer(serverId);
-    config.provider = selectedServer.provider.trimmed().isEmpty()
-                          ? QStringLiteral("dandanplay")
-                          : selectedServer.provider.trimmed();
-    config.baseUrl = selectedServer.baseUrl.trimmed().isEmpty()
-                         ? QStringLiteral("https://api.dandanplay.net")
-                         : selectedServer.baseUrl.trimmed();
-    config.endpointId = selectedServer.id;
-    config.endpointName = selectedServer.name;
-    config.appId = selectedServer.appId.trimmed().isEmpty()
-                       ? store->get<QString>(
-                             providerKey(serverId,
-                                         ConfigKeys::DanmakuProviderAppId))
-                       : selectedServer.appId.trimmed();
-    config.appSecret = selectedServer.appSecret.trimmed().isEmpty()
-                           ? store->get<QString>(
-                                 providerKey(serverId,
-                                             ConfigKeys::DanmakuProviderAppSecret))
-                           : selectedServer.appSecret.trimmed();
-    config.withRelated = store->get<bool>(
-        providerKey(serverId, ConfigKeys::DanmakuWithRelated), true);
-    config.cacheHours = store->get<QString>(
-                            providerKey(serverId, ConfigKeys::DanmakuCacheHours),
-                            QStringLiteral("24"))
-                            .toInt();
-    return config;
+    return providerConfigFromServerDefinition(selectedServer, serverId, true);
+}
+
+QList<DanmakuProviderConfig> DanmakuService::enabledProviderConfigs(
+    QString serverId) const
+{
+    QList<DanmakuProviderConfig> configs;
+    if (!m_serverManager) {
+        return configs;
+    }
+
+    serverId = serverId.trimmed();
+    if (serverId.isEmpty()) {
+        serverId = m_serverManager->activeProfile().id;
+    }
+
+    const QList<DanmakuServerDefinition> servers =
+        DanmakuSettings::loadServers(serverId);
+    const QString selectedId = DanmakuSettings::selectedServerId(serverId);
+    auto appendServerConfig =
+        [&configs, &serverId](const DanmakuServerDefinition &server) {
+            if (!server.enabled || !server.isValid()) {
+                return;
+            }
+            configs.append(providerConfigFromServerDefinition(
+                server, serverId, false));
+        };
+
+    for (const DanmakuServerDefinition &server : servers) {
+        if (!selectedId.isEmpty() && server.id == selectedId) {
+            appendServerConfig(server);
+            break;
+        }
+    }
+
+    for (const DanmakuServerDefinition &server : servers) {
+        if (!selectedId.isEmpty() && server.id == selectedId) {
+            continue;
+        }
+        appendServerConfig(server);
+    }
+    return configs;
+}
+
+DanmakuProviderConfig DanmakuService::providerConfigForCandidate(
+    QString serverId,
+    const DanmakuMatchCandidate &candidate) const
+{
+    const QList<DanmakuProviderConfig> configs =
+        enabledProviderConfigs(serverId);
+    for (const DanmakuProviderConfig &config : configs) {
+        if (candidateBelongsToConfig(candidate, config)) {
+            return config;
+        }
+    }
+    return providerConfig(serverId);
 }
 
 bool DanmakuService::autoMatchEnabled(const QString &serverId) const
@@ -772,14 +908,19 @@ QCoro::Task<DanmakuLoadResult> DanmakuService::prepareDanmaku(
     }
 
     const DanmakuProviderConfig config = providerConfig(context.serverId);
+    const QList<DanmakuProviderConfig> enabledConfigs =
+        enabledProviderConfigs(context.serverId);
     qDebug().noquote()
         << "[Danmaku][Service] Provider config"
         << "| provider:" << config.provider
         << "| endpointId:" << config.endpointId
         << "| endpointName:" << config.endpointName
         << "| baseUrl:" << config.baseUrl
+        << "| enabled:" << config.enabled
+        << "| contentScope:" << config.contentScope
         << "| withRelated:" << config.withRelated
         << "| cacheHours:" << config.cacheHours
+        << "| enabledProviderCount:" << enabledConfigs.size()
         << "| hasAppId:" << !config.appId.trimmed().isEmpty()
         << "| hasAppSecret:" << !config.appSecret.trimmed().isEmpty();
 
@@ -824,14 +965,22 @@ QCoro::Task<DanmakuLoadResult> DanmakuService::prepareDanmakuForCandidate(
         co_return loadResult;
     }
 
-    const DanmakuProviderConfig config = providerConfig(context.serverId);
+    const DanmakuProviderConfig config =
+        providerConfigForCandidate(context.serverId, candidate);
+    if (candidate.provider != QLatin1String(kLocalDanmakuProvider)) {
+        applyEndpointMetadata(&candidate, config);
+    }
     loadResult.provider = candidate.provider;
+    loadResult.sourceServerId = candidate.endpointId;
+    loadResult.sourceServerName = candidate.endpointName;
     loadResult.sourceTitle = preferredProviderTitle(candidate);
 
     qDebug().noquote()
         << "[Danmaku][Service] Prepare candidate start"
         << "| mediaId:" << context.mediaId
         << "| provider:" << candidate.provider
+        << "| endpointId:" << candidate.endpointId
+        << "| endpointName:" << candidate.endpointName
         << "| targetId:" << candidate.targetId
         << "| title:" << loadResult.sourceTitle;
 
@@ -927,6 +1076,7 @@ QCoro::Task<DanmakuLoadResult> DanmakuService::prepareDanmakuForCandidate(
             co_return loadResult;
         }
 
+        loadResult.comments = parseResult.comments;
         loadResult.commentCount = parseResult.comments.size();
         if (!parseResult.assPath.isEmpty()) {
             loadResult.assFilePath = parseResult.assPath;
@@ -949,6 +1099,14 @@ QCoro::Task<DanmakuLoadResult> DanmakuService::prepareDanmakuForCandidate(
             << "| success:" << loadResult.success
             << "| commentCount:" << loadResult.commentCount
             << "| assPath:" << loadResult.assFilePath;
+        co_return loadResult;
+    }
+
+    if (!config.enabled) {
+        qDebug().noquote()
+            << "[Danmaku][Service] Online provider disabled, skip remote candidate"
+            << "| provider:" << candidate.provider
+            << "| targetId:" << candidate.targetId;
         co_return loadResult;
     }
 
@@ -989,6 +1147,8 @@ QCoro::Task<DanmakuLoadResult> DanmakuService::prepareDanmakuForCandidate(
                 qDebug().noquote()
                     << "[Danmaku][Service] Fetching comments from provider"
                     << "| provider:" << config.provider
+                    << "| endpointId:" << config.endpointId
+                    << "| endpointName:" << config.endpointName
                     << "| targetId:" << candidate.targetId;
                 comments = co_await m_dandanplayProvider->fetchComments(
                     candidate, config);
@@ -1049,6 +1209,7 @@ QCoro::Task<DanmakuLoadResult> DanmakuService::prepareDanmakuForCandidate(
     }
 
     loadResult.commentCount = comments.size();
+    loadResult.comments = comments;
 
     if (!loadResult.success) {
         
@@ -1087,8 +1248,27 @@ QCoro::Task<QList<DanmakuMatchCandidate>> DanmakuService::searchCandidates(
     DanmakuMediaContext context,
     QString manualKeyword)
 {
+    const QList<DanmakuMatchCandidate> candidates =
+        co_await searchCandidatesForConfig(
+            context, providerConfig(context.serverId), manualKeyword);
+    co_return candidates;
+}
+
+QCoro::Task<QList<DanmakuMatchCandidate>>
+DanmakuService::searchCandidatesForConfig(DanmakuMediaContext context,
+                                          DanmakuProviderConfig config,
+                                          QString manualKeyword)
+{
     QList<DanmakuMatchCandidate> candidates;
-    const DanmakuProviderConfig config = providerConfig(context.serverId);
+    if (!config.enabled) {
+        qDebug().noquote()
+            << "[Danmaku][Service] Online provider disabled, skip search"
+            << "| mediaId:" << context.mediaId
+            << "| provider:" << config.provider
+            << "| endpointId:" << config.endpointId;
+        co_return candidates;
+    }
+
     if (config.provider == QStringLiteral("dandanplay")) {
         candidates = co_await m_dandanplayProvider->searchCandidates(
             context, config, manualKeyword);
@@ -1098,11 +1278,14 @@ QCoro::Task<QList<DanmakuMatchCandidate>> DanmakuService::searchCandidates(
         if (candidate.cacheScope.trimmed().isEmpty()) {
             candidate.cacheScope = cacheScope;
         }
+        applyEndpointMetadata(&candidate, config);
     }
     qDebug().noquote()
         << "[Danmaku][Service] Search candidates"
         << "| mediaId:" << context.mediaId
         << "| provider:" << config.provider
+        << "| endpointId:" << config.endpointId
+        << "| endpointName:" << config.endpointName
         << "| cacheScope:" << cacheScope
         << "| manualKeyword:" << manualKeyword.trimmed()
         << "| count:" << candidates.size();
@@ -1115,6 +1298,8 @@ QCoro::Task<QList<DanmakuMatchCandidate>> DanmakuService::searchAllCandidates(
 {
     QList<DanmakuMatchCandidate> aggregatedCandidates;
     const QString trimmedManualKeyword = manualKeyword.trimmed();
+    const QList<DanmakuProviderConfig> onlineProviders =
+        enabledProviderConfigs(context.serverId);
     const QString sourceMode = normalizedSourceMode(
         ConfigStore::instance()->get<QString>(
             providerKey(context.serverId, ConfigKeys::DanmakuSourceMode),
@@ -1122,7 +1307,8 @@ QCoro::Task<QList<DanmakuMatchCandidate>> DanmakuService::searchAllCandidates(
     const bool allowLocal =
         sourceMode != QLatin1String(kDanmakuSourceModeOnlineOnly);
     const bool allowOnline =
-        sourceMode != QLatin1String(kDanmakuSourceModeLocalOnly);
+        sourceMode != QLatin1String(kDanmakuSourceModeLocalOnly) &&
+        !onlineProviders.isEmpty();
     const QStringList sourceOrder =
         (sourceMode == QLatin1String(kDanmakuSourceModePreferLocal) ||
          sourceMode == QLatin1String(kDanmakuSourceModeLocalOnly))
@@ -1138,7 +1324,8 @@ QCoro::Task<QList<DanmakuMatchCandidate>> DanmakuService::searchAllCandidates(
         << "| sourceMode:" << sourceMode
         << "| manualKeyword:" << trimmedManualKeyword
         << "| allowLocal:" << allowLocal
-        << "| allowOnline:" << allowOnline;
+        << "| allowOnline:" << allowOnline
+        << "| enabledProviderCount:" << onlineProviders.size();
 
     for (const QString &source : sourceOrder) {
         if (source == QLatin1String("local")) {
@@ -1162,21 +1349,29 @@ QCoro::Task<QList<DanmakuMatchCandidate>> DanmakuService::searchAllCandidates(
             continue;
         }
 
-        try {
-            const QList<DanmakuMatchCandidate> onlineCandidates =
-                co_await searchCandidates(context, trimmedManualKeyword);
-            aggregatedCandidates.append(onlineCandidates);
-            qDebug().noquote()
-                << "[Danmaku][Service] Search all online candidates"
-                << "| mediaId:" << context.mediaId
-                << "| count:" << onlineCandidates.size();
-        } catch (const std::exception &e) {
-            remoteSearchException = std::current_exception();
-            remoteSearchError = QString::fromUtf8(e.what()).trimmed();
-            qWarning().noquote()
-                << "[Danmaku][Service] Search all online candidates failed"
-                << "| mediaId:" << context.mediaId
-                << "| error:" << remoteSearchError;
+        for (const DanmakuProviderConfig &providerConfig : onlineProviders) {
+            const DanmakuProviderConfig onlineConfig = providerConfig;
+            try {
+                const QList<DanmakuMatchCandidate> onlineCandidates =
+                    co_await searchCandidatesForConfig(
+                        context, onlineConfig, trimmedManualKeyword);
+                aggregatedCandidates.append(onlineCandidates);
+                qDebug().noquote()
+                    << "[Danmaku][Service] Search all online candidates"
+                    << "| mediaId:" << context.mediaId
+                    << "| endpointId:" << onlineConfig.endpointId
+                    << "| endpointName:" << onlineConfig.endpointName
+                    << "| count:" << onlineCandidates.size();
+            } catch (const std::exception &e) {
+                remoteSearchException = std::current_exception();
+                remoteSearchError = QString::fromUtf8(e.what()).trimmed();
+                qWarning().noquote()
+                    << "[Danmaku][Service] Search all online candidates failed"
+                    << "| mediaId:" << context.mediaId
+                    << "| endpointId:" << onlineConfig.endpointId
+                    << "| endpointName:" << onlineConfig.endpointName
+                    << "| error:" << remoteSearchError;
+            }
         }
     }
 
@@ -1198,7 +1393,10 @@ QCoro::Task<QList<DanmakuMatchCandidate>> DanmakuService::searchAllCandidates(
                   if (!qFuzzyCompare(lhs.score, rhs.score)) {
                       return lhs.score > rhs.score;
                   }
-                  return lhs.commentCount > rhs.commentCount;
+                  if (lhs.commentCount != rhs.commentCount) {
+                      return lhs.commentCount > rhs.commentCount;
+                  }
+                  return lhs.endpointName < rhs.endpointName;
               });
 
     co_return aggregatedCandidates;
@@ -1210,6 +1408,8 @@ QCoro::Task<DanmakuMatchResult> DanmakuService::resolveMatch(
 {
     DanmakuMatchResult result;
     const QString trimmedManualKeyword = manualKeyword.trimmed();
+    const QList<DanmakuProviderConfig> onlineProviders =
+        enabledProviderConfigs(context.serverId);
     const QString sourceMode = normalizedSourceMode(
         ConfigStore::instance()->get<QString>(
             providerKey(context.serverId, ConfigKeys::DanmakuSourceMode),
@@ -1224,13 +1424,26 @@ QCoro::Task<DanmakuMatchResult> DanmakuService::resolveMatch(
         return true;
     };
     const auto sourceModeAllowsCandidate =
-        [&sourceMode](const DanmakuMatchCandidate &candidate) {
+        [sourceMode, onlineProviders](const DanmakuMatchCandidate &candidate) {
             const bool isLocalCandidate =
                 candidate.provider == QLatin1String(kLocalDanmakuProvider);
             if (isLocalCandidate) {
                 return sourceMode != QLatin1String(kDanmakuSourceModeOnlineOnly);
             }
-            return sourceMode != QLatin1String(kDanmakuSourceModeLocalOnly);
+            if (sourceMode == QLatin1String(kDanmakuSourceModeLocalOnly) ||
+                onlineProviders.isEmpty()) {
+                return false;
+            }
+            if (candidate.endpointId.trimmed().isEmpty() &&
+                candidate.cacheScope.trimmed().isEmpty()) {
+                return true;
+            }
+            for (const DanmakuProviderConfig &config : onlineProviders) {
+                if (candidateBelongsToConfig(candidate, config)) {
+                    return true;
+                }
+            }
+            return false;
         };
 
     DanmakuMatchCandidate cachedCandidate;
@@ -1249,6 +1462,8 @@ QCoro::Task<DanmakuMatchResult> DanmakuService::resolveMatch(
             << "| mediaId:" << context.mediaId
             << "| matched:" << result.matched
             << "| manualOverride:" << result.manualOverride
+            << "| endpointId:" << result.selected.endpointId
+            << "| endpointName:" << result.selected.endpointName
             << "| targetId:" << result.selected.targetId;
         if (result.matched) {
             co_return result;
@@ -1264,7 +1479,9 @@ QCoro::Task<DanmakuMatchResult> DanmakuService::resolveMatch(
     }
 
     const bool allowLocal = sourceMode != QLatin1String(kDanmakuSourceModeOnlineOnly);
-    const bool allowOnline = sourceMode != QLatin1String(kDanmakuSourceModeLocalOnly);
+    const bool allowOnline =
+        sourceMode != QLatin1String(kDanmakuSourceModeLocalOnly) &&
+        !onlineProviders.isEmpty();
     const QStringList sourceOrder =
         (sourceMode == QLatin1String(kDanmakuSourceModePreferLocal) ||
          sourceMode == QLatin1String(kDanmakuSourceModeLocalOnly))
@@ -1276,7 +1493,8 @@ QCoro::Task<DanmakuMatchResult> DanmakuService::resolveMatch(
         << "| mediaId:" << context.mediaId
         << "| sourceMode:" << sourceMode
         << "| allowLocal:" << allowLocal
-        << "| allowOnline:" << allowOnline;
+        << "| allowOnline:" << allowOnline
+        << "| enabledProviderCount:" << onlineProviders.size();
 
     QList<DanmakuMatchCandidate> aggregatedCandidates;
     std::exception_ptr remoteSearchException;
@@ -1338,6 +1556,8 @@ QCoro::Task<DanmakuMatchResult> DanmakuService::resolveMatch(
                     << "[Danmaku][Service] Manual match selected"
                     << "| mediaId:" << context.mediaId
                     << "| keyword:" << trimmedManualKeyword
+                    << "| endpointId:" << selected.endpointId
+                    << "| endpointName:" << selected.endpointName
                     << "| targetId:" << selected.targetId
                     << "| score:" << selected.score;
                 return true;
@@ -1348,6 +1568,8 @@ QCoro::Task<DanmakuMatchResult> DanmakuService::resolveMatch(
                 qDebug().noquote()
                     << "[Danmaku][Service] Best online match below threshold"
                     << "| mediaId:" << context.mediaId
+                    << "| endpointId:" << selected.endpointId
+                    << "| endpointName:" << selected.endpointName
                     << "| targetId:" << selected.targetId
                     << "| score:" << selected.score
                     << "| threshold:" << threshold;
@@ -1361,6 +1583,8 @@ QCoro::Task<DanmakuMatchResult> DanmakuService::resolveMatch(
             qDebug().noquote()
                 << "[Danmaku][Service] Auto match selected"
                 << "| mediaId:" << context.mediaId
+                << "| endpointId:" << selected.endpointId
+                << "| endpointName:" << selected.endpointName
                 << "| targetId:" << selected.targetId
                 << "| score:" << selected.score;
             return true;
@@ -1388,23 +1612,49 @@ QCoro::Task<DanmakuMatchResult> DanmakuService::resolveMatch(
             continue;
         }
 
-        try {
-            const QList<DanmakuMatchCandidate> onlineCandidates =
-                co_await searchCandidates(context, trimmedManualKeyword);
-            appendCandidates(onlineCandidates);
-            if (trySelectOnlineCandidate(onlineCandidates)) {
-                result.candidates = aggregatedCandidates;
-                co_return result;
+        QList<DanmakuMatchCandidate> onlineCandidates;
+        for (const DanmakuProviderConfig &providerConfig : onlineProviders) {
+            const DanmakuProviderConfig onlineConfig = providerConfig;
+            try {
+                const QList<DanmakuMatchCandidate> providerCandidates =
+                    co_await searchCandidatesForConfig(
+                        context, onlineConfig, trimmedManualKeyword);
+                onlineCandidates.append(providerCandidates);
+                qDebug().noquote()
+                    << "[Danmaku][Service] Resolve online candidates"
+                    << "| mediaId:" << context.mediaId
+                    << "| endpointId:" << onlineConfig.endpointId
+                    << "| endpointName:" << onlineConfig.endpointName
+                    << "| count:" << providerCandidates.size();
+            } catch (const std::exception &e) {
+                remoteSearchException = std::current_exception();
+                remoteSearchError = QString::fromUtf8(e.what()).trimmed();
+                qWarning().noquote()
+                    << "[Danmaku][Service] Search candidates failed"
+                    << "| mediaId:" << context.mediaId
+                    << "| endpointId:" << onlineConfig.endpointId
+                    << "| endpointName:" << onlineConfig.endpointName
+                    << "| sourceMode:" << sourceMode
+                    << "| manualKeyword:" << trimmedManualKeyword
+                    << "| error:" << remoteSearchError;
             }
-        } catch (const std::exception &e) {
-            remoteSearchException = std::current_exception();
-            remoteSearchError = QString::fromUtf8(e.what()).trimmed();
-            qWarning().noquote()
-                << "[Danmaku][Service] Search candidates failed"
-                << "| mediaId:" << context.mediaId
-                << "| sourceMode:" << sourceMode
-                << "| manualKeyword:" << trimmedManualKeyword
-                << "| error:" << remoteSearchError;
+        }
+
+        std::sort(onlineCandidates.begin(), onlineCandidates.end(),
+                  [](const DanmakuMatchCandidate &lhs,
+                     const DanmakuMatchCandidate &rhs) {
+                      if (!qFuzzyCompare(lhs.score, rhs.score)) {
+                          return lhs.score > rhs.score;
+                      }
+                      if (lhs.commentCount != rhs.commentCount) {
+                          return lhs.commentCount > rhs.commentCount;
+                      }
+                      return lhs.endpointName < rhs.endpointName;
+                  });
+        appendCandidates(onlineCandidates);
+        if (trySelectOnlineCandidate(onlineCandidates)) {
+            result.candidates = aggregatedCandidates;
+            co_return result;
         }
     }
 
@@ -1448,6 +1698,8 @@ void DanmakuService::saveManualMatch(const DanmakuMediaContext &context,
     qDebug().noquote()
         << "[Danmaku][Service] Manual match saved"
         << "| mediaId:" << context.mediaId
+        << "| endpointId:" << candidate.endpointId
+        << "| endpointName:" << candidate.endpointName
         << "| targetId:" << candidate.targetId;
 }
 
@@ -1461,8 +1713,10 @@ QString DanmakuService::assCacheKey(const DanmakuMatchCandidate &candidate,
                                     const DanmakuRenderOptions &options) const
 {
     QJsonObject obj;
+    obj["assRenderVersion"] = kDanmakuAssRenderVersion;
     obj["provider"] = candidate.provider;
     obj["cacheScope"] = candidate.cacheScope;
+    obj["endpointId"] = candidate.endpointId;
     obj["targetId"] = candidate.targetId;
     obj["opacity"] = options.opacity;
     obj["fontScale"] = options.fontScale;

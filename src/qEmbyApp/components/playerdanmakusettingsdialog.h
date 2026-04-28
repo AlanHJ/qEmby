@@ -11,17 +11,14 @@ public:
     explicit PlayerDanmakuSettingsDialog(QWidget *parent = nullptr);
 
     bool requiresReload() const;
-    bool danmakuEnabledChanged() const;
 
 signals:
     void liveReloadRequested();
-    void danmakuEnabledToggled(bool enabled);
 
 private:
     void scheduleLiveReload();
 
     bool m_requiresReload = false;
-    bool m_initialEnabled = false;
     class QTimer *m_liveReloadTimer = nullptr;
 };
 

@@ -9,6 +9,7 @@
 #include <QLabel>
 #include <QMouseEvent>
 #include <QPushButton>
+#include <QTimeZone>
 #include <QVBoxLayout>
 
 namespace
@@ -31,7 +32,7 @@ QString formatIsoDateTime(QString isoDate)
         return isoDate;
     }
 
-    dateTime.setTimeSpec(Qt::UTC);
+    dateTime.setTimeZone(QTimeZone::UTC);
     return dateTime.toLocalTime().toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
 }
 

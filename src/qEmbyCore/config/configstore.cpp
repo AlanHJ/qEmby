@@ -29,6 +29,9 @@ ConfigStore::ConfigStore(QObject* parent) : QObject(parent) {
     if (!m_settings->contains(ConfigKeys::ShowEachLibrary)) {
         m_settings->setValue(ConfigKeys::ShowEachLibrary, true);
     }
+    if (!m_settings->contains(ConfigKeys::ShowMediaTooltips)) {
+        m_settings->setValue(ConfigKeys::ShowMediaTooltips, true);
+    }
     if (!m_settings->contains(ConfigKeys::ImageQuality)) {
         m_settings->setValue(ConfigKeys::ImageQuality, "high");
     }

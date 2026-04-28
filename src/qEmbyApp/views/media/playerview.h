@@ -32,6 +32,7 @@ class PlayerMediaSwitcherPanel;
 class PlayerOsdLayer;
 class PlayerLongPressHandler;
 class PlayerStatisticsOverlay;
+class NativeDanmakuOverlay;
 
 class PlayerView : public BaseView {
     Q_OBJECT
@@ -139,10 +140,13 @@ private:
     void updateStatisticsDisplay();
     void setScaleIcon(); 
     QString formatDanmakuProviderLabel(QString provider) const;
+    QString formatDanmakuSourceServiceLabel(QString provider,
+                                            QString serverName) const;
     QString buildDanmakuSummaryText() const;
     QString buildDanmakuTooltipText() const;
     void closeActivePlayerDialog();
     void trackPlayerDialog(PlayerOverlayDialog *dialog);
+    void updatePowerInhibition();
 
     void showCenteredPopup(QWidget* popup, QPushButton* btn); 
     QWidget* m_activePopup = nullptr; 
@@ -152,6 +156,7 @@ private:
     static QCoro::Task<void> executeFetchLogo(QPointer<PlayerView> safeThis, QEmbyCore* core, QString mediaId);
 
     MpvWidget *m_mpvWidget;
+    NativeDanmakuOverlay *m_nativeDanmakuOverlay = nullptr;
 
     
     QWidget *m_topHUD;
@@ -257,6 +262,7 @@ private:
     bool m_hasSetVideoSize = false; 
     bool m_hasReportedStop = false; 
     bool m_isViewTearingDown = false;
+    bool m_powerInhibitionHeld = false;
     bool m_isRightSidebarVisible = false; 
     
     

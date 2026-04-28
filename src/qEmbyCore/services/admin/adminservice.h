@@ -123,9 +123,9 @@ public:
     QCoro::Task<void> updatePlaylistOrderByDateCreated(QStringList orderedIds);
     QCoro::Task<void> updatePlaylistDateCreated(QString itemId, QString dateCreatedText);
     QCoro::Task<QString> createPlaylist(const QString& name, const QString& mediaType = "Video");
-    QCoro::Task<QJsonObject> getPlaylistItems(const QString& playlistId);
-    QCoro::Task<void> addToPlaylist(const QString& playlistId, const QStringList& itemIds);
-    QCoro::Task<void> removeFromPlaylist(const QString& playlistId, const QStringList& entryIds);
+    QCoro::Task<QJsonObject> getPlaylistItems(QString playlistId);
+    QCoro::Task<void> addToPlaylist(QString playlistId, QStringList itemIds);
+    QCoro::Task<void> removeFromPlaylist(QString playlistId, QStringList entryIds);
 
     
     

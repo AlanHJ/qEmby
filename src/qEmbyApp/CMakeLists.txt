@@ -1,14 +1,15 @@
 # src/qEmbyApp/CMakeLists.txt
 
-set(TS_FILES resources/i18n/qEmby_zh_CN.ts
-    resources/i18n/qEmby_zh_CN.ts)
+set(TS_FILES
+    resources/i18n/qEmby_zh_CN.ts
+)
 # set(QSS_QWK_FILES ../../libs/qwindowkit/examples/mainwindow/mainwindow.qrc)
 # set(QRC_QWK_FILES ../../libs/qwindowkit/examples/shared/resources/shared.qrc)
 set(APP_QRC_FILES resources/resources.qrc)
 
 file(GLOB_RECURSE APP_HEADERS "*.h")
 file(GLOB_RECURSE APP_SOURCES "*.cpp")
-
+ 
 # ==========================================
 # 平台原生资源配置 (如 Windows .exe 图标)
 # ==========================================
@@ -27,23 +28,10 @@ qt_add_executable(qEmbyApp
 
 # ==========================================
 # 集成 libmpv 播放器核心
+# Windows 使用仓库内置 libmpv
+# Linux / macOS 优先使用系统安装的 libmpv
 # ==========================================
-
-# 1. 定义本地 libmpv 的路径
-set(LIBMPV_DIR "${CMAKE_SOURCE_DIR}/libs/libmpv")
-
-# 2. 引入头文件目录
-target_include_directories(qEmbyApp PRIVATE "${LIBMPV_DIR}/include")
-
-# 3. 链接 .dll.a 导入库
-target_link_libraries(qEmbyApp PRIVATE "${LIBMPV_DIR}/lib/libmpv.dll.a")
-
-# 4. 配置 CMake 在每次编译成功后，自动将 libmpv-2.dll 拷贝到生成的 exe 同级目录
-add_custom_command(TARGET qEmbyApp POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    "${LIBMPV_DIR}/bin/libmpv-2.dll"
-    $<TARGET_FILE_DIR:qEmbyApp>
-)
+qemby_link_libmpv(qEmbyApp)
 
 # ==========================================
 # 集成 MDK 播放器核心
@@ -90,6 +78,18 @@ target_link_libraries(qEmbyApp PRIVATE
     spdlog::spdlog
 )
 target_link_libraries(qEmbyApp PRIVATE Qt${QT_VERSION_MAJOR}::Core)
+
+if(APPLE)
+    target_link_libraries(qEmbyApp PRIVATE
+        "-framework CoreFoundation"
+        "-framework IOKit"
+    )
+endif()
+
+if(TARGET Qt${QT_VERSION_MAJOR}::DBus)
+    target_link_libraries(qEmbyApp PRIVATE Qt${QT_VERSION_MAJOR}::DBus)
+    target_compile_definitions(qEmbyApp PRIVATE QEMBY_HAS_QT_DBUS=1)
+endif()
 
 # # 3. 处理翻译
 # if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
@@ -141,4 +141,32 @@ install(TARGETS qEmbyApp
 if(QT_VERSION_MAJOR EQUAL 6)
     # 注意：目标从 qEmby 改为 qEmbyApp
     qt_finalize_executable(qEmbyApp)
+endif()
+
+# ==========================================
+# 终极防弹方案：调用 windeployqt 自动补全所有 Qt 依赖
+# ==========================================
+if(WIN32)
+    # 找到 Qt 官方的部署工具
+    set(_windeployqt_hints)
+    if(QEMBY_QT_ROOT)
+        list(APPEND _windeployqt_hints "${QEMBY_QT_ROOT}/bin")
+    endif()
+    if(DEFINED ENV{QTDIR} AND NOT "$ENV{QTDIR}" STREQUAL "")
+        list(APPEND _windeployqt_hints "$ENV{QTDIR}/bin")
+    endif()
+    list(APPEND _windeployqt_hints "E:/Qt6/6.9.2/msvc2022_64/bin")
+    list(REMOVE_DUPLICATES _windeployqt_hints)
+
+    find_program(WINDEPLOYQT_EXECUTABLE windeployqt PATHS ${_windeployqt_hints})
+    
+    if(WINDEPLOYQT_EXECUTABLE)
+        # 在 qEmbyApp 编译完成后的那一刻，自动执行该工具
+        add_custom_command(TARGET qEmbyApp POST_BUILD
+            COMMAND ${WINDEPLOYQT_EXECUTABLE} $<TARGET_FILE:qEmbyApp>
+            COMMENT "正在召唤 windeployqt 自动补全所有的 Qt DLL 和底层插件..."
+        )
+    else()
+        message(WARNING "未找到 windeployqt，自动部署失败！")
+    endif()
 endif()

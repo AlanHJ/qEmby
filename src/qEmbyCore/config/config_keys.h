@@ -16,6 +16,11 @@ inline QString forLibrary(const QString& serverId, const QString& libraryId, con
 }
 
 
+inline QString forCategory(const QString& serverId, const QString& categoryId, const char* baseKey) {
+    return QStringLiteral("server/%1/category/%2/%3").arg(serverId, categoryId, baseKey);
+}
+
+
 
 constexpr const char* Language = "general/language";
 constexpr const char* RememberServer = "general/remember_server";
@@ -50,10 +55,15 @@ constexpr const char* HomeSectionOrder = "library/home_section_order";
 constexpr const char* ImageQuality = "library/image_quality";
 constexpr const char* ShimmerAnimation = "library/shimmer_animation";
 constexpr const char* AdaptiveImages = "library/adaptive_images";
+constexpr const char* ShowMediaTooltips = "library/show_media_tooltips";
 
 
 constexpr const char* LibrarySortIndex = "sort/index";
 constexpr const char* LibrarySortDescending = "sort/descending";
+constexpr const char* LibraryViewMode = "view/mode";
+
+
+constexpr const char* CategoryViewMode = "view/mode";
 
 
 
@@ -95,8 +105,14 @@ constexpr const char* PlayerSubtitleShadowOffset =
     "player/subtitle_shadow_offset";
 constexpr const char* PlayerSubtitleScale = "player/subtitle_scale";
 constexpr const char* PlayerDanmakuEnabled = "player/danmaku_enabled";
+constexpr const char* PlayerDanmakuRenderer = "player/danmaku_renderer";
 constexpr const char* PlayerDanmakuOpacity = "player/danmaku_opacity";
 constexpr const char* PlayerDanmakuFontScale = "player/danmaku_font_scale";
+constexpr const char* PlayerDanmakuFontWeight = "player/danmaku_font_weight";
+constexpr const char* PlayerDanmakuOutlineSize =
+    "player/danmaku_outline_size";
+constexpr const char* PlayerDanmakuShadowOffset =
+    "player/danmaku_shadow_offset";
 constexpr const char* PlayerDanmakuAreaPercent = "player/danmaku_area_percent";
 constexpr const char* PlayerDanmakuDensity = "player/danmaku_density";
 constexpr const char* PlayerDanmakuSpeedScale = "player/danmaku_speed_scale";

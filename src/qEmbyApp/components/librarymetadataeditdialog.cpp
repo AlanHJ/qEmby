@@ -14,6 +14,7 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QScrollArea>
+#include <QTimeZone>
 #include <QVBoxLayout>
 #include <initializer_list>
 #include <utility>
@@ -163,7 +164,7 @@ QDateTime parseServerDateTime(QString rawValue)
         parsed = QDateTime::fromString(
             rawValue, QStringLiteral("yyyy-MM-ddTHH:mm:ss.zzzzzzzZ"));
         if (parsed.isValid()) {
-            parsed.setTimeSpec(Qt::UTC);
+            parsed.setTimeZone(QTimeZone::UTC);
         }
     }
 
