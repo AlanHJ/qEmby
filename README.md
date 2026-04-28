@@ -47,6 +47,15 @@ Latest release: **v0.0.3**
 
 Older Windows and Linux builds are available on the [Releases](https://github.com/AlanHJ/qEmby/releases) page.
 
+## 🚀 What's New in v0.0.3
+
+- Added native danmaku overlay rendering with scrolling and fixed-position comments.
+- Improved danmaku search, matching, server selection, cache handling and playback settings.
+- Refined the media library experience with better grid layout, card text wrapping and gallery interactions.
+- Enhanced player behavior, including media switching, danmaku controls and power inhibition during playback.
+- Polished admin, metadata and settings UI details, including toasts and list/card presentation.
+- Added Windows x64 installer packaging alongside the portable ZIP package.
+
 ## ✨ Features
 
 - 🎬 Browse and manage your Emby / Jellyfin media library
@@ -207,6 +216,15 @@ This project is licensed under the [MIT License](LICENSE).
 | [qEmby-v0.0.3-Win-x64.zip](https://github.com/AlanHJ/qEmby/releases/download/v0.0.3/qEmby-v0.0.3-Win-x64.zip) | Windows 10/11 x64 绿色便携版 |
 
 旧版 Windows 和 Linux 构建可以在 [Releases](https://github.com/AlanHJ/qEmby/releases) 页面下载。
+
+## 🚀 v0.0.3 更新内容
+
+- 新增原生弹幕覆盖层渲染，支持滚动弹幕和固定位置弹幕。
+- 改进弹幕搜索、匹配、服务器选择、缓存处理和播放设置。
+- 优化媒体库浏览体验，包括网格布局、卡片文字换行和横向画廊交互。
+- 增强播放器体验，包括媒体切换、弹幕控制和播放期间防止系统休眠。
+- 打磨管理、元数据和设置界面细节，包括 Toast 提示和列表/卡片展示。
+- 新增 Windows x64 安装包，同时继续提供绿色便携版 ZIP。
 
 ## ✨ 功能特性
 
