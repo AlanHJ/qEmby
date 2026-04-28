@@ -54,7 +54,6 @@ Older Windows and Linux builds are available on the [Releases](https://github.co
 - Refined the media library experience with better grid layout, card text wrapping and gallery interactions.
 - Enhanced player behavior, including media switching, danmaku controls and power inhibition during playback.
 - Polished admin, metadata and settings UI details, including toasts and list/card presentation.
-- Added Windows x64 installer packaging alongside the portable ZIP package.
 
 ## ✨ Features
 
@@ -224,7 +223,6 @@ This project is licensed under the [MIT License](LICENSE).
 - 优化媒体库浏览体验，包括网格布局、卡片文字换行和横向画廊交互。
 - 增强播放器体验，包括媒体切换、弹幕控制和播放期间防止系统休眠。
 - 打磨管理、元数据和设置界面细节，包括 Toast 提示和列表/卡片展示。
-- 新增 Windows x64 安装包，同时继续提供绿色便携版 ZIP。
 
 ## ✨ 功能特性
 
