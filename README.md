@@ -36,14 +36,29 @@
   <img src="screenshots/4.png" width="45%" alt="Admin Dashboard"/>
 </p>
 
+## 📥 Download
+
+Latest release: **v0.0.3**
+
+| Package | Description |
+|---|---|
+| [qEmby-v0.0.3-Win-x64-Setup.exe](https://github.com/AlanHJ/qEmby/releases/download/v0.0.3/qEmby-v0.0.3-Win-x64-Setup.exe) | Windows 10/11 x64 installer |
+| [qEmby-v0.0.3-Win-x64.zip](https://github.com/AlanHJ/qEmby/releases/download/v0.0.3/qEmby-v0.0.3-Win-x64.zip) | Windows 10/11 x64 portable package |
+
+Older Windows and Linux builds are available on the [Releases](https://github.com/AlanHJ/qEmby/releases) page.
+
 ## ✨ Features
 
 - 🎬 Browse and manage your Emby / Jellyfin media library
 - ▶️ Built-in video player powered by **libmpv**
+- 💬 Danmaku playback with search, matching, cache and native overlay rendering
+- 🧩 Metadata editing, media identification, image updates and playlist tools
+- 📥 Download manager
 - 🌗 Dark and Light theme support
 - 🌐 Internationalization support (Chinese / English)
 - 🔍 Media search with history
 - 📺 TV series and movies media types
+- 📦 Windows installer / portable packages and Linux AppImage / deb packages
 - ⚡ Asynchronous operations with C++20 coroutines (QCoro)
 - 🪟 Custom window frame with native look (QWindowKit)
 
@@ -182,14 +197,29 @@ This project is licensed under the [MIT License](LICENSE).
   <img src="screenshots/4.png" width="45%" alt="管理仪表盘"/>
 </p>
 
+## 📥 下载
+
+最新版本：**v0.0.3**
+
+| 安装包 | 说明 |
+|---|---|
+| [qEmby-v0.0.3-Win-x64-Setup.exe](https://github.com/AlanHJ/qEmby/releases/download/v0.0.3/qEmby-v0.0.3-Win-x64-Setup.exe) | Windows 10/11 x64 安装包 |
+| [qEmby-v0.0.3-Win-x64.zip](https://github.com/AlanHJ/qEmby/releases/download/v0.0.3/qEmby-v0.0.3-Win-x64.zip) | Windows 10/11 x64 绿色便携版 |
+
+旧版 Windows 和 Linux 构建可以在 [Releases](https://github.com/AlanHJ/qEmby/releases) 页面下载。
+
 ## ✨ 功能特性
 
 - 🎬 浏览和管理你的 Emby / Jellyfin 媒体库
 - ▶️ 内置 **libmpv** 驱动的视频播放器
+- 💬 弹幕播放，支持搜索、匹配、缓存和原生覆盖层渲染
+- 🧩 支持元数据编辑、媒体识别、图片更新和播放列表管理
+- 📥 下载管理器
 - 🌗 深色 / 浅色主题切换
 - 🌐 国际化支持（中文 / 英文）
 - 🔍 支持搜索历史的媒体搜索
 - 📺 当前支持电视剧、电影媒体类型
+- 📦 提供 Windows 安装包 / 绿色版，以及 Linux AppImage / deb 包
 - ⚡ 基于 C++20 协程的异步操作（QCoro）
 - 🪟 原生风格的自定义窗口边框（QWindowKit）
 
