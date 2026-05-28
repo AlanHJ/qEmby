@@ -54,6 +54,7 @@ Older Windows, Linux and macOS builds are available on the [Releases](https://gi
 - Added global proxy support for all network requests.
 - Added per-server singleton configuration support.
 - Added custom WebDAV cloud sync support for user data.
+- Added local subtitle loading support in built-in player.
 - Added French language support, thanks to volunteer @Arkoth79.
 - Improved UI animations in several areas.
 - Optimized overall smoothness and responsiveness.
@@ -227,6 +228,7 @@ This project is licensed under the [MIT License](LICENSE).
 - 新增全局代理支持，覆盖所有网络请求。
 - 支持为每个服务器单独设置单例模式。
 - 新增自定义 WebDAV 云同步支持。
+- 内置播放器新增本地字幕加载支持。
 - 新增法语支持，感谢志愿者 @Arkoth79 的贡献。
 - 改善了多个界面的动画效果。
 - 优化了整体流畅度和响应速度。
