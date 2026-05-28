@@ -18,188 +18,8 @@
 </p>
 
 <p align="center">
-  <a href="#english">English</a> | <a href="#中文">中文</a>
+  <a href="#中文">中文</a> | <a href="#english">English</a>
 </p>
-
----
-
-<a id="english"></a>
-
-## 📸 Screenshots
-
-<p align="center">
-  <img src="screenshots/2.png" width="45%" alt="Home"/>
-  <img src="screenshots/5.png" width="45%" alt="Detail"/>
-</p>
-<p align="center">
-  <img src="screenshots/3.png" width="45%" alt="Settings"/>
-  <img src="screenshots/4.png" width="45%" alt="Admin Dashboard"/>
-</p>
-
-## 📥 Download
-
-Latest release: **v0.0.4**
-
-| Package | Description |
-|---|---|
-| [qEmby-v0.0.4-Win-x64-Setup.exe](https://github.com/AlanHJ/qEmby/releases/download/v0.0.4/qEmby-v0.0.4-Win-x64-Setup.exe) | Windows 10/11 x64 installer |
-| [qEmby-v0.0.4-Win-x64.zip](https://github.com/AlanHJ/qEmby/releases/download/v0.0.4/qEmby-v0.0.4-Win-x64.zip) | Windows 10/11 x64 portable package |
-| [qemby-0.0.4-macos-arm64.dmg](https://github.com/AlanHJ/qEmby/releases/download/v0.0.4/qemby-0.0.4-macos-arm64.dmg) | macOS 26+ (Apple Silicon) |
-
-Older Windows, Linux and macOS builds are available on the [Releases](https://github.com/AlanHJ/qEmby/releases) page.
-
-## 🚀 What's New in v0.0.4
-
-- Added macOS 26+ support for Apple Silicon (arm64) Macs.
-- Added global proxy support for all network requests.
-- Added per-server singleton configuration support.
-- Added custom WebDAV cloud sync support for user data.
-- Added local subtitle loading support in built-in player.
-- Added French language support, thanks to volunteer @Arkoth79.
-- Improved UI animations in several areas.
-- Optimized overall smoothness and responsiveness.
-- Fixed several known issues.
-
-## ✨ Features
-
-- 🎬 Browse and manage your Emby / Jellyfin media library
-- ▶️ Built-in video player powered by **libmpv**
-- 💬 Danmaku playback with search, matching, cache and native overlay rendering
-- 🧩 Metadata editing, media identification, image updates and playlist tools
-- 📥 Download manager
-- 🌗 Dark and Light theme support
-- 🌐 Internationalization support (Chinese / English)
-- 🔍 Media search with history
-- 📺 TV series and movies media types
-- 📦 Windows installer / portable packages and Linux AppImage / deb packages
-- ⚡ Asynchronous operations with C++20 coroutines (QCoro)
-- 🪟 Custom window frame with native look (QWindowKit)
-
-## 💻 Platform Support
-
-| Platform | Status |
-|---|---|
-| Windows 10/11 x64 | ✅ Supported |
-| Linux x64 (AppImage / deb) | ✅ Supported |
-| macOS 26+ (Apple Silicon) | ✅ Supported |
-
-## 📋 Roadmap
-
-- [x] Emby / Jellyfin media library browsing
-- [x] Built-in video player (libmpv)
-- [x] Dark / Light theme
-- [x] Internationalization (Chinese / English)
-- [x] Media search with history
-- [x] TV series & movies support
-- [x] Server administration dashboard
-- [x] Playlist support (add/remove items)
-- [x] Media identification & metadata refresh
-- [x] Metadata and image editing
-- [x] Danmaku (bullet comments) system
-- [x] Download manager
-- [ ] AI-powered subtitle generation
-- [x] Linux platform support
-- [x] macOS platform support
-
-> This is a personal hobby project, developed out of interest. Contributions and feedback are welcome!
-
-## 🛠️ Tech Stack
-
-| Component | Technology |
-|---|---|
-| Framework | Qt 6.x (Widgets) |
-| Language | C++20 |
-| Video Player | libmpv |
-| Async | QCoro (C++20 Coroutines for Qt) |
-| Logging | spdlog |
-| Window Kit | QWindowKit |
-| Build System | CMake |
-
-## 📦 Prerequisites
-
-- **Qt 6.x** (with Widgets, Core, Network, Concurrent, OpenGLWidgets, LinguistTools, WebSockets)
-- **CMake** ≥ 3.16
-- **C++20** compatible compiler (MSVC 2022 recommended)
-- **libmpv** development files (see below)
-- **Git** (for cloning submodules)
-
-## 🚀 Build
-
-### 1. Clone the repository
-
-```bash
-git clone --recursive https://github.com/AlanHJ/qEmby.git
-cd qEmby
-```
-
-### 2. Get libmpv
-
-Download the libmpv development package and place it in `libs/libmpv/` with the following structure:
-
-```
-libs/libmpv/
-├── bin/
-│   └── libmpv-2.dll
-├── include/
-│   └── mpv/
-│       ├── client.h
-│       └── render.h (etc.)
-└── lib/
-    └── libmpv.dll.a
-```
-
-You can get libmpv from:
-- [shinchiro/mpv-winbuild-cmake](https://github.com/shinchiro/mpv-winbuild-cmake/releases) (Windows builds)
-- [mpv-player/mpv](https://github.com/mpv-player/mpv) (build from source)
-
-### 3. Configure and build
-
-```bash
-cmake -B build -DCMAKE_PREFIX_PATH="/path/to/Qt6/lib/cmake"
-cmake --build build --config Release
-```
-
-> **Tip:** On Windows with MSVC, you can also open the project in Qt Creator or Visual Studio with CMake support.
-
-## 📁 Project Structure
-
-```
-qEmby/
-├── CMakeLists.txt              # Root CMake configuration
-├── libs/
-│   ├── libmpv/                 # libmpv SDK (not tracked, see Build section)
-│   └── qwindowkit/             # QWindowKit (git submodule)
-└── src/
-    ├── qEmbyCore/              # Core library (API, models, services)
-    │   ├── api/                # Emby/Jellyfin API client
-    │   ├── config/             # Configuration management
-    │   ├── models/             # Data models
-    │   └── services/           # Business logic services
-    └── qEmbyApp/               # Desktop application
-        ├── components/         # Reusable UI components
-        ├── managers/           # Application managers
-        ├── resources/          # Icons, themes, translations
-        ├── utils/              # Utility classes
-        └── views/              # Application views
-```
-
-## 💬 Community
-
-Join our Telegram group: [https://t.me/+qXQ-zU56z9gxOWNl](https://t.me/+qXQ-zU56z9gxOWNl)
-
-> **Note:** This is a passion project with limited testing. Your understanding is appreciated. Please report any issues via [GitHub Issues](https://github.com/AlanHJ/qEmby/issues).
-
-## 📄 License
-
-This project is licensed under the [MIT License](LICENSE).
-
-## 🙏 Acknowledgements
-
-- [Qt](https://www.qt.io/) — Application framework (LGPL v3)
-- [mpv](https://mpv.io/) — Media player engine (LGPL v2.1+)
-- [QWindowKit](https://github.com/stdware/qwindowkit) — Custom window frame (Apache-2.0)
-- [QCoro](https://github.com/danvratil/qcoro) — C++20 Coroutines for Qt (MIT)
-- [spdlog](https://github.com/gabime/spdlog) — Fast logging library (MIT)
 
 ---
 
@@ -380,3 +200,183 @@ qEmby/
 - [QWindowKit](https://github.com/stdware/qwindowkit) — 自定义窗口框架 (Apache-2.0)
 - [QCoro](https://github.com/danvratil/qcoro) — Qt C++20 协程库 (MIT)
 - [spdlog](https://github.com/gabime/spdlog) — 高性能日志库 (MIT)
+
+---
+
+<a id="english"></a>
+
+## 📸 Screenshots
+
+<p align="center">
+  <img src="screenshots/2.png" width="45%" alt="Home"/>
+  <img src="screenshots/5.png" width="45%" alt="Detail"/>
+</p>
+<p align="center">
+  <img src="screenshots/3.png" width="45%" alt="Settings"/>
+  <img src="screenshots/4.png" width="45%" alt="Admin Dashboard"/>
+</p>
+
+## 📥 Download
+
+Latest release: **v0.0.4**
+
+| Package | Description |
+|---|---|
+| [qEmby-v0.0.4-Win-x64-Setup.exe](https://github.com/AlanHJ/qEmby/releases/download/v0.0.4/qEmby-v0.0.4-Win-x64-Setup.exe) | Windows 10/11 x64 installer |
+| [qEmby-v0.0.4-Win-x64.zip](https://github.com/AlanHJ/qEmby/releases/download/v0.0.4/qEmby-v0.0.4-Win-x64.zip) | Windows 10/11 x64 portable package |
+| [qemby-0.0.4-macos-arm64.dmg](https://github.com/AlanHJ/qEmby/releases/download/v0.0.4/qemby-0.0.4-macos-arm64.dmg) | macOS 26+ (Apple Silicon) |
+
+Older Windows, Linux and macOS builds are available on the [Releases](https://github.com/AlanHJ/qEmby/releases) page.
+
+## 🚀 What's New in v0.0.4
+
+- Added macOS 26+ support for Apple Silicon (arm64) Macs.
+- Added global proxy support for all network requests.
+- Added per-server singleton configuration support.
+- Added custom WebDAV cloud sync support for user data.
+- Added local subtitle loading support in built-in player.
+- Added French language support, thanks to volunteer @Arkoth79.
+- Improved UI animations in several areas.
+- Optimized overall smoothness and responsiveness.
+- Fixed several known issues.
+
+## ✨ Features
+
+- 🎬 Browse and manage your Emby / Jellyfin media library
+- ▶️ Built-in video player powered by **libmpv**
+- 💬 Danmaku playback with search, matching, cache and native overlay rendering
+- 🧩 Metadata editing, media identification, image updates and playlist tools
+- 📥 Download manager
+- 🌗 Dark and Light theme support
+- 🌐 Internationalization support (Chinese / English)
+- 🔍 Media search with history
+- 📺 TV series and movies media types
+- 📦 Windows installer / portable packages and Linux AppImage / deb packages
+- ⚡ Asynchronous operations with C++20 coroutines (QCoro)
+- 🪟 Custom window frame with native look (QWindowKit)
+
+## 💻 Platform Support
+
+| Platform | Status |
+|---|---|
+| Windows 10/11 x64 | ✅ Supported |
+| Linux x64 (AppImage / deb) | ✅ Supported |
+| macOS 26+ (Apple Silicon) | ✅ Supported |
+
+## 📋 Roadmap
+
+- [x] Emby / Jellyfin media library browsing
+- [x] Built-in video player (libmpv)
+- [x] Dark / Light theme
+- [x] Internationalization (Chinese / English)
+- [x] Media search with history
+- [x] TV series & movies support
+- [x] Server administration dashboard
+- [x] Playlist support (add/remove items)
+- [x] Media identification & metadata refresh
+- [x] Metadata and image editing
+- [x] Danmaku (bullet comments) system
+- [x] Download manager
+- [ ] AI-powered subtitle generation
+- [x] Linux platform support
+- [x] macOS platform support
+
+> This is a personal hobby project, developed out of interest. Contributions and feedback are welcome!
+
+## 🛠️ Tech Stack
+
+| Component | Technology |
+|---|---|
+| Framework | Qt 6.x (Widgets) |
+| Language | C++20 |
+| Video Player | libmpv |
+| Async | QCoro (C++20 Coroutines for Qt) |
+| Logging | spdlog |
+| Window Kit | QWindowKit |
+| Build System | CMake |
+
+## 📦 Prerequisites
+
+- **Qt 6.x** (with Widgets, Core, Network, Concurrent, OpenGLWidgets, LinguistTools, WebSockets)
+- **CMake** ≥ 3.16
+- **C++20** compatible compiler (MSVC 2022 recommended)
+- **libmpv** development files (see below)
+- **Git** (for cloning submodules)
+
+## 🚀 Build
+
+### 1. Clone the repository
+
+```bash
+git clone --recursive https://github.com/AlanHJ/qEmby.git
+cd qEmby
+```
+
+### 2. Get libmpv
+
+Download the libmpv development package and place it in `libs/libmpv/` with the following structure:
+
+```
+libs/libmpv/
+├── bin/
+│   └── libmpv-2.dll
+├── include/
+│   └── mpv/
+│       ├── client.h
+│       └── render.h (etc.)
+└── lib/
+    └── libmpv.dll.a
+```
+
+You can get libmpv from:
+- [shinchiro/mpv-winbuild-cmake](https://github.com/shinchiro/mpv-winbuild-cmake/releases) (Windows builds)
+- [mpv-player/mpv](https://github.com/mpv-player/mpv) (build from source)
+
+### 3. Configure and build
+
+```bash
+cmake -B build -DCMAKE_PREFIX_PATH="/path/to/Qt6/lib/cmake"
+cmake --build build --config Release
+```
+
+> **Tip:** On Windows with MSVC, you can also open the project in Qt Creator or Visual Studio with CMake support.
+
+## 📁 Project Structure
+
+```
+qEmby/
+├── CMakeLists.txt              # Root CMake configuration
+├── libs/
+│   ├── libmpv/                 # libmpv SDK (not tracked, see Build section)
+│   └── qwindowkit/             # QWindowKit (git submodule)
+└── src/
+    ├── qEmbyCore/              # Core library (API, models, services)
+    │   ├── api/                # Emby/Jellyfin API client
+    │   ├── config/             # Configuration management
+    │   ├── models/             # Data models
+    │   └── services/           # Business logic services
+    └── qEmbyApp/               # Desktop application
+        ├── components/         # Reusable UI components
+        ├── managers/           # Application managers
+        ├── resources/          # Icons, themes, translations
+        ├── utils/              # Utility classes
+        └── views/              # Application views
+```
+
+## 💬 Community
+
+Join our Telegram group: [https://t.me/+qXQ-zU56z9gxOWNl](https://t.me/+qXQ-zU56z9gxOWNl)
+
+> **Note:** This is a passion project with limited testing. Your understanding is appreciated. Please report any issues via [GitHub Issues](https://github.com/AlanHJ/qEmby/issues).
+
+## 📄 License
+
+This project is licensed under the [MIT License](LICENSE).
+
+## 🙏 Acknowledgements
+
+- [Qt](https://www.qt.io/) — Application framework (LGPL v3)
+- [mpv](https://mpv.io/) — Media player engine (LGPL v2.1+)
+- [QWindowKit](https://github.com/stdware/qwindowkit) — Custom window frame (Apache-2.0)
+- [QCoro](https://github.com/danvratil/qcoro) — C++20 Coroutines for Qt (MIT)
+- [spdlog](https://github.com/gabime/spdlog) — Fast logging library (MIT)
