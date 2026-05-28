@@ -14,7 +14,7 @@
   <a href="https://github.com/AlanHJ/qEmby/releases/latest"><img src="https://img.shields.io/github/v/release/AlanHJ/qEmby?include_prereleases&label=Download" alt="Release"/></a>
   <img src="https://img.shields.io/badge/Qt-6.x-green.svg" alt="Qt 6"/>
   <img src="https://img.shields.io/badge/C%2B%2B-20-orange.svg" alt="C++20"/>
-  <img src="https://img.shields.io/badge/Platform-Windows%20|%20Linux-lightgrey.svg" alt="Platform: Windows | Linux"/>
+  <img src="https://img.shields.io/badge/Platform-Windows%20|%20Linux%20|%20macOS-lightgrey.svg" alt="Platform: Windows | Linux | macOS"/>
 </p>
 
 <p align="center">
@@ -38,22 +38,25 @@
 
 ## 📥 Download
 
-Latest release: **v0.0.3**
+Latest release: **v0.0.4**
 
 | Package | Description |
 |---|---|
-| [qEmby-v0.0.3-Win-x64-Setup.exe](https://github.com/AlanHJ/qEmby/releases/download/v0.0.3/qEmby-v0.0.3-Win-x64-Setup.exe) | Windows 10/11 x64 installer |
-| [qEmby-v0.0.3-Win-x64.zip](https://github.com/AlanHJ/qEmby/releases/download/v0.0.3/qEmby-v0.0.3-Win-x64.zip) | Windows 10/11 x64 portable package |
+| [qEmby-v0.0.4-Win-x64-Setup.exe](https://github.com/AlanHJ/qEmby/releases/download/v0.0.4/qEmby-v0.0.4-Win-x64-Setup.exe) | Windows 10/11 x64 installer |
+| [qEmby-v0.0.4-Win-x64.zip](https://github.com/AlanHJ/qEmby/releases/download/v0.0.4/qEmby-v0.0.4-Win-x64.zip) | Windows 10/11 x64 portable package |
+| [qemby-0.0.4-macos-arm64.dmg](https://github.com/AlanHJ/qEmby/releases/download/v0.0.4/qemby-0.0.4-macos-arm64.dmg) | macOS 26+ (Apple Silicon) |
 
-Older Windows and Linux builds are available on the [Releases](https://github.com/AlanHJ/qEmby/releases) page.
+Older Windows, Linux and macOS builds are available on the [Releases](https://github.com/AlanHJ/qEmby/releases) page.
 
-## 🚀 What's New in v0.0.3
+## 🚀 What's New in v0.0.4
 
-- Added native danmaku overlay rendering with scrolling and fixed-position comments.
-- Improved danmaku search, matching, server selection, cache handling and playback settings.
-- Refined the media library experience with better grid layout, card text wrapping and gallery interactions.
-- Enhanced player behavior, including media switching, danmaku controls and power inhibition during playback.
-- Polished admin, metadata and settings UI details, including toasts and list/card presentation.
+- Added macOS 26+ support for Apple Silicon (arm64) Macs.
+- Added global proxy support for all network requests.
+- Added per-server singleton configuration support.
+- Added custom WebDAV cloud sync support for user data.
+- Improved UI animations in several areas.
+- Optimized overall smoothness and responsiveness.
+- Fixed several known issues.
 
 ## ✨ Features
 
@@ -76,7 +79,7 @@ Older Windows and Linux builds are available on the [Releases](https://github.co
 |---|---|
 | Windows 10/11 x64 | ✅ Supported |
 | Linux x64 (AppImage / deb) | ✅ Supported |
-| macOS | 🚧 Planned |
+| macOS 26+ (Apple Silicon) | ✅ Supported |
 
 ## 📋 Roadmap
 
@@ -94,7 +97,7 @@ Older Windows and Linux builds are available on the [Releases](https://github.co
 - [x] Download manager
 - [ ] AI-powered subtitle generation
 - [x] Linux platform support
-- [ ] macOS platform support
+- [x] macOS platform support
 
 > This is a personal hobby project, developed out of interest. Contributions and feedback are welcome!
 
@@ -207,22 +210,25 @@ This project is licensed under the [MIT License](LICENSE).
 
 ## 📥 下载
 
-最新版本：**v0.0.3**
+最新版本：**v0.0.4**
 
 | 安装包 | 说明 |
 |---|---|
-| [qEmby-v0.0.3-Win-x64-Setup.exe](https://github.com/AlanHJ/qEmby/releases/download/v0.0.3/qEmby-v0.0.3-Win-x64-Setup.exe) | Windows 10/11 x64 安装包 |
-| [qEmby-v0.0.3-Win-x64.zip](https://github.com/AlanHJ/qEmby/releases/download/v0.0.3/qEmby-v0.0.3-Win-x64.zip) | Windows 10/11 x64 绿色便携版 |
+| [qEmby-v0.0.4-Win-x64-Setup.exe](https://github.com/AlanHJ/qEmby/releases/download/v0.0.4/qEmby-v0.0.4-Win-x64-Setup.exe) | Windows 10/11 x64 安装包 |
+| [qEmby-v0.0.4-Win-x64.zip](https://github.com/AlanHJ/qEmby/releases/download/v0.0.4/qEmby-v0.0.4-Win-x64.zip) | Windows 10/11 x64 绿色便携版 |
+| [qemby-0.0.4-macos-arm64.dmg](https://github.com/AlanHJ/qEmby/releases/download/v0.0.4/qemby-0.0.4-macos-arm64.dmg) | macOS 26+ (Apple 芯片) |
 
-旧版 Windows 和 Linux 构建可以在 [Releases](https://github.com/AlanHJ/qEmby/releases) 页面下载。
+旧版 Windows、Linux 和 macOS 构建可以在 [Releases](https://github.com/AlanHJ/qEmby/releases) 页面下载。
 
-## 🚀 v0.0.3 更新内容
+## 🚀 v0.0.4 更新内容
 
-- 新增原生弹幕覆盖层渲染，支持滚动弹幕和固定位置弹幕。
-- 改进弹幕搜索、匹配、服务器选择、缓存处理和播放设置。
-- 优化媒体库浏览体验，包括网格布局、卡片文字换行和横向画廊交互。
-- 增强播放器体验，包括媒体切换、弹幕控制和播放期间防止系统休眠。
-- 打磨管理、元数据和设置界面细节，包括 Toast 提示和列表/卡片展示。
+- 新增 macOS 26+ (Apple 芯片 / arm64) 支持。
+- 新增全局代理支持，覆盖所有网络请求。
+- 支持为每个服务器单独设置单例模式。
+- 新增自定义 WebDAV 云同步支持。
+- 改善了多个界面的动画效果。
+- 优化了整体流畅度和响应速度。
+- 修复了一些已知问题。
 
 ## ✨ 功能特性
 
@@ -245,7 +251,7 @@ This project is licensed under the [MIT License](LICENSE).
 |---|---|
 | Windows 10/11 x64 | ✅ 已适配 |
 | Linux x64 (AppImage / deb) | ✅ 已适配 |
-| macOS | 🚧 计划中 |
+| macOS 26+ (Apple Silicon) | ✅ 已适配 |
 
 ## 📋 开发路线图
 
@@ -263,7 +269,7 @@ This project is licensed under the [MIT License](LICENSE).
 - [x] 下载管理器
 - [ ] AI 字幕生成
 - [x] Linux 平台适配
-- [ ] macOS 平台适配
+- [x] macOS 平台适配
 
 > 本项目为个人兴趣开发，欢迎贡献和反馈！
 
