@@ -367,7 +367,7 @@ qEmby/
 
 加入 Telegram 交流群：[https://t.me/+qXQ-zU56z9gxOWNl](https://t.me/+qXQ-zU56z9gxOWNl)
 
-> **注意：** 本项目为爱发电项目，测试覆盖不全，敬请谅解。如有问题请通过 [GitHub Issues](https://github.com/AlanHJ/qEmby/issues) 反馈。
+> **注意：** 本项目是为爱发电项目，测试覆盖不全，敬请谅解。如有问题请通过 [GitHub Issues](https://github.com/AlanHJ/qEmby/issues) 反馈。
 
 ## 📄 许可证
 
