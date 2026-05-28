@@ -48,8 +48,6 @@ Latest release: **v0.0.4**
 
 Older Windows, Linux and macOS builds are available on the [Releases](https://github.com/AlanHJ/qEmby/releases) page.
 
-💬 Join our Telegram group: [https://t.me/+qXQ-zU56z9gxOWNl](https://t.me/+qXQ-zU56z9gxOWNl)
-
 ## 🚀 What's New in v0.0.4
 
 - Added macOS 26+ support for Apple Silicon (arm64) Macs.
@@ -185,6 +183,10 @@ qEmby/
         └── views/              # Application views
 ```
 
+## 💬 Community
+
+Join our Telegram group: [https://t.me/+qXQ-zU56z9gxOWNl](https://t.me/+qXQ-zU56z9gxOWNl)
+
 ## 📄 License
 
 This project is licensed under the [MIT License](LICENSE).
@@ -223,8 +225,6 @@ This project is licensed under the [MIT License](LICENSE).
 | [qemby-0.0.4-macos-arm64.dmg](https://github.com/AlanHJ/qEmby/releases/download/v0.0.4/qemby-0.0.4-macos-arm64.dmg) | macOS 26+ (Apple 芯片) |
 
 旧版 Windows、Linux 和 macOS 构建可以在 [Releases](https://github.com/AlanHJ/qEmby/releases) 页面下载。
-
-💬 加入 Telegram 交流群：[https://t.me/+qXQ-zU56z9gxOWNl](https://t.me/+qXQ-zU56z9gxOWNl)
 
 ## 🚀 v0.0.4 更新内容
 
@@ -360,6 +360,10 @@ qEmby/
         ├── utils/              # 工具类
         └── views/              # 应用视图
 ```
+
+## 💬 交流社区
+
+加入 Telegram 交流群：[https://t.me/+qXQ-zU56z9gxOWNl](https://t.me/+qXQ-zU56z9gxOWNl)
 
 ## 📄 许可证
 
