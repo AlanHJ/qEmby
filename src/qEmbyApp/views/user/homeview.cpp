@@ -4,6 +4,7 @@
 #include "../../components/elidedlabel.h"
 #include "../../components/moderntoast.h"
 #include "../../components/slidingstackedwidget.h"
+#include "../../components/webdavsyncdialog.h"
 #include "../../managers/thememanager.h"
 #include "../../managers/searchhistorymanager.h"
 #include "../../managers/playbackmanager.h"
@@ -17,6 +18,7 @@
 #include "categoryview.h"
 #include "config/config_keys.h"
 #include "config/configstore.h"
+#include "config/webdavprofilestore.h"
 #include "dashboardview.h"
 #include "favoritesview.h"
 #include <QAction>
@@ -97,9 +99,29 @@ HomeView::HomeView(QEmbyCore *core, QWidget *parent) : QWidget(parent), m_core(c
             });
 }
 
+HomeView::~HomeView()
+{
+    m_isDestroying = true;
+
+    if (m_contentSwitcher)
+    {
+        disconnect(m_contentSwitcher, nullptr, this, nullptr);
+        const auto playerViews = m_contentSwitcher->findChildren<PlayerView *>();
+        for (PlayerView *playerView : playerViews)
+        {
+            disconnect(playerView, nullptr, this, nullptr);
+        }
+    }
+}
+
 
 PlayerView *HomeView::activePlayerView() const
 {
+    if (m_isDestroying || !m_contentSwitcher)
+    {
+        return nullptr;
+    }
+
     QWidget *current = m_contentSwitcher->currentWidget();
     if (current && current->property("routeType").toString() == "PlayerView")
     {
@@ -162,8 +184,8 @@ void HomeView::setupUi()
                 pushView(createCategoryView("Favorite_" + categoryId, title));
             });
 
-    auto navigateToDetailSlot = [this](const QString &itemId, const QString &itemName)
-    { pushView(createDetailView(itemId, itemName)); };
+    auto navigateToDetailSlot = [this](const QString &itemId, const QString &itemName, const MediaItem &seedItem)
+    { pushView(createDetailView(itemId, itemName, seedItem)); };
 
     connect(m_dashboardView, &DashboardView::navigateToDetail, this, navigateToDetailSlot);
     connect(m_favoritesView, &FavoritesView::navigateToDetail, this, navigateToDetailSlot);
@@ -244,7 +266,7 @@ void HomeView::setupUi()
 }
 
 
-QWidget *HomeView::createDetailView(const QString &itemId, const QString &itemName)
+QWidget *HomeView::createDetailView(const QString &itemId, const QString &itemName, const MediaItem &seedItem)
 {
     auto *view = new DetailView(m_core, this);
 
@@ -254,10 +276,11 @@ QWidget *HomeView::createDetailView(const QString &itemId, const QString &itemNa
     view->setProperty("routeTitle", itemName);
 
     
-    view->loadItem(itemId);
+    
+    view->loadItem(itemId, seedItem);
 
     connect(view, &DetailView::navigateToDetail, this,
-            [this](const QString &id, const QString &name) { pushView(createDetailView(id, name)); });
+            [this](const QString &id, const QString &name, const MediaItem &seed) { pushView(createDetailView(id, name, seed)); });
     connect(view, &DetailView::navigateToFolder, this,
             [this](const QString &id, const QString &name) { pushView(createLibraryView(id, name)); });
     connect(view, &BaseView::navigateToPerson, this,
@@ -294,7 +317,7 @@ QWidget *HomeView::createCategoryView(const QString &categoryId, const QString &
     view->loadCategory(categoryId, title);
 
     connect(view, &CategoryView::navigateToDetail, this,
-            [this](const QString &id, const QString &name) { pushView(createDetailView(id, name)); });
+            [this](const QString &id, const QString &name, const MediaItem &seed) { pushView(createDetailView(id, name, seed)); });
 
     connect(view, &CategoryView::navigateToFolder, this,
             [this](const QString &id, const QString &name) { pushView(createLibraryView(id, name)); });
@@ -326,7 +349,7 @@ QWidget *HomeView::createLibraryView(const QString &libraryId, const QString &ti
     view->loadLibrary(libraryId, title);
 
     connect(view, &LibraryView::navigateToDetail, this,
-            [this](const QString &id, const QString &name) { pushView(createDetailView(id, name)); });
+            [this](const QString &id, const QString &name, const MediaItem &seed) { pushView(createDetailView(id, name, seed)); });
 
     connect(view, &LibraryView::navigateToFolder, this,
             [this](const QString &id, const QString &name) { pushView(createLibraryView(id, name)); });
@@ -364,7 +387,7 @@ QWidget *HomeView::createPersonView(const QString &personId, const QString &pers
 
     
     connect(view, &BaseView::navigateToDetail, this,
-            [this](const QString &id, const QString &name) { pushView(createDetailView(id, name)); });
+            [this](const QString &id, const QString &name, const MediaItem &seed) { pushView(createDetailView(id, name, seed)); });
 
     
     connect(view, &BaseView::navigateToPerson, this,
@@ -401,7 +424,7 @@ QWidget *HomeView::createSearchView(const QString &query)
     view->performSearch(query);
 
     connect(view, &SearchView::navigateToDetail, this,
-            [this](const QString &id, const QString &name) { pushView(createDetailView(id, name)); });
+            [this](const QString &id, const QString &name, const MediaItem &seed) { pushView(createDetailView(id, name, seed)); });
 
     connect(view, &SearchView::navigateToFolder, this,
             [this](const QString &id, const QString &name) { pushView(createLibraryView(id, name)); });
@@ -435,7 +458,7 @@ QWidget *HomeView::createFilteredView(const QString &filterType, const QString &
     view->setProperty("routeExtraId", filterType);
 
     connect(view, &BaseView::navigateToDetail, this,
-            [this](const QString &id, const QString &name) { pushView(createDetailView(id, name)); });
+            [this](const QString &id, const QString &name, const MediaItem &seed) { pushView(createDetailView(id, name, seed)); });
     connect(view, &BaseView::navigateToFolder, this,
             [this](const QString &id, const QString &name) { pushView(createLibraryView(id, name)); });
     connect(view, &BaseView::navigateToPerson, this,
@@ -472,7 +495,7 @@ QWidget *HomeView::createSeasonView(const QString &seriesId, const QString &seas
 
     
     connect(view, &BaseView::navigateToDetail, this,
-            [this](const QString &id, const QString &name) { pushView(createDetailView(id, name)); });
+            [this](const QString &id, const QString &name, const MediaItem &seed) { pushView(createDetailView(id, name, seed)); });
 
     
     connect(view, &BaseView::navigateToPlayer, this,
@@ -493,9 +516,47 @@ QWidget *HomeView::createPlayerView(const QString &mediaId, const QString &title
 
     
     connect(view, &BaseView::navigateBack, this, &HomeView::navigateBack);
+    connect(view, &PlayerView::playerChromeVisibilityChanged, this,
+            [this, view](bool visible)
+            {
+                if (m_isDestroying || !m_contentSwitcher)
+                {
+                    return;
+                }
+
+                if (activePlayerView() == view)
+                {
+                    Q_EMIT playerChromeVisibilityChanged(visible);
+                }
+            });
 
     
-    view->playMedia(mediaId, title, streamUrl, startPositionTicks, extraData);
+    
+    
+    
+    QPointer<PlayerView> safeView(view);
+    auto launchPlay = [safeView, mediaId, title, streamUrl, startPositionTicks, extraData]()
+    {
+        if (safeView)
+        {
+            safeView->playMedia(mediaId, title, streamUrl, startPositionTicks, extraData);
+        }
+    };
+
+    if (m_contentSwitcher)
+    {
+        
+        
+        
+        connect(m_contentSwitcher, &SlidingStackedWidget::animationFinished, view,
+                launchPlay, Qt::SingleShotConnection);
+    }
+    else
+    {
+        
+        launchPlay();
+    }
+
     return view;
 }
 
@@ -584,14 +645,21 @@ void HomeView::setupSidebar()
     layout->addWidget(serverInfoWidget);
 
     
-    m_searchBox = new QLineEdit(m_sidebar);
+    m_navArea = new QWidget(m_sidebar);
+    auto *navLayout = new QVBoxLayout(m_navArea);
+    navLayout->setContentsMargins(0, 0, 0, 0);
+    navLayout->setSpacing(0);
+
+    m_searchBox = new QLineEdit(m_navArea);
     m_searchBox->setObjectName("sidebar-search");
     m_searchBox->setPlaceholderText(tr("Search..."));
     m_searchAction = new QAction(this);
     m_searchAction->setText(tr("Search"));
     m_searchBox->addAction(m_searchAction, QLineEdit::LeadingPosition);
-    layout->addWidget(m_searchBox);
-    layout->addSpacing(10);
+    navLayout->addWidget(m_searchBox);
+    m_searchSpacer = new QWidget(m_navArea);
+    m_searchSpacer->setFixedHeight(10);
+    navLayout->addWidget(m_searchSpacer);
 
     
     connect(m_searchBox, &QLineEdit::returnPressed, this,
@@ -608,21 +676,23 @@ void HomeView::setupSidebar()
             });
     setupSearchHistory();
 
-    m_btnHome = new QPushButton(tr("Home"), m_sidebar);
-    m_btnFavorites = new QPushButton(tr("Favorites"), m_sidebar);
+    m_btnHome = new QPushButton(tr("Home"), m_navArea);
+    m_btnFavorites = new QPushButton(tr("Favorites"), m_navArea);
 
     m_btnHome->setObjectName("sidebar-btn");
 
     m_btnFavorites->setObjectName("sidebar-btn");
 
-    layout->addWidget(m_btnHome);
-    layout->addWidget(m_btnFavorites);
+    navLayout->addWidget(m_btnHome);
+    navLayout->addWidget(m_btnFavorites);
 
-    auto *sep1 = new QFrame(m_sidebar);
+    auto *sep1 = new QFrame(m_navArea);
     sep1->setObjectName("sidebar-sep");
-    layout->addSpacing(8);
-    layout->addWidget(sep1);
-    layout->addSpacing(8);
+    navLayout->addSpacing(3);
+    navLayout->addWidget(sep1);
+    navLayout->addSpacing(3);
+
+    layout->addWidget(m_navArea);
 
     
     auto *libTitle = new QLabel(tr("MEDIA"), m_sidebar);
@@ -641,9 +711,9 @@ void HomeView::setupSidebar()
 
     auto *sep2 = new QFrame(m_sidebar);
     sep2->setObjectName("sidebar-sep");
-    layout->addSpacing(8);
+    layout->addSpacing(3);
     layout->addWidget(sep2);
-    layout->addSpacing(8);
+    layout->addSpacing(3);
 
     
     auto *userInfoWidget = new QWidget(m_sidebar);
@@ -659,26 +729,34 @@ void HomeView::setupSidebar()
     m_userNameLabel = new ElidedLabel(userInfoWidget);
     m_userNameLabel->setObjectName("sidebar-user-name");
 
+    m_btnCloudSync = new QPushButton(userInfoWidget);
+    m_btnCloudSync->setObjectName("sidebar-icon-btn");
+    m_btnCloudSync->setCursor(Qt::PointingHandCursor);
+    m_btnCloudSync->setToolTip(tr("Cloud Sync (WebDAV)"));
+
+    m_btnDownloads = new QPushButton(userInfoWidget);
+    m_btnDownloads->setObjectName("sidebar-icon-btn");
+    m_btnDownloads->setCursor(Qt::PointingHandCursor);
+    m_btnDownloads->setToolTip(tr("Downloads"));
+
     m_userInfoLayout->addWidget(m_userAvatarLabel);
     m_userInfoLayout->addWidget(m_userNameLabel, 1);
+    m_userInfoLayout->addWidget(m_btnCloudSync, 0, Qt::AlignVCenter);
+    m_userInfoLayout->addWidget(m_btnDownloads, 0, Qt::AlignVCenter);
     layout->addWidget(userInfoWidget);
 
     m_btnSettings = new QPushButton(tr("Settings"), m_sidebar);
     m_btnManage = new QPushButton(tr("Manage"), m_sidebar);
-    m_btnDownloads = new QPushButton(tr("Downloads"), m_sidebar);
     m_btnLogout = new QPushButton(tr("Logout"), m_sidebar);
 
     m_btnSettings->setObjectName("sidebar-btn");
 
     m_btnManage->setObjectName("sidebar-btn");
 
-    m_btnDownloads->setObjectName("sidebar-btn");
-
     m_btnLogout->setObjectName("sidebar-btn-danger");
 
     layout->addWidget(m_btnSettings);
     layout->addWidget(m_btnManage);
-    layout->addWidget(m_btnDownloads);
     layout->addWidget(m_btnLogout);
 
     
@@ -742,6 +820,15 @@ void HomeView::setupSidebar()
                 }
 
                 pushView(createManageView());
+            });
+    connect(m_btnCloudSync, &QPushButton::clicked, this,
+            [this]()
+            {
+                if (m_libraryList)
+                {
+                    m_libraryList->clearSelection();
+                }
+                openCloudSyncDialog();
             });
     connect(m_btnDownloads, &QPushButton::clicked, this,
             [this]()
@@ -816,10 +903,33 @@ void HomeView::setupSidebar()
                     m_sidebarPinned = pinned;
                     applySidebarPinned(pinned);
                 }
+                else if (key == ConfigKeys::SidebarCustomEnabled ||
+                         key == ConfigKeys::SidebarHideSearch ||
+                         key == ConfigKeys::SidebarHideHome ||
+                         key == ConfigKeys::SidebarHideFavorites)
+                {
+                    applySidebarCustomVisibility();
+                }
             });
 
     applySidebarMetrics(m_sidebarPinned);
     applySidebarIcons();
+    applySidebarCustomVisibility();
+}
+
+void HomeView::openCloudSyncDialog()
+{
+    if (!m_webdavStore)
+    {
+        m_webdavStore = new WebdavProfileStore(this);
+        m_webdavStore->load();
+        qInfo() << "[HomeView] WebdavProfileStore loaded | hasProfile:"
+                << m_webdavStore->hasProfile();
+    }
+
+    ServerManager *serverManager = m_core ? m_core->serverManager() : nullptr;
+    WebdavSyncDialog dialog(m_webdavStore, serverManager, this);
+    dialog.exec();
 }
 
 
@@ -1658,7 +1768,7 @@ void HomeView::applySidebarMetrics(bool pinned)
     {
         m_userInfoLayout->setContentsMargins(pinned ? QMargins(4, 0, 4, 8)
                                                     : QMargins(0, 0, 0, 10));
-        m_userInfoLayout->setSpacing(pinned ? 4 : 10);
+        m_userInfoLayout->setSpacing(pinned ? 4 : 8);
         m_userInfoLayout->setAlignment(Qt::AlignVCenter);
     }
 
@@ -1681,8 +1791,20 @@ void HomeView::applySidebarMetrics(bool pinned)
     applySidebarActionIconSize(m_btnFavorites);
     applySidebarActionIconSize(m_btnSettings);
     applySidebarActionIconSize(m_btnManage);
-    applySidebarActionIconSize(m_btnDownloads);
     applySidebarActionIconSize(m_btnLogout);
+
+    const int utilityButtonSize = pinned ? 16 : 20;
+    const int utilityIconSize = pinned ? 11 : 13;
+    auto applySidebarUtilityMetrics = [utilityButtonSize, utilityIconSize](QPushButton* button)
+    {
+        if (button)
+        {
+            button->setFixedSize(utilityButtonSize, utilityButtonSize);
+            button->setIconSize(QSize(utilityIconSize, utilityIconSize));
+        }
+    };
+    applySidebarUtilityMetrics(m_btnCloudSync);
+    applySidebarUtilityMetrics(m_btnDownloads);
 
     if (m_userNameLabel)
     {
@@ -1727,6 +1849,11 @@ void HomeView::applySidebarIcons()
         m_btnManage->setIcon(
             ThemeManager::getAdaptiveIcon(":/svg/light/server.svg"));
     }
+    if (m_btnCloudSync)
+    {
+        m_btnCloudSync->setIcon(
+            ThemeManager::getAdaptiveIcon(":/svg/light/cloud-sync.svg"));
+    }
     if (m_btnDownloads)
     {
         m_btnDownloads->setIcon(
@@ -1746,6 +1873,29 @@ void HomeView::applySidebarIcons()
         m_userAvatarLabel->setPixmap(
             ThemeManager::getAdaptiveIcon(avatarIconPath).pixmap(20, 20));
     }
+}
+
+void HomeView::applySidebarCustomVisibility()
+{
+    const bool customEnabled = ConfigStore::instance()->get<bool>(ConfigKeys::SidebarCustomEnabled, false);
+
+    if (!customEnabled)
+    {
+        if (m_searchBox) m_searchBox->setVisible(true);
+        if (m_searchSpacer) m_searchSpacer->setVisible(true);
+        if (m_btnHome) m_btnHome->setVisible(true);
+        if (m_btnFavorites) m_btnFavorites->setVisible(true);
+        return;
+    }
+
+    const bool hideSearch = ConfigStore::instance()->get<bool>(ConfigKeys::SidebarHideSearch, false);
+    const bool hideHome = ConfigStore::instance()->get<bool>(ConfigKeys::SidebarHideHome, false);
+    const bool hideFav = ConfigStore::instance()->get<bool>(ConfigKeys::SidebarHideFavorites, false);
+
+    if (m_searchBox) m_searchBox->setVisible(!hideSearch);
+    if (m_searchSpacer) m_searchSpacer->setVisible(!hideSearch);
+    if (m_btnHome) m_btnHome->setVisible(!hideHome);
+    if (m_btnFavorites) m_btnFavorites->setVisible(!hideFav);
 }
 
 void HomeView::syncSidebarVisibility()

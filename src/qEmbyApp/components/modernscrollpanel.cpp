@@ -1,8 +1,38 @@
 #include "modernscrollpanel.h"
+#include "modernmenuscrollbar.h"
 #include <QGraphicsDropShadowEffect>
 #include <QPainter>
 #include <QEvent>
+#include <QFont>
 #include <QFontMetrics>
+#include <QScrollBar>
+
+namespace {
+
+
+
+
+
+
+
+
+
+
+
+
+
+constexpr int kMenuItemMinHeight = 42;
+constexpr int kMenuItemVerticalPadding = 18;
+constexpr int kMenuItemSpacing = 2;
+constexpr int kScrollAreaFrameReserve = 2;
+
+int menuItemHeight(const QFont &font)
+{
+    const QFontMetrics fm(font);
+    return qMax(kMenuItemMinHeight, fm.height() + kMenuItemVerticalPadding);
+}
+
+}
 
 ModernScrollPanel::ModernScrollPanel(QWidget *parent) : QFrame(parent), m_maxContentWidth(0) {
     setObjectName("modernScrollMenuOuter");
@@ -29,13 +59,48 @@ ModernScrollPanel::ModernScrollPanel(QWidget *parent) : QFrame(parent), m_maxCon
     
     m_scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    if (auto *vp = m_scrollArea->viewport()) {
+        vp->setObjectName("modernMenuViewport");
+        vp->setAutoFillBackground(false);
+        vp->setAttribute(Qt::WA_StyledBackground, true);
+    }
+
+    
+    
+    
+    
+    
+    
+    
+    
+    auto *vBar = new ModernMenuScrollBar(Qt::Vertical, m_scrollArea);
+    vBar->setObjectName("modernMenuScrollBar");  
+                                                  
+    m_scrollArea->setVerticalScrollBar(vBar);
+
     m_container = new QWidget(m_scrollArea);
     m_container->setObjectName("modernMenuContainer");
     m_container->setAttribute(Qt::WA_StyledBackground, true);
 
     m_layout = new QVBoxLayout(m_container);
     m_layout->setContentsMargins(4, 4, 4, 4);
-    m_layout->setSpacing(1);
+    
+    
+    m_layout->setSpacing(kMenuItemSpacing);
 
     m_scrollArea->setWidget(m_container);
     m_mainLayout->addWidget(m_scrollArea);
@@ -67,7 +132,7 @@ void ModernScrollPanel::addItem(const QString &text, const QVariant &userData, b
 
     btn->setCursor(Qt::PointingHandCursor);
     btn->setFocusPolicy(Qt::NoFocus);
-    btn->setFixedHeight(32);
+    btn->setFixedHeight(menuItemHeight(btn->font()));
 
     
     QFontMetrics fm(btn->font());
@@ -93,8 +158,11 @@ void ModernScrollPanel::finalizeLayout(int maxHeight, int maxWidth) {
         contentHeight = 40;
     }
 
-    int finalHeight = qMin(contentHeight, maxHeight);
-    bool needsVScroll = (contentHeight > maxHeight);
+    m_container->setMinimumHeight(contentHeight);
+
+    const int panelContentHeight = contentHeight + kScrollAreaFrameReserve;
+    int finalHeight = qMin(panelContentHeight, maxHeight);
+    bool needsVScroll = (panelContentHeight > maxHeight);
 
     if (needsVScroll) {
         m_scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
@@ -137,4 +205,44 @@ void ModernScrollPanel::finalizeLayout(int maxHeight, int maxWidth) {
 void ModernScrollPanel::wheelEvent(QWheelEvent *event) {
     QFrame::wheelEvent(event);
     event->accept();
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+void ModernScrollPanel::paintEvent(QPaintEvent *event) {
+    Q_UNUSED(event);
+
+    QPainter painter(this);
+    painter.setRenderHint(QPainter::Antialiasing);
+
+    
+    painter.setBrush(QColor(30, 30, 30, 242));
+
+    
+    QPen pen(QColor(255, 255, 255, 26));
+    pen.setWidth(1);
+    painter.setPen(pen);
+
+    
+    QRectF rf(rect().x() + 0.5, rect().y() + 0.5,
+              rect().width() - 1.0, rect().height() - 1.0);
+    painter.drawRoundedRect(rf, 6.0, 6.0);
 }

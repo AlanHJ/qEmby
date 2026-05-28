@@ -2,6 +2,7 @@
 #include "../../components/detailactionwidget.h"
 #include "../../components/detailbottominfowidget.h"
 #include "../../components/detailcontentwidget.h"
+#include "../../components/detailtagbutton.h"
 #include "../../components/flowlayout.h"
 #include "../../components/horizontallistviewgallery.h"
 #include "../../components/mediasectionwidget.h"
@@ -22,11 +23,14 @@
 #include <QClipboard>
 #include <QDebug>
 #include <QEvent>
+#include <QFuture>
+#include <QFutureWatcher>
 #include <QGraphicsDropShadowEffect>
 #include <QGridLayout>
 #include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QIcon>
+#include <QImage>
 #include <QLabel>
 #include <QListView>
 #include <QPainter>
@@ -41,6 +45,58 @@
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QWheelEvent>
+#include <QtConcurrent/QtConcurrentRun>
+
+namespace {
+
+
+
+
+
+
+
+QString computeSourcesFingerprint(const QList<MediaSourceInfo> &sources) {
+  if (sources.isEmpty())
+    return QStringLiteral("<empty>");
+  QStringList parts;
+  parts.reserve(sources.size());
+  for (const auto &src : sources) {
+    QStringList streamParts;
+    streamParts.reserve(src.mediaStreams.size());
+    for (const auto &s : src.mediaStreams) {
+      streamParts << QStringLiteral("%1:%2:%3:%4")
+                         .arg(s.type, QString::number(s.index), s.codec,
+                              s.language);
+    }
+    parts << QStringLiteral("%1#%2#%3")
+                 .arg(src.id, QString::number(src.mediaStreams.size()),
+                      streamParts.join(QLatin1Char('|')));
+  }
+  return parts.join(QLatin1Char(';'));
+}
+
+
+
+
+QString computeBottomInfoFingerprint(const MediaItem &item,
+                                     const QList<MediaSourceInfo> &sources) {
+  QStringList studioParts;
+  studioParts.reserve(item.studios.size());
+  for (const auto &s : item.studios)
+    studioParts << s.name;
+
+  QStringList urlParts;
+  urlParts.reserve(item.externalUrls.size());
+  for (const auto &u : item.externalUrls)
+    urlParts << (u.name + QLatin1Char('=') + u.url);
+
+  return QStringLiteral("%1|tags=%2|studios=%3|urls=%4|src=%5")
+      .arg(item.id, item.tags.join(QLatin1Char(',')),
+           studioParts.join(QLatin1Char(',')),
+           urlParts.join(QLatin1Char(',')), computeSourcesFingerprint(sources));
+}
+
+} 
 
 DetailView::DetailView(QEmbyCore *core, QWidget *parent)
     : BaseView(core, parent) {
@@ -104,11 +160,15 @@ void DetailView::setupUi() {
   m_posterLabel->setObjectName("detail-poster-label");
   m_posterLabel->setAlignment(Qt::AlignCenter);
 
-  auto *shadow = new QGraphicsDropShadowEffect(this);
-  shadow->setBlurRadius(20);
-  shadow->setColor(QColor(0, 0, 0, 80));
-  shadow->setOffset(0, 8);
-  m_posterLabel->setGraphicsEffect(shadow);
+  
+  
+  
+  m_posterShadow = new QGraphicsDropShadowEffect(this);
+  m_posterShadow->setBlurRadius(20);
+  m_posterShadow->setColor(QColor(0, 0, 0, 80));
+  m_posterShadow->setOffset(0, 8);
+  m_posterShadow->setEnabled(false);
+  m_posterLabel->setGraphicsEffect(m_posterShadow);
   m_infoLayout->addWidget(m_posterLabel, 1, 0, 1, 1, Qt::AlignTop);
 
   m_textContainer = new QWidget(infoContainer);
@@ -158,6 +218,7 @@ void DetailView::setupUi() {
   m_metaRowWidget->hide();
 
   m_tagsWidget = new QWidget(m_textContainer);
+  m_tagsWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
   m_tagsLayout = new FlowLayout(m_tagsWidget, 0, 8, 8);
 
   m_actionWidget = new DetailActionWidget(m_textContainer);
@@ -299,7 +360,7 @@ void DetailView::setupUi() {
     else if (item.type == "Person")
       Q_EMIT navigateToPerson(item.id, item.name);
     else
-      Q_EMIT navigateToDetail(item.id, item.name);
+      Q_EMIT navigateToDetail(item.id, item.name, item);
   };
 
   
@@ -308,14 +369,14 @@ void DetailView::setupUi() {
             if (item.type == "Season")
               Q_EMIT navigateToSeason(m_currentItemId, item.id, item.name);
             else
-              Q_EMIT navigateToDetail(item.id, item.name);
+              Q_EMIT navigateToDetail(item.id, item.name, item);
           });
 
   
   connect(m_episodeWidget, &MediaSectionWidget::itemClicked, this,
           [this, commonClicked](const MediaItem &item) {
             if (item.type == "Episode")
-              Q_EMIT navigateToDetail(item.id, item.name);
+              Q_EMIT navigateToDetail(item.id, item.name, item);
             else
               commonClicked(item);
           });
@@ -351,68 +412,301 @@ void DetailView::setupUi() {
   m_mainScrollArea->viewport()->installEventFilter(this);
 }
 
-QCoro::Task<void> DetailView::loadItem(const QString &itemId) {
+QCoro::Task<void> DetailView::loadItem(const QString &itemId,
+                                       const MediaItem &seedItem) {
   m_currentItemId = itemId;
-
-  m_titleLabel->setText(tr("Loading..."));
-  m_logoLabel->clear();
-  m_logoLabel->hide();
-  m_metaLabel->clear();
-  updateDisplayNumber(QString());
-  m_metaRowWidget->hide();
-  m_overviewLabel->clear();
-  m_taglineLabel->hide();
-
-  m_currentBackdropPix = QPixmap();
-  m_currentPosterPix = QPixmap();
-  updateBackdrop();
-  m_posterLabel->setPixmap(QPixmap());
-
-  m_actionWidget->clear();
-  m_bottomInfoWidget->clear();
-  clearLayout(m_tagsLayout);
-
-  m_seasonWidget->clear();
-  m_episodeWidget->clear();
-  m_castWidget->clear();
-  m_similarWidget->clear();
-  m_collectionWidget->clear();
-  m_additionalPartsWidget->clear();
+  
+  
+  m_skipNextSilentRefresh = true;
+  m_pendingDeferredFetchId = itemId;
+  m_pendingFetchedItem = MediaItem{};
+  m_pendingFetchReady = false;
+  m_pendingAnimationGuardDone = false;
+  
+  m_appliedSourcesFingerprint.clear();
+  m_appliedBottomInfoFingerprint.clear();
 
   
-  m_seriesSeasons.clear();
-  m_currentSeasonIndex = 0;
-  if (m_seasonSwitcher) {
-    QSignalBlocker blocker(m_seasonSwitcher);
-    m_seasonSwitcher->clear();
-    m_seasonSwitcher->hide();
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  const bool hasSeed = !seedItem.id.isEmpty();
+
+  if (hasSeed) {
+    m_currentPlayableItem = seedItem;
+    applySeedToUi(seedItem);
+  } else {
+    
+    m_titleLabel->setText(tr("Loading..."));
+    m_logoLabel->clear();
+    m_logoLabel->hide();
+    m_metaLabel->clear();
+    updateDisplayNumber(QString());
+    m_metaRowWidget->hide();
+    m_overviewLabel->clear();
+    m_taglineLabel->hide();
+
+    m_currentBackdropPix = QPixmap();
+    m_currentPosterPix = QPixmap();
+    updateBackdrop();
+    m_posterLabel->setPixmap(QPixmap());
+
+    m_actionWidget->clear();
+    m_bottomInfoWidget->clear();
+    clearLayout(m_tagsLayout);
+
+    m_seasonWidget->clear();
+    m_episodeWidget->clear();
+    m_castWidget->clear();
+    m_similarWidget->clear();
+    m_collectionWidget->clear();
+    m_additionalPartsWidget->clear();
+
+    m_seriesSeasons.clear();
+    m_currentSeasonIndex = 0;
+    if (m_seasonSwitcher) {
+      QSignalBlocker blocker(m_seasonSwitcher);
+      m_seasonSwitcher->clear();
+      m_seasonSwitcher->hide();
+    }
   }
 
   scrollToTop();
 
   QPointer<DetailView> safeThis(this);
-  QString targetId = itemId;
-  QString detectedType = "";
+
+  
+  QCoro::connect(prefetchItemDetail(itemId), this, []() {});
+
+  
+  
+  QTimer::singleShot(380, this, [safeThis, itemId]() {
+    if (!safeThis || safeThis->m_pendingDeferredFetchId != itemId)
+      return;
+    if (safeThis->m_posterShadow)
+      safeThis->m_posterShadow->setEnabled(true);
+    safeThis->m_pendingAnimationGuardDone = true;
+    safeThis->maybeFlushDeferredUpdate(itemId);
+  });
+
+  co_return;
+}
+
+QCoro::Task<void> DetailView::prefetchItemDetail(QString itemId) {
+  QPointer<DetailView> safeThis(this);
+  QString targetId = std::move(itemId);
 
   try {
-    MediaItem item = co_await m_core->mediaService()->getItemDetail(targetId);
-    if (!safeThis || safeThis->m_currentItemId != targetId)
+    MediaItem item =
+        co_await m_core->mediaService()->getItemDetail(targetId);
+    if (!safeThis || safeThis->m_pendingDeferredFetchId != targetId) {
+      
       co_return;
+    }
 
-    detectedType = item.type;
-    m_currentPlayableItem = item;
-    co_await safeThis->updateUi(item);
+    
+    safeThis->m_pendingFetchedItem = std::move(item);
+    safeThis->m_pendingFetchReady = true;
+    safeThis->maybeFlushDeferredUpdate(targetId);
   } catch (...) {
-    if (safeThis)
+    if (safeThis && safeThis->m_pendingDeferredFetchId == targetId) {
       safeThis->m_titleLabel->setText(tr("Error Loading Item"));
-    co_return;
+      safeThis->m_pendingDeferredFetchId.clear();
+    }
   }
+}
 
+void DetailView::maybeFlushDeferredUpdate(const QString &itemId) {
+  if (m_pendingDeferredFetchId != itemId)
+    return;
+  if (!m_pendingFetchReady || !m_pendingAnimationGuardDone)
+    return;
+
+  
+  m_pendingDeferredFetchId.clear();
+
+  MediaItem item = m_pendingFetchedItem;
+  m_pendingFetchedItem = MediaItem{};
+  m_pendingFetchReady = false;
+  m_pendingAnimationGuardDone = false;
+
+  m_currentPlayableItem = item;
+  QCoro::connect(executeDeferredUpdate(std::move(item)), this, []() {});
+}
+
+QCoro::Task<void> DetailView::executeDeferredUpdate(MediaItem item) {
+  QPointer<DetailView> safeThis(this);
+  const QString targetId = item.id;
+  const QString detectedType = item.type;
+
+  
+  
+  
+  co_await updateUi(item);
   if (!safeThis)
     co_return;
 
-  
   executeFetchSecondaries(safeThis, safeThis->m_core, targetId, detectedType);
+}
+
+
+
+
+
+
+void DetailView::applySeedToUi(const MediaItem &seed) {
+  m_currentMediaItem = seed;
+  m_titleLabel->setText(seed.name);
+
+  
+  QStringList metas;
+  if (seed.communityRating > 0) {
+    m_ratingStarLabel->show();
+    metas << QString::number(seed.communityRating, 'f', 1);
+  } else {
+    m_ratingStarLabel->hide();
+  }
+  if (seed.productionYear > 0)
+    metas << QString::number(seed.productionYear);
+  if (seed.runTimeTicks > 0)
+    metas << formatRunTime(seed.runTimeTicks);
+  if (!seed.officialRating.isEmpty())
+    metas << seed.officialRating;
+  m_metaLabel->setText(metas.join("  \u2022  "));
+  m_metaRowWidget->show();
+
+  
+  const bool shouldShowNumber = shouldShowDisplayNumber(seed);
+  const QString displayNumber =
+      shouldShowNumber ? extractDisplayNumber(seed) : QString();
+  updateDisplayNumber(displayNumber);
+
+  
+  QString text = seed.overview;
+  text.replace(QRegularExpression("<br\\s*/?>",
+                                  QRegularExpression::CaseInsensitiveOption),
+               "\n");
+  text.replace("</p>", "\n\n");
+  text.remove(QRegularExpression("<[^>]*>"));
+  QTextDocument doc;
+  doc.setHtml(text);
+  QString cleanText = doc.toPlainText();
+  cleanText.replace(QChar::LineSeparator, '\n');
+  cleanText.remove(QRegularExpression("<[^>]*>"));
+  m_cleanOverviewText = cleanText;
+  m_lastOverviewWidth = -1;
+  updateOverviewElidedText();
+
+  
+  if (!seed.taglines.isEmpty()) {
+    m_taglineLabel->setText(seed.taglines.first());
+    m_taglineLabel->show();
+  } else {
+    m_taglineLabel->hide();
+  }
+
+  
+  m_isFavorite = seed.isFavorite();
+  m_actionWidget->setFavoriteState(m_isFavorite);
+
+  
+  
+  
+  
+  if (seed.type == "Series") {
+    m_actionWidget->setSeriesLoadingMode();
+  } else {
+    m_actionWidget->setupNormalMode(seed);
+  }
+
+  
+  
+  
+  
+  
+  if (!seed.mediaSources.isEmpty()) {
+    m_actionWidget->setSources(seed.mediaSources, 0);
+    if (!seed.mediaSources.first().mediaStreams.isEmpty()) {
+      m_actionWidget->setStreams(seed.mediaSources.first());
+    }
+    m_appliedSourcesFingerprint = computeSourcesFingerprint(seed.mediaSources);
+  }
+  m_actionWidget->refreshExtPlayerButton();
+
+  
+  
+  
+  buildTagButtons(seed.genres);
+
+  
+  
+  
+  
+  
+  
+  QList<MediaSourceInfo> seedDefaultSource;
+  if (!seed.mediaSources.isEmpty())
+    seedDefaultSource.append(seed.mediaSources.first());
+  m_bottomInfoWidget->setInfo(seed, seedDefaultSource);
+  m_bottomInfoWidget->show();
+  m_appliedBottomInfoFingerprint =
+      computeBottomInfoFingerprint(seed, seedDefaultSource);
+
+  
+  
+  
+  
+  
+  executeLoadImages(QPointer<DetailView>(this), m_core, seed);
+}
+
+
+
+
+
+void DetailView::buildTagButtons(const QStringList &genres) {
+  if (!m_tagsWidget || !m_tagsLayout)
+    return;
+
+  
+  if (m_tagsLayout->count() == genres.size()) {
+    bool same = true;
+    for (int i = 0; i < genres.size(); ++i) {
+      QLayoutItem *layoutItem = m_tagsLayout->itemAt(i);
+      QWidget *w = layoutItem ? layoutItem->widget() : nullptr;
+      auto *btn = qobject_cast<QPushButton *>(w);
+      if (!btn || btn->text() != genres[i]) {
+        same = false;
+        break;
+      }
+    }
+    if (same)
+      return;
+  }
+
+  m_tagsWidget->setUpdatesEnabled(false);
+  clearLayout(m_tagsLayout);
+  for (const QString &genre : genres) {
+    auto *tagBtn = new DetailTagButton(genre, m_tagsWidget);
+    connect(tagBtn, &QPushButton::clicked, this,
+            [this, genre]() { Q_EMIT navigateToFilteredView("Genre", genre); });
+    m_tagsLayout->addWidget(tagBtn);
+  }
+  m_tagsWidget->setUpdatesEnabled(true);
+  updateTagLayoutHeight();
+  QTimer::singleShot(0, this, [this]() { updateTagLayoutHeight(); });
 }
 
 
@@ -723,6 +1017,33 @@ void DetailView::updateBackdrop() {
         ->setBackdrop(m_currentBackdropPix);
 }
 
+void DetailView::updateTagLayoutHeight() {
+  if (!m_tagsWidget || !m_tagsLayout)
+    return;
+
+  int targetWidth = m_tagsWidget->width();
+  if (targetWidth <= 0 && m_textContainer) {
+    targetWidth = m_textContainer->contentsRect().width();
+  }
+
+  if (targetWidth <= 0) {
+    m_tagsWidget->updateGeometry();
+    QTimer::singleShot(50, this, [this]() { updateTagLayoutHeight(); });
+    return;
+  }
+
+  m_tagsLayout->invalidate();
+  const int targetHeight = m_tagsLayout->heightForWidth(targetWidth);
+  if (m_tagsWidget->minimumHeight() != targetHeight) {
+    m_tagsWidget->setMinimumHeight(targetHeight);
+  }
+  m_tagsWidget->updateGeometry();
+
+  if (m_textContainer) {
+    m_textContainer->updateGeometry();
+  }
+}
+
 void DetailView::resizeEvent(QResizeEvent *event) {
   QWidget::resizeEvent(event);
   if (m_overviewLabel && m_overviewLabel->width() > 10 &&
@@ -730,6 +1051,7 @@ void DetailView::resizeEvent(QResizeEvent *event) {
     m_lastOverviewWidth = m_overviewLabel->width();
     updateOverviewElidedText();
   }
+  updateTagLayoutHeight();
 }
 
 bool DetailView::eventFilter(QObject *obj, QEvent *event) {
@@ -740,6 +1062,7 @@ bool DetailView::eventFilter(QObject *obj, QEvent *event) {
     if (m_contentWidget && newWidth > 100 &&
         m_contentWidget->maximumWidth() != newWidth) {
       m_contentWidget->setMaximumWidth(newWidth);
+      QTimer::singleShot(0, this, [this]() { updateTagLayoutHeight(); });
     }
   }
   if (event->type() == QEvent::Wheel) {
@@ -777,6 +1100,19 @@ bool DetailView::eventFilter(QObject *obj, QEvent *event) {
 
 void DetailView::showEvent(QShowEvent *event) {
   BaseView::showEvent(event);
+
+  
+  
+  if (m_skipNextSilentRefresh) {
+    m_skipNextSilentRefresh = false;
+    return;
+  }
+
+  
+  
+  
+  m_pendingDeferredFetchId.clear();
+
   if (!m_currentItemId.isEmpty() && m_core && m_core->mediaService()) {
     executeSilentRefresh(QPointer<DetailView>(this), m_core, m_currentItemId);
   }
@@ -1031,7 +1367,17 @@ QCoro::Task<void> DetailView::updateUi(MediaItem item, bool isSilentRefresh) {
     m_actionWidget->setupNormalMode(item);
   }
 
-  m_actionWidget->setSources(item.mediaSources, 0);
+  
+  
+  const QString newSourcesFingerprint =
+      computeSourcesFingerprint(item.mediaSources);
+  const bool sourcesUnchanged =
+      !m_appliedSourcesFingerprint.isEmpty() &&
+      newSourcesFingerprint == m_appliedSourcesFingerprint;
+  if (!sourcesUnchanged) {
+    m_actionWidget->setSources(item.mediaSources, 0);
+    m_appliedSourcesFingerprint = newSourcesFingerprint;
+  }
   m_actionWidget->refreshExtPlayerButton();
 
   if (!item.taglines.isEmpty()) {
@@ -1044,18 +1390,9 @@ QCoro::Task<void> DetailView::updateUi(MediaItem item, bool isSilentRefresh) {
   m_isFavorite = item.isFavorite();
   m_actionWidget->setFavoriteState(m_isFavorite);
 
-  m_tagsWidget->setUpdatesEnabled(false);
-  clearLayout(m_tagsLayout);
-  for (const QString &genre : item.genres) {
-    auto *tagBtn = new QPushButton(genre, m_tagsWidget);
-    tagBtn->setObjectName("detail-genre-tag");
-    tagBtn->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
-    tagBtn->setCursor(Qt::PointingHandCursor);
-    connect(tagBtn, &QPushButton::clicked, this,
-            [this, genre]() { Q_EMIT navigateToFilteredView("Genre", genre); });
-    m_tagsLayout->addWidget(tagBtn);
-  }
-  m_tagsWidget->setUpdatesEnabled(true);
+  
+  
+  buildTagButtons(item.genres);
 
   executeLoadImages(QPointer<DetailView>(this), m_core, item);
 
@@ -1096,20 +1433,33 @@ QCoro::Task<void> DetailView::updateUi(MediaItem item, bool isSilentRefresh) {
 
   QPointer<DetailView> safeThis(this);
 
+  
+  
+  auto applyBottomInfo = [this, &item](const QList<MediaSourceInfo> &srcs) {
+    const QString fp = computeBottomInfoFingerprint(item, srcs);
+    if (fp == m_appliedBottomInfoFingerprint)
+      return;
+    m_bottomInfoWidget->setInfo(item, srcs);
+    m_appliedBottomInfoFingerprint = fp;
+  };
+
   if (!item.mediaSources.isEmpty() &&
       !item.mediaSources.first().mediaStreams.isEmpty()) {
     int defaultIndex = m_actionWidget->currentSourceIndex();
     QList<MediaSourceInfo> defaultSource;
     if (defaultIndex < item.mediaSources.size()) {
       const MediaSourceInfo &dSrc = item.mediaSources[defaultIndex];
-      m_actionWidget->setStreams(dSrc);
+      
+      
+      if (!sourcesUnchanged)
+        m_actionWidget->setStreams(dSrc);
       defaultSource.append(dSrc);
     }
-    m_bottomInfoWidget->setInfo(item, defaultSource);
+    applyBottomInfo(defaultSource);
   } else {
     
     
-    m_bottomInfoWidget->setInfo(item, {});
+    applyBottomInfo({});
     if (item.mediaType == "Video" || item.mediaType == "Audio" ||
         item.type == "Movie" || item.type == "Episode") {
       try {
@@ -1140,8 +1490,14 @@ QCoro::Task<void> DetailView::updateUi(MediaItem item, bool isSilentRefresh) {
             safeThis->m_actionWidget->setStreams(singleSource);
             QList<MediaSourceInfo> sList;
             sList.append(singleSource);
-            safeThis->m_bottomInfoWidget->setInfo(safeThis->m_currentMediaItem,
-                                                  sList);
+            
+            const QString fp = computeBottomInfoFingerprint(
+                safeThis->m_currentMediaItem, sList);
+            if (fp != safeThis->m_appliedBottomInfoFingerprint) {
+              safeThis->m_bottomInfoWidget->setInfo(
+                  safeThis->m_currentMediaItem, sList);
+              safeThis->m_appliedBottomInfoFingerprint = fp;
+            }
           }
         }
       } catch (...) {
@@ -1280,28 +1636,55 @@ QCoro::Task<void> DetailView::executeLoadImages(QPointer<DetailView> safeThis,
             imgId, imgType, imgTag, posterMaxWidth);
         if (safeThis && safeThis->m_currentItemId == item.id && !pix.isNull()) {
           safeThis->m_currentPosterPix = pix;
-          
-          const QSize posterSize(250, 375);
-          QPixmap scaled =
-              pix.scaled(posterSize, Qt::KeepAspectRatioByExpanding,
-                         Qt::SmoothTransformation);
-          int cropX = (scaled.width() - posterSize.width()) / 2;
-          int cropY = (scaled.height() - posterSize.height()) / 2;
-          QPixmap cropped = scaled.copy(cropX, cropY, posterSize.width(),
-                                        posterSize.height());
 
           
-          QPixmap rounded(posterSize);
-          rounded.fill(Qt::transparent);
-          QPainter p(&rounded);
-          p.setRenderHint(QPainter::Antialiasing);
-          QPainterPath path;
-          path.addRoundedRect(
-              QRectF(0, 0, posterSize.width(), posterSize.height()), 12, 12);
-          p.setClipPath(path);
-          p.drawPixmap(0, 0, cropped);
-          p.end();
-          safeThis->m_posterLabel->setPixmap(rounded);
+          
+          
+          const QSize posterSize(250, 375);
+          const QString currentItemId = item.id;
+          QImage src = pix.toImage();
+
+          auto *watcher = new QFutureWatcher<QImage>(safeThis.data());
+          QObject::connect(
+              watcher, &QFutureWatcher<QImage>::finished, safeThis.data(),
+              [safeThis, watcher, currentItemId]() {
+                if (safeThis &&
+                    safeThis->m_currentItemId == currentItemId) {
+                  const QImage result = watcher->result();
+                  if (!result.isNull())
+                    safeThis->m_posterLabel->setPixmap(
+                        QPixmap::fromImage(result));
+                }
+                watcher->deleteLater();
+              });
+          watcher->setFuture(
+              QtConcurrent::run([src, posterSize]() -> QImage {
+                QImage scaled =
+                    src.scaled(posterSize, Qt::KeepAspectRatioByExpanding,
+                               Qt::SmoothTransformation);
+                const int cropX =
+                    (scaled.width() - posterSize.width()) / 2;
+                const int cropY =
+                    (scaled.height() - posterSize.height()) / 2;
+                QImage cropped = scaled.copy(cropX, cropY,
+                                             posterSize.width(),
+                                             posterSize.height());
+
+                
+                QImage rounded(posterSize,
+                               QImage::Format_ARGB32_Premultiplied);
+                rounded.fill(Qt::transparent);
+                QPainter p(&rounded);
+                p.setRenderHint(QPainter::Antialiasing);
+                QPainterPath path;
+                path.addRoundedRect(QRectF(0, 0, posterSize.width(),
+                                           posterSize.height()),
+                                    12, 12);
+                p.setClipPath(path);
+                p.drawImage(0, 0, cropped);
+                p.end();
+                return rounded;
+              }));
         }
       } catch (...) {
       }
@@ -1338,14 +1721,34 @@ QCoro::Task<void> DetailView::executeLoadImages(QPointer<DetailView> safeThis,
   }
 
   
+  
   if (!item.images.logoTag.isEmpty()) {
     try {
       QPixmap pix = co_await core->mediaService()->fetchImage(
           item.id, "Logo", item.images.logoTag, 400);
       if (safeThis && safeThis->m_currentItemId == item.id && !pix.isNull()) {
-        safeThis->m_logoLabel->setPixmap(pix.scaled(
-            250, 100, Qt::KeepAspectRatio, Qt::SmoothTransformation));
-        safeThis->m_logoLabel->show();
+        const QString currentItemId = item.id;
+        QImage src = pix.toImage();
+
+        auto *watcher = new QFutureWatcher<QImage>(safeThis.data());
+        QObject::connect(
+            watcher, &QFutureWatcher<QImage>::finished, safeThis.data(),
+            [safeThis, watcher, currentItemId]() {
+              if (safeThis &&
+                  safeThis->m_currentItemId == currentItemId) {
+                const QImage result = watcher->result();
+                if (!result.isNull()) {
+                  safeThis->m_logoLabel->setPixmap(
+                      QPixmap::fromImage(result));
+                  safeThis->m_logoLabel->show();
+                }
+              }
+              watcher->deleteLater();
+            });
+        watcher->setFuture(QtConcurrent::run([src]() -> QImage {
+          return src.scaled(250, 100, Qt::KeepAspectRatio,
+                            Qt::SmoothTransformation);
+        }));
       }
     } catch (...) {
     }

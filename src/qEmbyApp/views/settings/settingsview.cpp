@@ -23,6 +23,10 @@ SettingsView::SettingsView(QEmbyCore *core, QWidget *parent)
 
   setupUi();
   setupConnections();
+
+  
+  
+  m_navMenu->setCurrentRow(0);
 }
 
 void SettingsView::setupUi() {
@@ -95,56 +99,115 @@ void SettingsView::setupUi() {
   m_stack->setObjectName("SettingsStack");
 
   
-  auto wrapInScrollArea = [this](QWidget *page) -> QScrollArea * {
-    
-    page->setAttribute(Qt::WA_StyledBackground, true);
-
-    auto *scroll = new QScrollArea();
-    scroll->setObjectName("SettingsScrollArea");
-
-    scroll->setWidget(page);
-    scroll->setWidgetResizable(true);
-    scroll->setFrameShape(QFrame::NoFrame);
-
-    
-    scroll->viewport()->setAutoFillBackground(false);
-
-    
-    m_scrollAreas.append(scroll);
-    scroll->viewport()->installEventFilter(this);
-
-    return scroll;
-  };
-
   
-  m_stack->addWidget(wrapInScrollArea(new PageGeneral(m_core, m_stack)));
-  m_stack->addWidget(wrapInScrollArea(new PageAppearance(m_core, m_stack)));
-  m_stack->addWidget(wrapInScrollArea(new PageLibrary(m_core, m_stack)));
-  m_stack->addWidget(wrapInScrollArea(new PagePlayer(m_core, m_stack)));
-  m_stack->addWidget(wrapInScrollArea(new PageAbout(m_core, m_stack)));
+  
+  
+  const int kPageCount = 5;
+  m_scrollAreas.reserve(kPageCount);
+  m_scrollAnims.reserve(kPageCount);
+  m_scrollTargets.reserve(kPageCount);
+  m_pages.reserve(kPageCount);
+  for (int i = 0; i < kPageCount; ++i) {
+    auto *placeholder = new QWidget(m_stack);
+    placeholder->setAttribute(Qt::WA_StyledBackground, true);
+    placeholder->setObjectName("SettingsPagePlaceholder");
+    m_stack->addWidget(placeholder);
+
+    m_scrollAreas.append(nullptr);
+    m_scrollAnims.append(nullptr);
+    m_scrollTargets.append(0);
+    m_pages.append(QPointer<QWidget>());
+  }
 
   mainLayout->addWidget(m_leftPanel);
   mainLayout->addWidget(m_stack, 1);
 
-  m_navMenu->setCurrentRow(0);
-
-  
-  m_scrollTargets.resize(m_scrollAreas.size(), 0);
-  for (auto *sa : m_scrollAreas) {
-    auto *anim = new QPropertyAnimation(sa->verticalScrollBar(), "value", this);
-    anim->setEasingCurve(QEasingCurve::OutCubic);
-    anim->setDuration(450);
-    m_scrollAnims.append(anim);
-  }
-
   
   qApp->postEvent(this, new QEvent(QEvent::StyleChange));
+}
+
+QScrollArea *SettingsView::wrapInScrollArea(QWidget *page, int row) {
+  
+  page->setAttribute(Qt::WA_StyledBackground, true);
+
+  auto *scroll = new QScrollArea(m_stack);
+  scroll->setObjectName("SettingsScrollArea");
+  scroll->setWidget(page);
+  scroll->setWidgetResizable(true);
+  scroll->setFrameShape(QFrame::NoFrame);
+
+  
+  scroll->viewport()->setAutoFillBackground(false);
+
+  
+  scroll->viewport()->installEventFilter(this);
+
+  
+  if (row >= 0 && row < m_scrollAreas.size()) {
+    m_scrollAreas[row] = scroll;
+
+    auto *anim =
+        new QPropertyAnimation(scroll->verticalScrollBar(), "value", this);
+    anim->setEasingCurve(QEasingCurve::OutCubic);
+    anim->setDuration(450);
+    m_scrollAnims[row] = anim;
+    m_scrollTargets[row] = 0;
+  }
+
+  return scroll;
+}
+
+void SettingsView::ensurePageAt(int row) {
+  if (row < 0 || row >= m_pages.size()) {
+    return;
+  }
+  if (m_pages[row]) {
+    
+    return;
+  }
+
+  qDebug() << "[SettingsView] Lazy instantiate page row=" << row;
+
+  QWidget *page = nullptr;
+  switch (row) {
+  case 0:
+    page = new PageGeneral(m_core, m_stack);
+    break;
+  case 1:
+    page = new PageAppearance(m_core, m_stack);
+    break;
+  case 2:
+    page = new PageLibrary(m_core, m_stack);
+    break;
+  case 3:
+    page = new PagePlayer(m_core, m_stack);
+    break;
+  case 4:
+    page = new PageAbout(m_core, m_stack);
+    break;
+  default:
+    return;
+  }
+
+  QScrollArea *scroll = wrapInScrollArea(page, row);
+
+  
+  
+  QWidget *placeholder = m_stack->widget(row);
+  const bool wasBlocked = m_stack->blockSignals(true);
+  m_stack->insertWidget(row, scroll); 
+  m_stack->removeWidget(placeholder);
+  m_stack->blockSignals(wasBlocked);
+  placeholder->deleteLater();
+
+  m_pages[row] = scroll;
 }
 
 void SettingsView::setupConnections() {
   
   connect(m_navMenu, &QListWidget::currentRowChanged, this, [this](int row) {
     if (row >= 0) {
+      ensurePageAt(row);
       m_stack->setCurrentIndex(row);
     }
   });
@@ -171,12 +234,16 @@ bool SettingsView::eventFilter(QObject *obj, QEvent *event) {
   if (event->type() == QEvent::Wheel) {
     
     for (int i = 0; i < m_scrollAreas.size(); ++i) {
+      
+      if (!m_scrollAreas[i]) {
+        continue;
+      }
       if (obj == m_scrollAreas[i]->viewport()) {
         auto *we   = static_cast<QWheelEvent *>(event);
         auto *vBar = m_scrollAreas[i]->verticalScrollBar();
         auto *anim = m_scrollAnims[i];
 
-        if (vBar) {
+        if (vBar && anim) {
           int currentVal = vBar->value();
 
           

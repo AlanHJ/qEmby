@@ -3,6 +3,9 @@
 #include <QGuiApplication>
 #include <QStyleHints>
 #include <QFile>
+#include <QHash>
+#include <QMutex>
+#include <QMutexLocker>
 #include <QThread>
 #include <QMetaObject>
 #include <QDebug>
@@ -35,6 +38,15 @@ QString resolveThemeIconPath(QString svgPath)
     return QFile::exists(candidatePath) ? candidatePath : svgPath;
 }
 
+
+
+
+
+
+
+QHash<QString, QPixmap> g_iconCache;
+QMutex g_iconCacheMutex;
+
 } 
 
 ThemeManager* ThemeManager::instance()
@@ -61,6 +73,19 @@ QIcon ThemeManager::getAdaptiveIcon(const QString& svgPath, QColor customColor)
 
     
     
+    const QString cacheKey = themedSvgPath
+                             + QLatin1Char('|')
+                             + QString::number(targetColor.rgba(), 16);
+    {
+        QMutexLocker locker(&g_iconCacheMutex);
+        auto it = g_iconCache.constFind(cacheKey);
+        if (it != g_iconCache.constEnd()) {
+            return QIcon(*it);
+        }
+    }
+
+    
+    
     
     const int renderSize = 128;
     QPixmap pixmap(renderSize, renderSize);
@@ -83,6 +108,11 @@ QIcon ThemeManager::getAdaptiveIcon(const QString& svgPath, QColor customColor)
     painter.fillRect(pixmap.rect(), targetColor);
     painter.end();
 
+    {
+        QMutexLocker locker(&g_iconCacheMutex);
+        g_iconCache.insert(cacheKey, pixmap);
+    }
+
     return QIcon(pixmap);
 }
 
@@ -90,6 +120,13 @@ void ThemeManager::setTheme(Theme theme)
 {
     
     m_currentTheme.store(theme, std::memory_order_relaxed);
+
+    
+    
+    {
+        QMutexLocker locker(&g_iconCacheMutex);
+        g_iconCache.clear();
+    }
 
     
     

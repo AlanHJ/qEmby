@@ -63,7 +63,7 @@ SearchView::SearchView(QEmbyCore* core, QWidget *parent)
         } else if (item.type == "Person") { 
             Q_EMIT navigateToPerson(item.id, item.name);
         } else {
-            Q_EMIT navigateToDetail(item.id, item.name);
+            Q_EMIT navigateToDetail(item.id, item.name, item);
         }
     });
 

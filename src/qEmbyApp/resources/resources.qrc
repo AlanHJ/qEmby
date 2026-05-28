@@ -133,6 +133,7 @@
         <file>svg/dark/appearance-font-size.svg</file>
         <file>svg/dark/appearance-sidebar.svg</file>
         <file>svg/dark/appearance-sidebar-pin.svg</file>
+        <file>svg/dark/appearance-sidebar-custom.svg</file>
         <file>svg/dark/appearance-window-state.svg</file>
         <file>svg/dark/library.svg</file>
         <file>svg/dark/general.svg</file>
@@ -172,6 +173,8 @@
         <file>svg/dark/search-history-recent.svg</file>
         <file>svg/dark/search-history-hot.svg</file>
         <file>svg/dark/click-pause.svg</file>
+        <file>svg/dark/skip-intro.svg</file>
+        <file>svg/dark/skip-outro.svg</file>
         <file>svg/dark/latest-added.svg</file>
         <file>svg/dark/image-quality.svg</file>
         <file>svg/dark/adaptive-image.svg</file>
@@ -217,6 +220,8 @@
         <file>svg/light/search-history-recent.svg</file>
         <file>svg/light/search-history-hot.svg</file>
         <file>svg/light/click-pause.svg</file>
+        <file>svg/light/skip-intro.svg</file>
+        <file>svg/light/skip-outro.svg</file>
         <file>svg/light/latest-added.svg</file>
         <file>svg/light/appearance-theme.svg</file>
         <file>svg/light/appearance-animations.svg</file>
@@ -224,6 +229,7 @@
         <file>svg/light/appearance-font-size.svg</file>
         <file>svg/light/appearance-sidebar.svg</file>
         <file>svg/light/appearance-sidebar-pin.svg</file>
+        <file>svg/light/appearance-sidebar-custom.svg</file>
         <file>svg/light/appearance-window-state.svg</file>
         <file>svg/light/library.svg</file>
         <file>svg/light/folder-heart.svg</file>
@@ -265,6 +271,8 @@
         <file>svg/light/log-path.svg</file>
         <file>svg/dark/log-tools.svg</file>
         <file>svg/light/log-tools.svg</file>
+        <file>svg/dark/proxy.svg</file>
+        <file>svg/light/proxy.svg</file>
         <file>svg/dark/manage-dashboard.svg</file>
         <file>svg/dark/manage-libraries.svg</file>
         <file>svg/dark/manage-collections.svg</file>
@@ -297,6 +305,8 @@
         <file>svg/dark/task-stop.svg</file>
         <file>svg/light/task-run.svg</file>
         <file>svg/light/task-stop.svg</file>
+        <file>svg/dark/cloud-sync.svg</file>
+        <file>svg/light/cloud-sync.svg</file>
         <file>html/licenses.html</file>
     </qresource>
 </RCC> 

@@ -17,13 +17,18 @@ class ModernMenuButton;
 class DetailActionWidget;
 class DetailBottomInfoWidget;
 class MediaSectionWidget; 
+class QGraphicsDropShadowEffect;
 
 class DetailView : public BaseView {
   Q_OBJECT
 
 public:
   explicit DetailView(QEmbyCore *core, QWidget *parent = nullptr);
-  QCoro::Task<void> loadItem(const QString &itemId);
+  
+  
+  
+  
+  QCoro::Task<void> loadItem(const QString &itemId, const MediaItem &seedItem = {});
 
 public Q_SLOTS:
   void onMediaItemUpdated(const MediaItem &item) override;
@@ -42,6 +47,7 @@ private:
   void setupUi();
   void updateBackdrop();
   void updateOverviewElidedText();
+  void updateTagLayoutHeight();
   QString formatRunTime(long long ticks);
   void clearLayout(QLayout *layout);
   bool shouldShowDisplayNumber(const MediaItem &item) const;
@@ -51,6 +57,15 @@ private:
   void copyDisplayedNumber();
 
   QCoro::Task<void> updateUi(MediaItem item, bool isSilentRefresh = false);
+
+  
+  
+  
+  void applySeedToUi(const MediaItem &seed);
+
+  
+  
+  void buildTagButtons(const QStringList &genres);
   QCoro::Task<void> executePlay(MediaItem targetItem, long long startTicks);
   QCoro::Task<void> executeExternalPlay(MediaItem targetItem, QString playerPath);
   QCoro::Task<void> fetchSeriesNextUp(const QString &targetId);
@@ -65,6 +80,16 @@ private:
   static QCoro::Task<void> executeLoadImages(QPointer<DetailView> safeThis,
                                              QEmbyCore *core, MediaItem item);
 
+  
+  
+  QCoro::Task<void> prefetchItemDetail(QString itemId);
+  
+  
+  
+  void maybeFlushDeferredUpdate(const QString &itemId);
+  
+  QCoro::Task<void> executeDeferredUpdate(MediaItem item);
+
   QCoro::Task<void> switchToSeason(int idx);
 
   
@@ -76,12 +101,35 @@ private:
   int m_lastOverviewWidth = -1;
 
   
+  
+  
+  bool m_skipNextSilentRefresh = false;
+  
+  
+  QString m_pendingDeferredFetchId;
+  
+  MediaItem m_pendingFetchedItem;
+  bool m_pendingFetchReady = false;
+  bool m_pendingAnimationGuardDone = false;
+
+  
+  
+  
+  QString m_appliedSourcesFingerprint;
+
+  
+  
+  
+  QString m_appliedBottomInfoFingerprint;
+
+  
   QScrollArea *m_mainScrollArea;
   QWidget *m_contentWidget;
   QGridLayout *m_infoLayout;
 
   QLabel *m_logoLabel;
   QLabel *m_posterLabel;
+  QGraphicsDropShadowEffect *m_posterShadow = nullptr; 
   QPixmap m_currentPosterPix;
   QPixmap m_currentBackdropPix;
 

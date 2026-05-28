@@ -1,8 +1,13 @@
 #include "mpvwidget.h"
+#include "mpvhttpstreamrelay.h"
+#include "../utils/logredactionutils.h"
 #include <QOpenGLContext>
 #include <QMetaObject>
 #include <QCoreApplication>
 #include <QSurfaceFormat>
+#include <QUrl>
+#include <QVariantMap>
+#include "api/proxymanager.h"
 
 MpvWidget::MpvWidget(QWidget *parent)
     : QOpenGLWidget(parent), m_mpv_gl(nullptr) {
@@ -16,6 +21,9 @@ MpvWidget::MpvWidget(QWidget *parent)
     this->setFormat(format);
 
     m_controller = new MpvController(this);
+    m_streamRelay = new MpvHttpStreamRelay(this);
+    connect(m_streamRelay, &MpvHttpStreamRelay::upstreamSpeedChanged, this,
+            &MpvWidget::networkSpeedChanged);
 
     
     connect(m_controller, &MpvController::positionChanged, this, &MpvWidget::positionChanged);
@@ -51,6 +59,13 @@ void MpvWidget::shutdown() {
     
     
     m_controller->command(QVariantList{"stop"});
+    if (m_streamRelay) {
+        m_streamRelay->stop();
+    }
+    if (m_usingStreamRelay) {
+        m_usingStreamRelay = false;
+        Q_EMIT relayActiveChanged(false);
+    }
 
     cleanupGL();
 
@@ -126,8 +141,9 @@ void MpvWidget::initializeGL() {
     mpv_render_context_set_update_callback(m_mpv_gl, onMpvRenderUpdate, this);
 
     if (!m_pendingUrl.isEmpty()) {
-        m_controller->command(QVariantList{"loadfile", m_pendingUrl});
+        loadMediaNow(m_pendingUrl, m_pendingServerId, true);
         m_pendingUrl.clear();
+        m_pendingServerId.clear();
     }
 }
 
@@ -159,13 +175,108 @@ void MpvWidget::resizeGL(int w, int h) {
 
 
 
-void MpvWidget::loadMedia(const QString &url) {
+void MpvWidget::loadMediaNow(const QString &url, const QString &serverId, bool wasPending) {
+    
+    
+    
+    const QUrl loadQUrl(url);
+    const QNetworkProxy proxy =
+        serverId.isEmpty()
+            ? ProxyManager::instance()->resolveForUrl(loadQUrl)
+            : ProxyManager::instance()->resolveForServerId(serverId);
+    const QString scheme = loadQUrl.scheme().toLower();
+    const bool isHttpStream =
+        scheme == QStringLiteral("http") || scheme == QStringLiteral("https");
+    const bool shouldRelay =
+        isHttpStream && proxy.type() != QNetworkProxy::NoProxy;
+
+    QString playbackUrl = url;
+    bool usingRelay = false;
+    if (shouldRelay && m_streamRelay) {
+        const QUrl localUrl = m_streamRelay->prepare(loadQUrl, serverId, proxy);
+        if (localUrl.isValid()) {
+            playbackUrl = localUrl.toString(QUrl::FullyEncoded);
+            usingRelay = true;
+        }
+    } else if (m_streamRelay) {
+        m_streamRelay->stop();
+    }
+    if (m_usingStreamRelay != usingRelay) {
+        m_usingStreamRelay = usingRelay;
+        Q_EMIT relayActiveChanged(usingRelay);
+    }
+
+    const QString mpvProxyValue =
+        usingRelay ? QString() : ProxyManager::toMpvHttpProxy(proxy);
+    const bool forceSeekable =
+        !usingRelay && !mpvProxyValue.isEmpty() && scheme == QStringLiteral("http");
+
+    m_controller->setProperty(QStringLiteral("http-proxy"), mpvProxyValue);
+    m_controller->setProperty(QStringLiteral("force-seekable"), forceSeekable);
+
+    QVariantMap loadOptions;
+    if (!mpvProxyValue.isEmpty()) {
+        loadOptions.insert(QStringLiteral("http-proxy"), mpvProxyValue);
+    }
+    if (forceSeekable) {
+        loadOptions.insert(QStringLiteral("force-seekable"), QStringLiteral("yes"));
+    }
+
+    if (!usingRelay && !mpvProxyValue.isEmpty() && scheme == QStringLiteral("https")) {
+        qWarning() << "[MpvWidget] MPV http-proxy is not applied to HTTPS streams by libmpv"
+                   << "| url:" << LogRedactionUtils::url(loadQUrl)
+                   << "| serverId:" << (serverId.isEmpty()
+                                           ? QStringLiteral("<none>")
+                                           : serverId);
+    }
+
+    qInfo() << (wasPending
+                    ? QStringLiteral("[MpvWidget] http-proxy applied (pending)")
+                    : QStringLiteral("[MpvWidget] http-proxy applied"))
+            << "| url:" << LogRedactionUtils::url(loadQUrl)
+            << "| serverId:" << (serverId.isEmpty()
+                                     ? QStringLiteral("<none>")
+                                     : serverId)
+            << "| mpvProxyValue:" << LogRedactionUtils::proxy(mpvProxyValue)
+            << "| relay:" << usingRelay
+            << "| playbackUrl:" << (usingRelay
+                                       ? playbackUrl
+                                       : QStringLiteral("<direct>"))
+            << "| forceSeekable:" << forceSeekable;
+
+    QVariantList loadCommand;
+    if (loadOptions.isEmpty()) {
+        loadCommand = QVariantList{QStringLiteral("loadfile"), playbackUrl};
+    } else {
+        loadCommand = QVariantList{QStringLiteral("loadfile"), playbackUrl,
+                                   QStringLiteral("replace"), -1,
+                                   loadOptions};
+    }
+
+    const int err = m_controller->command(loadCommand, nullptr);
+    if (err < 0 && !loadOptions.isEmpty()) {
+        qWarning() << "[MpvWidget] loadfile with indexed per-file network options failed, retrying legacy form"
+                   << "| error:" << mpv_error_string(err);
+        const int legacyErr = m_controller->command(
+            QVariantList{QStringLiteral("loadfile"), playbackUrl,
+                         QStringLiteral("replace"), loadOptions},
+            nullptr);
+        if (legacyErr < 0) {
+            qWarning() << "[MpvWidget] legacy loadfile per-file options failed, retrying plain loadfile"
+                       << "| error:" << mpv_error_string(legacyErr);
+            m_controller->command(QVariantList{QStringLiteral("loadfile"), playbackUrl}, nullptr);
+        }
+    }
+}
+
+void MpvWidget::loadMedia(const QString &url, const QString &serverId) {
     
     if (!m_mpv_gl) {
         m_pendingUrl = url;
+        m_pendingServerId = serverId;
         return;
     }
-    m_controller->command(QVariantList{"loadfile", url});
+    loadMediaNow(url, serverId, false);
 }
 
 void MpvWidget::play() {

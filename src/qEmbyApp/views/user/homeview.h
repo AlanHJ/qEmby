@@ -8,6 +8,7 @@
 #include <QPointer>
 #include <qcorotask.h>
 #include <optional>
+#include <models/media/mediaitem.h>
 
 class QTimer;
 class QEmbyCore;
@@ -29,6 +30,7 @@ class SeasonView;
 class PlaybackManager; 
 class PlayerView;      
 class ManageView;      
+class WebdavProfileStore;
 
 
 struct RouteInfo {
@@ -45,6 +47,7 @@ class HomeView : public QWidget
     Q_OBJECT
 public:
     explicit HomeView(QEmbyCore* core, QWidget *parent = nullptr);
+    ~HomeView() override;
     
     
     QCoro::Task<void> refreshProfile();
@@ -81,6 +84,7 @@ signals:
     
     
     void immersiveStateChanged(bool isImmersive);
+    void playerChromeVisibilityChanged(bool visible);
 
 private:
     void scheduleProfileRefresh();
@@ -95,7 +99,9 @@ private:
     int sidebarWidthForMode(bool pinned) const;
     void applySidebarMetrics(bool pinned);
     void applySidebarIcons();
+    void applySidebarCustomVisibility();
     void syncSidebarVisibility();
+    void openCloudSyncDialog();
     void setupSearchHistory();
     void updateSearchCompleter(const QString &text = QString());
     QString currentSearchServerId() const;
@@ -104,7 +110,7 @@ private:
     void pushView(QWidget* view);
     void resetToView(QWidget* view);
 
-    QWidget* createDetailView(const QString& itemId, const QString& itemName = "");
+    QWidget* createDetailView(const QString& itemId, const QString& itemName = "", const MediaItem& seedItem = {});
     QWidget* createCategoryView(const QString& categoryId, const QString& title = "");
     QWidget* createLibraryView(const QString& libraryId, const QString& title = "");
     QWidget* createPersonView(const QString& personId, const QString& personName = "");
@@ -123,6 +129,7 @@ private:
     QEmbyCore* m_core;
 
     SlidingStackedWidget* m_contentSwitcher = nullptr;
+    bool m_isDestroying = false;
     QStack<RouteInfo> m_navStack; 
 
     DashboardView* m_dashboardView = nullptr;
@@ -149,15 +156,19 @@ private:
 
     QPushButton* m_btnHome = nullptr;
     QPushButton* m_btnFavorites = nullptr;
+    QWidget* m_navArea = nullptr;
+    QWidget* m_searchSpacer = nullptr;
     QListWidget* m_libraryList = nullptr;
 
     QLabel* m_userAvatarLabel = nullptr;
     QHBoxLayout* m_userInfoLayout = nullptr;
     ElidedLabel* m_userNameLabel = nullptr;
+    QPushButton* m_btnCloudSync = nullptr;
     QPushButton* m_btnSettings = nullptr;
     QPushButton* m_btnManage = nullptr;
     QPushButton* m_btnDownloads = nullptr;
     QPushButton* m_btnLogout = nullptr;
+    WebdavProfileStore* m_webdavStore = nullptr;
 
     std::optional<QCoro::Task<void>> m_pendingProfileRefreshTask;
     int m_profileRefreshGeneration = 0;

@@ -35,7 +35,7 @@ constexpr auto kDanmakuSourceModePreferOnline = "prefer-online";
 constexpr auto kDanmakuSourceModePreferLocal = "prefer-local";
 constexpr auto kDanmakuSourceModeOnlineOnly = "online-only";
 constexpr auto kDanmakuSourceModeLocalOnly = "local-only";
-constexpr int kDanmakuAssRenderVersion = 5;
+constexpr int kDanmakuAssRenderVersion = 6;
 
 QStringList parseBlockedKeywords(const QString &value)
 {
@@ -787,7 +787,7 @@ DanmakuRenderOptions DanmakuService::renderOptions() const
             .toInt();
     options.speedScale =
         store->get<QString>(ConfigKeys::PlayerDanmakuSpeedScale,
-                            QStringLiteral("100"))
+                            QStringLiteral("50"))
             .toDouble() /
         100.0;
     options.offsetMs =
@@ -1564,16 +1564,16 @@ QCoro::Task<DanmakuMatchResult> DanmakuService::resolveMatch(
             }
 
             const double threshold = context.isEpisode() ? 52.0 : 44.0;
-            if (selected.score < threshold) {
+            const bool fallback = selected.score < threshold;
+            if (fallback) {
                 qDebug().noquote()
-                    << "[Danmaku][Service] Best online match below threshold"
+                    << "[Danmaku][Service] Best online match below threshold, falling back to highest-score candidate"
                     << "| mediaId:" << context.mediaId
                     << "| endpointId:" << selected.endpointId
                     << "| endpointName:" << selected.endpointName
                     << "| targetId:" << selected.targetId
                     << "| score:" << selected.score
                     << "| threshold:" << threshold;
-                return false;
             }
 
             result.matched = true;
@@ -1582,6 +1582,7 @@ QCoro::Task<DanmakuMatchResult> DanmakuService::resolveMatch(
             m_cacheStore->saveMatch(context, selected, false);
             qDebug().noquote()
                 << "[Danmaku][Service] Auto match selected"
+                << (fallback ? "| fallback: true" : "")
                 << "| mediaId:" << context.mediaId
                 << "| endpointId:" << selected.endpointId
                 << "| endpointName:" << selected.endpointName

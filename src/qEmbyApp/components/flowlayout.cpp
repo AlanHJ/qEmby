@@ -15,14 +15,14 @@ FlowLayout::FlowLayout(int margin, int hSpacing, int vSpacing)
 
 FlowLayout::~FlowLayout()
 {
-    QLayoutItem *item;
-    while ((item = takeAt(0)))
-        delete item;
+    while (!itemList.isEmpty())
+        delete itemList.takeFirst();
 }
 
 void FlowLayout::addItem(QLayoutItem *item)
 {
     itemList.append(item);
+    invalidate();
 }
 
 int FlowLayout::horizontalSpacing() const
@@ -55,8 +55,11 @@ QLayoutItem *FlowLayout::itemAt(int index) const
 
 QLayoutItem *FlowLayout::takeAt(int index)
 {
-    if (index >= 0 && index < itemList.size())
-        return itemList.takeAt(index);
+    if (index >= 0 && index < itemList.size()) {
+        QLayoutItem *item = itemList.takeAt(index);
+        invalidate();
+        return item;
+    }
     return nullptr;
 }
 
@@ -74,6 +77,12 @@ int FlowLayout::heightForWidth(int width) const
 {
     int height = doLayout(QRect(0, 0, width, 0), true);
     return height;
+}
+
+void FlowLayout::invalidate()
+{
+    QLayout::invalidate();
+    updateParentGeometry();
 }
 
 void FlowLayout::setGeometry(const QRect &rect)
@@ -100,7 +109,26 @@ int FlowLayout::firstLineTrailingSpacing() const
 
 QSize FlowLayout::sizeHint() const
 {
-    return minimumSize();
+    QSize size = minimumSize();
+    int width = -1;
+
+    if (const auto *parentWidget = qobject_cast<const QWidget *>(parent())) {
+        width = parentWidget->contentsRect().width();
+        const QWidget *p = parentWidget->parentWidget();
+        while (width <= 0 && p) {
+            width = p->contentsRect().width();
+            p = p->parentWidget();
+        }
+    } else if (geometry().isValid()) {
+        width = geometry().width();
+    }
+
+    if (width > 0) {
+        size.setWidth(qMax(size.width(), width));
+        size.setHeight(heightForWidth(width));
+    }
+
+    return size;
 }
 
 QSize FlowLayout::minimumSize() const
@@ -180,5 +208,18 @@ int FlowLayout::smartSpacing(QStyle::PixelMetric pm) const
         return pw->style()->pixelMetric(pm, nullptr, pw);
     } else {
         return static_cast<QLayout *>(parent)->spacing();
+    }
+}
+
+void FlowLayout::updateParentGeometry() const
+{
+    auto *parentWidget = qobject_cast<QWidget *>(parent());
+    if (!parentWidget) {
+        return;
+    }
+
+    parentWidget->updateGeometry();
+    if (QWidget *outerWidget = parentWidget->parentWidget()) {
+        outerWidget->updateGeometry();
     }
 }

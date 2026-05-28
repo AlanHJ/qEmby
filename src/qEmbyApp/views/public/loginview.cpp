@@ -3,7 +3,10 @@
 #include "../../components/moderncombobox.h"
 #include "../../components/modernmessagebox.h"
 #include "../../components/modernswitch.h"
+#include "../../components/proxysettingsdialog.h"
 #include "../../components/serverwheelview.h"
+#include "../../components/webdavsyncdialog.h"
+#include <config/webdavprofilestore.h>
 #include <QAction>
 #include <QApplication>
 #include <QEvent>
@@ -175,10 +178,37 @@ void LoginView::onThemeChanged(ThemeManager::Theme theme) {
   }
 
   
+  if (m_serverProxyBtn) {
+    m_serverProxyBtn->setIcon(QIcon(getThemeSvgPath("proxy.svg")));
+  }
+
+  
+  if (m_cloudSyncBtn) {
+    m_cloudSyncBtn->setIcon(QIcon(getThemeSvgPath("cloud-sync.svg")));
+  }
+
+  
   
   if (m_pageSwitcher->currentWidget() == m_listPage) {
     refreshServerList();
   }
+}
+
+void LoginView::onCloudSyncClicked() {
+  
+  if (!m_webdavStore) {
+    m_webdavStore = new WebdavProfileStore(this);
+    m_webdavStore->load();
+    qInfo() << "[LoginView] WebdavProfileStore loaded | hasProfile:"
+            << m_webdavStore->hasProfile();
+  }
+
+  ServerManager *sm = m_core ? m_core->serverManager() : nullptr;
+  WebdavSyncDialog dlg(m_webdavStore, sm, this);
+  dlg.exec();
+
+  
+  refreshServerList();
 }
 
 void LoginView::updateSslOptionsVisibility() {
@@ -371,10 +401,37 @@ void LoginView::setupUi() {
   if (orgName.isEmpty())
     orgName = "AlanHJ";
 
+  
+  auto *footerRow = new QWidget(this);
+  footerRow->setObjectName("login-footer-row");
+  auto *footerLayout = new QHBoxLayout(footerRow);
+  footerLayout->setContentsMargins(12, 0, 12, 0);
+  footerLayout->setSpacing(6);
+
+  m_cloudSyncBtn = new QPushButton(this);
+  m_cloudSyncBtn->setObjectName("login-cloud-sync-btn");
+  m_cloudSyncBtn->setCursor(Qt::PointingHandCursor);
+  m_cloudSyncBtn->setIcon(QIcon(getThemeSvgPath("cloud-sync.svg")));
+  m_cloudSyncBtn->setIconSize(QSize(14, 14));
+  m_cloudSyncBtn->setFixedSize(22, 22);
+  m_cloudSyncBtn->setToolTip(tr("Cloud Sync (WebDAV)"));
+  connect(m_cloudSyncBtn, &QPushButton::clicked, this,
+          &LoginView::onCloudSyncClicked);
+
   auto *versionLabel =
       new QLabel(QString("%1 v%2").arg(orgName, version), this);
   versionLabel->setObjectName("app-version-label");
-  mainLayout->addWidget(versionLabel, 0, Qt::AlignHCenter);
+
+  
+  auto *footerSpacer = new QWidget(this);
+  footerSpacer->setFixedSize(22, 22);
+
+  footerLayout->addWidget(m_cloudSyncBtn, 0, Qt::AlignVCenter);
+  footerLayout->addStretch();
+  footerLayout->addWidget(versionLabel, 0, Qt::AlignVCenter);
+  footerLayout->addStretch();
+  footerLayout->addWidget(footerSpacer, 0, Qt::AlignVCenter);
+  mainLayout->addWidget(footerRow, 0, Qt::AlignHCenter);
 
   
   m_loadingOverlay = new LoadingOverlay(this);
@@ -449,9 +506,29 @@ void LoginView::setupAddPage() {
   m_portInput->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
   m_portInput->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
+  
+  
+  
+  
+  m_serverProxyBtn = new QPushButton(this);
+  m_serverProxyBtn->setObjectName("login-proxy-icon-btn");
+  m_serverProxyBtn->setCursor(Qt::PointingHandCursor);
+  m_serverProxyBtn->setIcon(QIcon(getThemeSvgPath("proxy.svg")));
+  m_serverProxyBtn->setIconSize(QSize(18, 18));
+  m_serverProxyBtn->setFixedWidth(36);
+  m_serverProxyBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+
   protoPortLayout->addWidget(m_protocolInput, 0);
   protoPortLayout->addWidget(m_portInput, 1);
+  
+  
+  protoPortLayout->addWidget(m_serverProxyBtn, 0);
   layout->addLayout(protoPortLayout);
+
+  connect(m_serverProxyBtn, &QPushButton::clicked, this,
+          &LoginView::openProxyDialogForCurrentEntry);
+
+  refreshServerProxyTooltip();
 
     m_sslOptionsRow = new QWidget(this);
     m_sslOptionsRow->setObjectName("login-ssl-card");
@@ -784,6 +861,10 @@ void LoginView::refreshServerList() {
 
 void LoginView::showAddPage() {
   m_editingServerId.clear();
+  
+  m_pendingProxy = ProxyConfig{};
+  m_pendingUseGlobalProxy = false;
+  refreshServerProxyTooltip();
   m_protocolInput->setCurrentIndex(0);
   m_serverAddressInput->clear();
   if (m_portInput) {
@@ -849,6 +930,11 @@ void LoginView::onEditServerClicked(const QString &serverId) {
         m_togglePwdAction->setChecked(false);
         m_togglePwdAction->setIcon(QIcon(getThemeSvgPath("eye.svg")));
       }
+
+      
+      m_pendingProxy = server.proxy;
+      m_pendingUseGlobalProxy = server.useGlobalProxy;
+      refreshServerProxyTooltip();
 
       m_loginButton->setText(tr("Save & Login"));
       m_errorLabel->hide();
@@ -974,6 +1060,20 @@ QCoro::Task<void> LoginView::onLoginClicked() {
       m_editingServerId.clear();
     }
 
+    
+    
+    if (m_pendingProxy != ProxyConfig{} || m_pendingUseGlobalProxy) {
+      m_core->serverManager()->updateServerProxy(
+          profile.id, m_pendingProxy, m_pendingUseGlobalProxy);
+      qInfo() << "[LoginView] applied draft proxy to new profile"
+              << "| id:" << profile.id
+              << "| useGlobal:" << m_pendingUseGlobalProxy
+              << "| proxy:" << m_pendingProxy.summary();
+    }
+    
+    m_pendingProxy = ProxyConfig{};
+    m_pendingUseGlobalProxy = false;
+
     m_loginButton->setEnabled(true);
     m_loginButton->setText(tr("Login"));
 
@@ -992,6 +1092,83 @@ QCoro::Task<void> LoginView::onLoginClicked() {
     m_errorLabel->setText(QString::fromStdString(e.what()));
     m_errorLabel->show();
   }
+}
+
+
+
+
+
+void LoginView::refreshServerProxyTooltip() {
+  if (!m_serverProxyBtn) {
+    return;
+  }
+  
+  
+  QString state;
+  if (m_pendingUseGlobalProxy) {
+    state = tr("Using global proxy");
+  } else {
+    switch (m_pendingProxy.mode) {
+    case ProxyConfig::None:
+      state = tr("No proxy");
+      break;
+    case ProxyConfig::System:
+      state = tr("System proxy");
+      break;
+    case ProxyConfig::Custom: {
+      const QString typeLabel =
+          (m_pendingProxy.type == ProxyConfig::Socks5)
+              ? QStringLiteral("SOCKS5")
+              : QStringLiteral("HTTP");
+      if (m_pendingProxy.host.isEmpty() || m_pendingProxy.port == 0) {
+        state = tr("Custom (incomplete)");
+      } else {
+        state = QStringLiteral("%1 %2:%3")
+                    .arg(typeLabel, m_pendingProxy.host,
+                         QString::number(m_pendingProxy.port));
+      }
+      break;
+    }
+    }
+  }
+  m_serverProxyBtn->setToolTip(
+      tr("Server Proxy — %1").arg(state));
+}
+
+void LoginView::openProxyDialogForCurrentEntry() {
+  
+  
+  if (!m_editingServerId.isEmpty()) {
+    auto *dlg = ProxySettingsDialog::createForServer(
+        m_core->serverManager(), m_editingServerId, this);
+    if (dlg->exec() == QDialog::Accepted) {
+      
+      const auto servers = m_core->serverManager()->servers();
+      for (const auto &s : servers) {
+        if (s.id == m_editingServerId) {
+          m_pendingProxy = s.proxy;
+          m_pendingUseGlobalProxy = s.useGlobalProxy;
+          break;
+        }
+      }
+      refreshServerProxyTooltip();
+    }
+    dlg->deleteLater();
+    return;
+  }
+
+  
+  auto *dlg = ProxySettingsDialog::createForDraft(m_pendingProxy,
+                                                  m_pendingUseGlobalProxy, this);
+  if (dlg->exec() == QDialog::Accepted) {
+    m_pendingProxy = dlg->resultConfig();
+    m_pendingUseGlobalProxy = dlg->resultUseGlobal();
+    qInfo() << "[LoginView] draft proxy updated"
+            << "| useGlobal:" << m_pendingUseGlobalProxy
+            << "| proxy:" << m_pendingProxy.summary();
+    refreshServerProxyTooltip();
+  }
+  dlg->deleteLater();
 }
 
 

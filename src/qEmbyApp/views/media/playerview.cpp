@@ -19,7 +19,9 @@
 #include <QAbstractAnimation>
 #include <QCursor>
 #include <QDebug>
+#include <QDialog>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QEvent>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -42,6 +44,7 @@
 #include <QWheelEvent>
 #include <QWindow>
 #include <cmath>
+#include <initializer_list>
 #include <config/config_keys.h>
 #include <config/configstore.h>
 #include <models/media/playerlaunchcontext.h>
@@ -525,6 +528,7 @@ PlayerView::PlayerView(QEmbyCore *core, QWidget *parent)
 
 PlayerView::~PlayerView()
 {
+    disconnect(this, &PlayerView::playerChromeVisibilityChanged, nullptr, nullptr);
     beginViewTeardown();
     stopAndReport();
 }
@@ -721,6 +725,138 @@ void PlayerView::updatePowerInhibition()
     }
 }
 
+QCoro::Task<void> PlayerView::requestIntroDBSegments()
+{
+    QPointer<IntroDBService> introDB =
+        m_core ? m_core->introDBService() : nullptr;
+    QPointer<MediaService> mediaService =
+        m_core ? m_core->mediaService() : nullptr;
+    if (m_segmentsRequested || !introDB)
+        co_return;
+
+    const bool skipIntro =
+        ConfigStore::instance()->get<bool>(ConfigKeys::PlayerSkipIntro, false);
+    const bool skipOutro =
+        ConfigStore::instance()->get<bool>(ConfigKeys::PlayerSkipOutro, false);
+    if (!skipIntro && !skipOutro) {
+        qInfo("IntroDB: both skip intro and skip outro disabled, skipping");
+        co_return;
+    }
+
+    const QString currentMediaId = m_currentMediaId;
+    const MediaItem currentItem = m_currentMediaItem;
+    const int season = currentItem.parentIndexNumber;
+    const int episode = currentItem.indexNumber;
+    if (season <= 0 || episode <= 0) {
+        qInfo("IntroDB: invalid season/episode: S%02dE%02d", season, episode);
+        co_return;
+    }
+
+    m_segmentsRequested = true;
+    QPointer<PlayerView> safeThis(this);
+
+    const auto providerIdValue =
+        [](const QVariantMap &providerIds,
+           std::initializer_list<const char *> keys) {
+            for (const char *key : keys) {
+                const QString value =
+                    providerIds.value(QString::fromLatin1(key))
+                        .toString()
+                        .trimmed();
+                if (!value.isEmpty()) {
+                    return value;
+                }
+            }
+            return QString();
+        };
+
+    const QString episodeImdbId =
+        providerIdValue(currentItem.providerIds,
+                        {"Imdb", "IMDb", "imdb", "imdbid"});
+    QString imdbId;
+    if (mediaService && !currentItem.seriesId.trimmed().isEmpty()) {
+        try {
+            const MediaItem seriesDetail =
+                co_await mediaService->getItemDetail(currentItem.seriesId);
+            if (!safeThis || safeThis->m_currentMediaId != currentMediaId)
+                co_return;
+            imdbId =
+                providerIdValue(seriesDetail.providerIds,
+                                {"Imdb", "IMDb", "imdb", "imdbid"});
+            if (!imdbId.isEmpty()) {
+                qInfo("IntroDB: using series IMDb ID imdb=%s seriesId=%s",
+                      qPrintable(imdbId), qPrintable(currentItem.seriesId));
+            }
+        } catch (const std::exception &e) {
+            if (!safeThis || safeThis->m_currentMediaId != currentMediaId)
+                co_return;
+            qWarning("IntroDB: failed to fetch series detail for IMDb ID: %s",
+                     e.what());
+        }
+    }
+
+    if (imdbId.isEmpty()) {
+        imdbId = episodeImdbId;
+        if (!imdbId.isEmpty()) {
+            qInfo("IntroDB: using episode IMDb ID fallback imdb=%s",
+                  qPrintable(imdbId));
+        }
+    }
+
+    if (imdbId.isEmpty()) {
+        qInfo("IntroDB: no IMDb ID in providerIds, episodeKeys=%s",
+              qPrintable(currentItem.providerIds.keys().join(", ")));
+        co_return;
+    }
+
+    qInfo("IntroDB: requesting segments imdb=%s S%02dE%02d",
+          qPrintable(imdbId), season, episode);
+
+    if (!introDB)
+        co_return;
+    const IntroDBService::EpisodeSegments segments =
+        co_await introDB->fetchSegments(imdbId, season, episode);
+    if (!safeThis || safeThis->m_currentMediaId != currentMediaId)
+        co_return;
+    safeThis->m_episodeSegments = segments;
+    qInfo("IntroDB: segments fetched=%d notFound=%d intro=[%.1f-%.1f] outro=[%.1f-%.1f]",
+          safeThis->m_episodeSegments.fetched,
+          safeThis->m_episodeSegments.notFound,
+          safeThis->m_episodeSegments.intro.startSec,
+          safeThis->m_episodeSegments.intro.endSec,
+          safeThis->m_episodeSegments.outro.startSec,
+          safeThis->m_episodeSegments.outro.endSec);
+}
+
+void PlayerView::checkAndSkipSegment(double position)
+{
+    if (!m_episodeSegments.fetched || m_episodeSegments.notFound)
+        return;
+
+    const bool skipIntro =
+        ConfigStore::instance()->get<bool>(ConfigKeys::PlayerSkipIntro, false);
+    const bool skipOutro =
+        ConfigStore::instance()->get<bool>(ConfigKeys::PlayerSkipOutro, false);
+
+    const auto skipIfInRange =
+        [this, position](const IntroDBService::SegmentInfo &seg,
+                         const char *label, bool enabled, bool &flag) {
+            if (!enabled || flag || !m_mpvWidget ||
+                !std::isfinite(seg.startSec) || !std::isfinite(seg.endSec) ||
+                seg.startSec < 0 || seg.endSec <= seg.startSec)
+                return;
+            if (position >= seg.startSec && position < seg.endSec) {
+                qInfo("IntroDB: skipping %s [%.1f-%.1f] at pos=%.1f",
+                      label, seg.startSec, seg.endSec, position);
+                m_mpvWidget->seek(seg.endSec);
+                flag = true;
+            }
+        };
+
+    skipIfInRange(m_episodeSegments.intro, "intro", skipIntro, m_introSkipped);
+    skipIfInRange(m_episodeSegments.outro, "outro", skipOutro, m_outroSkipped);
+}
+
 
 void PlayerView::pausePlayback()
 {
@@ -760,7 +896,8 @@ void PlayerView::resumePlayback()
     m_pendingSeekSeconds = m_currentPosition;
     m_isBuffering = true;
     updateLoadingState();
-    m_mpvWidget->loadMedia(newStreamUrl);
+    const QString activeServerId = m_core->serverManager()->activeProfile().id;
+    m_mpvWidget->loadMedia(newStreamUrl, activeServerId);
     m_mpvWidget->play(); 
 }
 
@@ -863,8 +1000,9 @@ void PlayerView::setupUi()
 
     m_titleLabel = new QLabel(m_topHUD);
     m_titleLabel->setObjectName("playerTitleLabel");
+    m_titleLabel->setMinimumWidth(0);
     m_titleLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
-    m_titleLabel->setAlignment(Qt::AlignTop | Qt::AlignHCenter);
+    m_titleLabel->setAlignment(Qt::AlignCenter);
     m_titleLabel->installEventFilter(this);
 
     
@@ -897,6 +1035,11 @@ void PlayerView::setupUi()
     m_closeBtn->setFocusPolicy(Qt::NoFocus);
     m_closeBtn->setToolTip(tr("Close"));
 
+#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
+    m_minBtn->hide();
+    m_maxBtn->hide();
+    m_closeBtn->hide();
+#else
     connect(m_minBtn, &QPushButton::clicked, this, [this]() { window()->showMinimized(); });
 
     connect(m_maxBtn, &QPushButton::clicked, this,
@@ -921,15 +1064,39 @@ void PlayerView::setupUi()
                 stopAndReport();
                 window()->close();
             });
+#endif
 
+#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
+    delete sysLayout;
+#else
     sysLayout->addWidget(m_minBtn, 0, Qt::AlignTop);
     sysLayout->addWidget(m_maxBtn, 0, Qt::AlignTop);
     sysLayout->addWidget(m_closeBtn, 0, Qt::AlignTop);
+#endif
 
     
+#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
+    auto *macLeftTitlebarArea = new QWidget(m_topHUD);
+    macLeftTitlebarArea->setObjectName("playerMacTitlebarLeftArea");
+    macLeftTitlebarArea->setFixedWidth(118);
+
+    auto *macRightTitlebarArea = new QWidget(m_topHUD);
+    macRightTitlebarArea->setObjectName("playerMacTitlebarRightArea");
+    macRightTitlebarArea->setFixedWidth(118);
+    auto *macRightLayout = new QHBoxLayout(macRightTitlebarArea);
+    macRightLayout->setContentsMargins(0, 0, 0, 0);
+    macRightLayout->setSpacing(0);
+    macRightLayout->addStretch();
+    macRightLayout->addWidget(m_backBtn, 0, Qt::AlignTop);
+
+    topLayout->addWidget(macLeftTitlebarArea, 0, Qt::AlignTop);
+    topLayout->addWidget(m_titleLabel, 1, Qt::AlignTop);
+    topLayout->addWidget(macRightTitlebarArea, 0, Qt::AlignTop);
+#else
     topLayout->addWidget(m_backBtn, 0, Qt::AlignTop);
     topLayout->addWidget(m_titleLabel, 1, Qt::AlignTop);
     topLayout->addLayout(sysLayout, 0);
+#endif
 
     
     m_bottomHUD = new QWidget(this);
@@ -1138,6 +1305,25 @@ void PlayerView::setupUi()
     connect(m_mpvWidget, &MpvWidget::positionChanged, this, &PlayerView::onPositionChanged);
     connect(m_mpvWidget, &MpvWidget::durationChanged, this, &PlayerView::onDurationChanged);
     connect(m_mpvWidget, &MpvWidget::playbackStateChanged, this, &PlayerView::onPlaybackStateChanged);
+    connect(m_mpvWidget, &MpvWidget::relayActiveChanged, this,
+            [this](bool active)
+            {
+                m_useRelayNetworkSpeed = active;
+                if (!active && m_networkSpeedLabel)
+                {
+                    m_effectiveNetworkSpeed = 0;
+                    m_networkSpeedLabel->setText(formatDataRateValue(0));
+                }
+            });
+    connect(m_mpvWidget, &MpvWidget::networkSpeedChanged, this,
+            [this](qint64 bytesPerSecond)
+            {
+                if (m_useRelayNetworkSpeed && m_networkSpeedLabel)
+                {
+                    m_effectiveNetworkSpeed = bytesPerSecond;
+                    m_networkSpeedLabel->setText(formatDataRateValue(bytesPerSecond));
+                }
+            });
     
     connect(m_mpvWidget->controller(), &MpvController::propertyChanged, this, &PlayerView::onMpvPropertyChanged);
     connect(m_mpvWidget->controller(), &MpvController::endOfFile, this,
@@ -1355,7 +1541,11 @@ void PlayerView::updateDanmakuButtonState()
     const bool loaded = m_danmakuController->hasDanmakuTrack() ||
                         m_danmakuController->hasPreparedDanmaku();
 
-    m_danmakuBtn->setEnabled(!loading);
+    
+    
+    
+    
+    m_danmakuBtn->setEnabled(true);
     if (loading)
     {
         m_danmakuBtn->setToolTip(tr("Danmaku (Loading...)"));
@@ -2053,6 +2243,7 @@ void PlayerView::beginViewTeardown()
 
     m_isViewTearingDown = true;
     updatePowerInhibition();
+    setPlayerChromeVisible(false);
     qDebug() << "[PlayerView] Begin teardown: stop timers, disconnect late signals, detach animations";
 
     if (m_reportTimer)
@@ -2415,8 +2606,11 @@ void PlayerView::updateTitleElision()
         return;
     }
 
-    
-    int safeWidth = this->width() - 320;
+    int safeWidth = m_titleLabel->contentsRect().width();
+    if (safeWidth <= 0)
+    {
+        safeWidth = this->width() - 320;
+    }
     if (safeWidth < 50)
     {
         safeWidth = 50;
@@ -2673,6 +2867,17 @@ void PlayerView::setCursorHidden(bool hidden)
     }
 }
 
+void PlayerView::setPlayerChromeVisible(bool visible)
+{
+    if (m_playerChromeVisible == visible)
+    {
+        return;
+    }
+
+    m_playerChromeVisible = visible;
+    Q_EMIT playerChromeVisibilityChanged(visible);
+}
+
 bool PlayerView::areControlsFullyVisible() const
 {
     return m_topOpacity && m_topOpacity->opacity() >= 1.0 &&
@@ -2689,6 +2894,7 @@ void PlayerView::showControls()
         return;
     }
 
+    setPlayerChromeVisible(true);
     setCursorHidden(false);
 
     
@@ -2782,6 +2988,7 @@ void PlayerView::hideControls()
 
     hideRightSidebar();
     hideHudMediaSwitcher();
+    setPlayerChromeVisible(false);
 
     if (m_activePopup)
     {
@@ -2841,7 +3048,11 @@ void PlayerView::onMpvPropertyChanged(const QString &property, const QVariant &v
     if (property == "cache-speed")
     {
         qint64 speedBytes = value.toLongLong();
-        m_networkSpeedLabel->setText(formatDataRateValue(speedBytes));
+        if (!m_useRelayNetworkSpeed)
+        {
+            m_effectiveNetworkSpeed = speedBytes;
+            m_networkSpeedLabel->setText(formatDataRateValue(speedBytes));
+        }
     }
     else if (property == "mute")
     {
@@ -3196,6 +3407,7 @@ void PlayerView::showSubtitleMenu()
     }
 
     panel->addItem(tr("Disable Subtitles"), "no", !anySubSelected);
+    panel->addItem(tr("Load Local Subtitle File"), QStringLiteral("load_local"), false);
     panel->addItem(tr("Subtitle Settings"), QStringLiteral("settings"), false);
 
     int maxHeight = this->height() - m_bottomHUD->height() - 40;
@@ -3222,6 +3434,16 @@ void PlayerView::showSubtitleMenu()
                     openSubtitleSettingsDialog();
                     return;
                 }
+                if (action == QLatin1String("load_local"))
+                {
+                    dismissPopup();
+                    loadExternalSubtitleFile();
+                    return;
+                }
+
+                
+                
+                clearPersistedExternalSubtitle();
 
                 if (m_danmakuController)
                 {
@@ -3378,8 +3600,8 @@ void PlayerView::loadLocalDanmakuFile()
     const QString startDir = DanmakuService::ensureLocalDanmakuDirectory(serverId)
                                  ? DanmakuService::localDanmakuDirectoryPath(serverId)
                                  : QDir::homePath();
-    const QString filePath = QFileDialog::getOpenFileName(
-        this, tr("Load Local Danmaku File"), startDir,
+    const QString filePath = openPlayerFileDialog(
+        tr("Load Local Danmaku File"), startDir,
         tr("Danmaku Files (*.ass *.json *.xml);;ASS Files (*.ass);;JSON Files (*.json);;XML Files (*.xml)"));
     if (filePath.trimmed().isEmpty())
     {
@@ -3391,6 +3613,260 @@ void PlayerView::loadLocalDanmakuFile()
         << "| mediaId:" << m_danmakuController->mediaContext().mediaId
         << "| path:" << filePath;
     m_danmakuController->loadLocalFile(filePath);
+}
+
+void PlayerView::loadExternalSubtitleFile()
+{
+    if (!m_mpvWidget || !m_mpvWidget->controller())
+    {
+        showToast(tr("Player is not ready"));
+        return;
+    }
+
+    if (m_activePopup)
+    {
+        m_activePopup->hide();
+        m_activePopup->close();
+        m_activePopup->deleteLater();
+        m_activePopup = nullptr;
+    }
+    closeActivePlayerDialog();
+
+    const QString lastDir =
+        ConfigStore::instance()->get<QString>(ConfigKeys::PlayerLastSubtitleDir,
+                                              QString());
+    const QString startDir =
+        (!lastDir.isEmpty() && QDir(lastDir).exists()) ? lastDir : QDir::homePath();
+
+    const QString filter = tr(
+        "Subtitle Files (*.srt *.ass *.ssa *.sub *.idx *.vtt *.smi *.sup *.txt);;"
+        "SubRip (*.srt);;"
+        "Advanced SubStation Alpha (*.ass *.ssa);;"
+        "WebVTT (*.vtt);;"
+        "MicroDVD / SubViewer (*.sub);;"
+        "VobSub (*.idx);;"
+        "SAMI (*.smi);;"
+        "PGS / HDMV (*.sup);;"
+        "All Files (*)");
+
+    const QString filePath = openPlayerFileDialog(
+        tr("Load Local Subtitle File"), startDir, filter);
+    if (filePath.trimmed().isEmpty())
+    {
+        return;
+    }
+
+    const QFileInfo info(filePath);
+    ConfigStore::instance()->set(ConfigKeys::PlayerLastSubtitleDir,
+                                 info.absolutePath());
+
+    qDebug().noquote()
+        << "[Subtitle][PlayerView] Load external subtitle file"
+        << "| path:" << filePath;
+
+    
+    
+    
+    m_mpvWidget->controller()->command(QVariantList{
+        QStringLiteral("sub-add"),
+        QDir::toNativeSeparators(filePath),
+        QStringLiteral("auto"),
+        info.fileName(),
+        QString()});
+
+    
+    const int newTrackId = findSubtitleTrackIdByPath(info.absoluteFilePath());
+    if (newTrackId > 0 && m_danmakuController)
+    {
+        m_danmakuController->selectSubtitleTrack(newTrackId);
+    }
+    else
+    {
+        qWarning().noquote()
+            << "[Subtitle][PlayerView] Failed to locate newly added subtitle track"
+            << "| path:" << filePath;
+    }
+
+    persistExternalSubtitle(info.absoluteFilePath());
+
+    showToast(tr("Subtitle Loaded: %1").arg(info.fileName()));
+}
+
+QString PlayerView::externalSubtitleConfigKey() const
+{
+    if (!m_core)
+    {
+        return QString();
+    }
+    const QString serverId = m_core->serverManager()->activeProfile().id;
+    if (serverId.isEmpty() || m_currentMediaId.isEmpty())
+    {
+        return QString();
+    }
+    return ConfigKeys::forServerMedia(serverId, m_currentMediaId,
+                                      ConfigKeys::PlayerExternalSubtitle);
+}
+
+QString PlayerView::readPersistedExternalSubtitle() const
+{
+    const QString key = externalSubtitleConfigKey();
+    if (key.isEmpty())
+    {
+        return QString();
+    }
+    return ConfigStore::instance()->get<QString>(key, QString()).trimmed();
+}
+
+void PlayerView::persistExternalSubtitle(const QString &absPath)
+{
+    const QString key = externalSubtitleConfigKey();
+    if (key.isEmpty())
+    {
+        return;
+    }
+    ConfigStore::instance()->set(key, absPath);
+    qDebug().noquote()
+        << "[Subtitle][PlayerView] Persist external subtitle"
+        << "| key:" << key
+        << "| path:" << absPath;
+}
+
+void PlayerView::clearPersistedExternalSubtitle()
+{
+    const QString key = externalSubtitleConfigKey();
+    if (key.isEmpty())
+    {
+        return;
+    }
+    const QString existing =
+        ConfigStore::instance()->get<QString>(key, QString()).trimmed();
+    if (existing.isEmpty())
+    {
+        return;
+    }
+    ConfigStore::instance()->set(key, QString());
+    qDebug().noquote()
+        << "[Subtitle][PlayerView] Clear external subtitle record"
+        << "| key:" << key
+        << "| previousPath:" << existing;
+}
+
+void PlayerView::applyPersistedExternalSubtitleIfAny()
+{
+    if (!m_mpvWidget || !m_mpvWidget->controller())
+    {
+        return;
+    }
+
+    const QString persistedPath = readPersistedExternalSubtitle();
+    if (persistedPath.isEmpty())
+    {
+        return;
+    }
+
+    const QFileInfo info(persistedPath);
+    if (!info.exists() || !info.isFile() || !info.isReadable())
+    {
+        qDebug().noquote()
+            << "[Subtitle][PlayerView] Persisted external subtitle missing, "
+               "fallback to default selection"
+            << "| path:" << persistedPath;
+        clearPersistedExternalSubtitle();
+        return;
+    }
+
+    qDebug().noquote()
+        << "[Subtitle][PlayerView] Restore persisted external subtitle"
+        << "| path:" << persistedPath;
+
+    
+    
+    m_mpvWidget->controller()->command(QVariantList{
+        QStringLiteral("sub-add"),
+        QDir::toNativeSeparators(info.absoluteFilePath()),
+        QStringLiteral("auto"),
+        info.fileName(),
+        QString()});
+
+    const int newTrackId = findSubtitleTrackIdByPath(info.absoluteFilePath());
+    if (newTrackId > 0 && m_danmakuController)
+    {
+        m_danmakuController->selectSubtitleTrack(newTrackId);
+    }
+    else
+    {
+        qWarning().noquote()
+            << "[Subtitle][PlayerView] Failed to locate restored subtitle track"
+            << "| path:" << persistedPath;
+    }
+}
+
+QString PlayerView::openPlayerFileDialog(const QString &title,
+                                         const QString &startDir,
+                                         const QString &filter)
+{
+    QFileDialog dialog(this);
+#ifdef Q_OS_LINUX
+    dialog.setOption(QFileDialog::DontUseNativeDialog, true);
+    dialog.setOption(QFileDialog::DontUseCustomDirectoryIcons, true);
+#endif
+    dialog.setWindowTitle(title);
+    dialog.setDirectory(startDir);
+    dialog.setNameFilter(filter);
+    dialog.setFileMode(QFileDialog::ExistingFile);
+    dialog.setAcceptMode(QFileDialog::AcceptOpen);
+
+    QElapsedTimer timer;
+    timer.start();
+    qDebug().noquote()
+        << "[PlayerView] Open local file dialog"
+        << "| title:" << title
+        << "| startDir:" << startDir;
+
+    if (dialog.exec() != QDialog::Accepted)
+    {
+        qDebug().noquote()
+            << "[PlayerView] Local file dialog canceled"
+            << "| title:" << title
+            << "| elapsedMs:" << timer.elapsed();
+        return QString();
+    }
+
+    const QStringList selectedFiles = dialog.selectedFiles();
+    const QString filePath = selectedFiles.isEmpty() ? QString() : selectedFiles.first();
+    qDebug().noquote()
+        << "[PlayerView] Local file dialog accepted"
+        << "| title:" << title
+        << "| elapsedMs:" << timer.elapsed()
+        << "| path:" << filePath;
+    return filePath;
+}
+
+int PlayerView::findSubtitleTrackIdByPath(const QString &absPath) const
+{
+    if (!m_mpvWidget || !m_mpvWidget->controller() || absPath.isEmpty())
+    {
+        return -1;
+    }
+    const QString normalizedTarget = QDir::fromNativeSeparators(absPath);
+    const QVariantList tracks =
+        m_mpvWidget->controller()->getProperty(QStringLiteral("track-list")).toList();
+    for (const QVariant &v : tracks)
+    {
+        const QVariantMap m = v.toMap();
+        if (m.value(QStringLiteral("type")).toString() != QLatin1String("sub"))
+        {
+            continue;
+        }
+        const QString external =
+            m.value(QStringLiteral("external-filename")).toString();
+        if (!external.isEmpty() &&
+            QDir::fromNativeSeparators(external) == normalizedTarget)
+        {
+            return m.value(QStringLiteral("id")).toInt();
+        }
+    }
+    return -1;
 }
 
 void PlayerView::openSubtitleSettingsDialog()
@@ -3648,7 +4124,9 @@ void PlayerView::updateStatisticsDisplay()
     {
         cacheDuration = variantToDouble(cacheState.value(QStringLiteral("cache-duration")));
     }
-    const qint64 cacheSpeed = ctrl->getProperty("cache-speed").toLongLong();
+    const qint64 cacheSpeed = m_useRelayNetworkSpeed
+                                  ? m_effectiveNetworkSpeed
+                                  : ctrl->getProperty("cache-speed").toLongLong();
     addLine(lines, tr("Cache"),
             joinNonEmpty({cacheBytes > 0 ? FileUtils::formatSize(cacheBytes) : QString(),
                           formatDurationValue(cacheDuration),
@@ -4023,7 +4501,24 @@ void PlayerView::playMedia(const QString &mediaId, const QString &title, const Q
 
     m_pendingSeekSeconds = startPositionTicks / 10000000.0;
 
-    m_fullTitle = title;
+    QString displayTitle = title.trimmed();
+    if (!m_currentMediaItem.id.isEmpty())
+    {
+        const QString resolvedTitle =
+            MediaItemUtils::playbackTitle(m_currentMediaItem, displayTitle)
+                .trimmed();
+        if (!resolvedTitle.isEmpty())
+        {
+            displayTitle = resolvedTitle;
+        }
+    }
+    if (displayTitle.isEmpty())
+    {
+        displayTitle = title;
+    }
+
+    m_fullTitle = displayTitle;
+    Q_EMIT playbackTitleChanged(m_fullTitle);
     updateTitleElision();
 
     m_currentPosition = m_pendingSeekSeconds;
@@ -4063,6 +4558,10 @@ void PlayerView::playMedia(const QString &mediaId, const QString &title, const Q
     m_isSeriesMode = false;
     m_seriesId.clear();
     m_seriesName.clear();
+    m_episodeSegments = {};
+    m_introSkipped = false;
+    m_outroSkipped = false;
+    m_segmentsRequested = false;
     clearMediaSwitcherCache();
     updateMediaSwitcherButton();
 
@@ -4072,6 +4571,7 @@ void PlayerView::playMedia(const QString &mediaId, const QString &title, const Q
         m_seriesId = resolvedItem.seriesId;
         m_seriesName = resolvedItem.seriesName;
         updateMediaSwitcherButton();
+        requestIntroDBSegments();
         
         ensureMediaSwitcherDataLoaded();
     }
@@ -4090,8 +4590,10 @@ void PlayerView::playMedia(const QString &mediaId, const QString &title, const Q
                     safeThis->m_isSeriesMode = true;
                     safeThis->m_seriesId = detail.seriesId;
                     safeThis->m_seriesName = detail.seriesName;
+                    safeThis->m_currentMediaItem = detail;
                     safeThis->clearMediaSwitcherCache();
                     safeThis->updateMediaSwitcherButton();
+                    safeThis->requestIntroDBSegments();
                     
                     safeThis->ensureMediaSwitcherDataLoaded();
                     if (safeThis->useHudMediaSwitcher() &&
@@ -4121,7 +4623,9 @@ void PlayerView::playMedia(const QString &mediaId, const QString &title, const Q
     executeFetchLogo(QPointer<PlayerView>(this), m_core, mediaId);
 
     
-    m_mpvWidget->loadMedia(actualStreamUrl);
+    
+    const QString activeServerId = m_core->serverManager()->activeProfile().id;
+    m_mpvWidget->loadMedia(actualStreamUrl, activeServerId);
 
     if (!resolvedItem.id.isEmpty() || !resolvedSourceInfo.id.isEmpty())
     {
@@ -4449,6 +4953,8 @@ void PlayerView::onPositionChanged(double position)
     }
     m_currentPosition = position;
 
+    checkAndSkipSegment(position);
+
     if (!m_progressSlider->isSliderDown())
     {
         m_progressSlider->blockSignals(true);
@@ -4578,6 +5084,10 @@ void PlayerView::onDurationChanged(double duration)
                                                             map["title"].toString(), map["lang"].toString()});
         }
         setProperty("pendingSubtitles", QVariantList()); 
+
+        
+        
+        applyPersistedExternalSubtitleIfAny();
     }
 
     if (m_pendingSeekSeconds > 0 && duration > 0)
@@ -4653,4 +5163,3 @@ QString PlayerView::formatTime(double seconds, double totalSeconds) const
         return t.toString("mm:ss");
     }
 }
-

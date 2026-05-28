@@ -4,6 +4,9 @@
 #include "moderndialogbase.h"
 #include <QString>
 
+class QLabel;
+class QShowEvent;
+
 class ModernMessageBox : public ModernDialogBase {
     Q_OBJECT
 public:
@@ -49,6 +52,9 @@ public:
                          const QString &text,
                          const QString &okText = "OK");
 
+protected:
+    void showEvent(QShowEvent *event) override;
+
 private:
     void setupUi(const QString &title,
                  const QString &text,
@@ -58,6 +64,9 @@ private:
                  IconType iconType,
                  const QString &toggleText = QString(),
                  bool toggleChecked = false);
+    void updateTextLabelHeight();
+
+    QLabel *m_textLabel = nullptr;
     bool m_result = false;
     bool m_toggleChecked = false;
 };

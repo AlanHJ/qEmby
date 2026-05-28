@@ -46,7 +46,7 @@ SliderSpec sliderSpec(SliderKind kind)
     case SliderKind::Density:
         return {20, 100, 1, 10, 100};
     case SliderKind::SpeedScale:
-        return {50, 300, 1, 10, 100};
+        return {50, 300, 1, 10, 50};
     case SliderKind::OffsetMs:
         return {-3000, 3000, 25, 250, 0};
     }

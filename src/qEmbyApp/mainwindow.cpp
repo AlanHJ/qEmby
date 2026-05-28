@@ -125,8 +125,18 @@ MainWindow::MainWindow(QWidget *parent)
     
     m_backClickTimer.invalidate();
 
+#if (defined(Q_OS_MACOS) || defined(Q_OS_MAC)) && \
+    (QT_VERSION >= QT_VERSION_CHECK(6, 9, 0))
+    setWindowFlag(Qt::ExpandedClientAreaHint, true);
+    setWindowFlag(Qt::NoTitleBarBackgroundHint, true);
+    setAttribute(Qt::WA_ContentsMarginsRespectsSafeArea, false);
+#endif
+
     auto agent = new QWK::WidgetWindowAgent(this);
     agent->setup(this);
+#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
+    agent->setWindowAttribute("no-system-buttons", false);
+#endif
 
     QPalette pal = palette();
     pal.setColor(QPalette::Window, QColor(241, 245, 249)); 
@@ -143,6 +153,8 @@ MainWindow::MainWindow(QWidget *parent)
     auto iconButton = new QWK::WindowButton();
     iconButton->setObjectName(QStringLiteral("icon-button"));
     iconButton->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
+    iconButton->setIconNormal(qApp->windowIcon());
+    iconButton->setIconSize(QSize(16, 16));
 
     auto themeButton = new QWK::WindowButton();
     themeButton->setCheckable(true);
@@ -237,38 +249,90 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     auto windowBar = new QWK::WindowBar();
+#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
+    windowBar->layout()->setContentsMargins(80, 0, 0, 0);
+#endif
     windowBar->setIconButton(iconButton);
     windowBar->setPinButton(themeButton);
+#if !defined(Q_OS_MACOS) && !defined(Q_OS_MAC)
     windowBar->setMinButton(minButton);
     windowBar->setMaxButton(maxButton);
     windowBar->setCloseButton(closeButton);
+#else
+    minButton->setParent(windowBar);
+    maxButton->setParent(windowBar);
+    closeButton->setParent(windowBar);
+    minButton->hide();
+    maxButton->hide();
+    closeButton->hide();
+#endif
     windowBar->setTitleLabel(titleLabel);
+#if !defined(Q_OS_MACOS) && !defined(Q_OS_MAC)
     windowBar->setBackButton(backButton);
     windowBar->setHomeButton(homeButton);
     windowBar->setFavButton(favButton);
+#endif
     windowBar->setHostWidget(this);
 
     
     m_globalSearchBox = new QLineEdit(windowBar);
     m_globalSearchBox->setObjectName("titlebar-search");
     m_globalSearchBox->setPlaceholderText(tr("Search..."));
+#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
+    m_globalSearchBox->setFixedSize(380, 30);
+#else
     m_globalSearchBox->setFixedSize(380, 32); 
+#endif
     m_globalSearchBox->setClearButtonEnabled(true);
     
     auto *searchAction = new QAction(QIcon(":/svg/light/search.svg"), tr("Search"), this);
     m_globalSearchBox->addAction(searchAction, QLineEdit::LeadingPosition);
     m_globalSearchBox->hide();
 
+    auto *macCenteredTitleLabel = new QLabel(windowBar);
+    macCenteredTitleLabel->setObjectName("mac-title-label");
+    macCenteredTitleLabel->setAlignment(Qt::AlignCenter);
+    macCenteredTitleLabel->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Preferred);
+    macCenteredTitleLabel->hide();
+
     connect(m_globalSearchBox, &QLineEdit::returnPressed, this,
             [this]() { submitGlobalSearch(m_globalSearchBox->text()); });
 
     auto *centerContainer = new QWidget(windowBar);
     auto *centerLayout = new QHBoxLayout(centerContainer);
+#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
+    centerLayout->setContentsMargins(0, 1, 0, 1);
+#else
     centerLayout->setContentsMargins(0, 0, 0, 0);
+#endif
     centerLayout->setSpacing(0);
+
+#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
+    auto *macTitlebarNavSpacer = new QWidget(centerContainer);
+    macTitlebarNavSpacer->setObjectName("mac-titlebar-nav-spacer");
+    macTitlebarNavSpacer->setFixedWidth(150);
+    macTitlebarNavSpacer->hide();
+
+    auto *macTitlebarNav = new QWidget(centerContainer);
+    macTitlebarNav->setObjectName("mac-titlebar-nav");
+    auto *macTitlebarNavLayout = new QHBoxLayout(macTitlebarNav);
+    macTitlebarNavLayout->setContentsMargins(0, 0, 0, 0);
+    macTitlebarNavLayout->setSpacing(0);
+    macTitlebarNavLayout->addWidget(backButton);
+    macTitlebarNavLayout->addWidget(homeButton);
+    macTitlebarNavLayout->addWidget(favButton);
+    macTitlebarNav->setFixedWidth(150);
+    macTitlebarNav->hide();
+
+    centerLayout->addWidget(macTitlebarNavSpacer);
+#endif
     centerLayout->addStretch();
     centerLayout->addWidget(m_globalSearchBox, 0, Qt::AlignVCenter); 
+    centerLayout->addWidget(macCenteredTitleLabel, 0, Qt::AlignVCenter);
     centerLayout->addStretch();
+#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
+    centerLayout->addWidget(macTitlebarNav);
+#endif
     centerContainer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
 
     windowBar->setCenterWidget(centerContainer);
@@ -279,12 +343,19 @@ MainWindow::MainWindow(QWidget *parent)
     agent->setHitTestVisible(themeButton, true);
     agent->setHitTestVisible(m_globalSearchBox, true); 
     agent->setSystemButton(QWK::WindowAgentBase::WindowIcon, iconButton);
+#if !defined(Q_OS_MACOS) && !defined(Q_OS_MAC)
     agent->setSystemButton(QWK::WindowAgentBase::Minimize, minButton);
     agent->setSystemButton(QWK::WindowAgentBase::Maximize, maxButton);
     agent->setSystemButton(QWK::WindowAgentBase::Close, closeButton);
+#endif
     agent->setSystemButton(QWK::WindowAgentBase::Back, backButton);
     agent->setSystemButton(QWK::WindowAgentBase::Home, homeButton);
     agent->setSystemButton(QWK::WindowAgentBase::Fav, favButton);
+#if defined(Q_OS_MAC)
+    agent->setSystemButtonAreaCallback([](const QSize &size) {
+        return QRect(QPoint(0, 0), QSize(80, size.height()));
+    });
+#endif
 
     setMenuWidget(windowBar);
 
@@ -317,6 +388,10 @@ MainWindow::MainWindow(QWidget *parent)
         auto icon = findChild<QWK::WindowButton*>("icon-button");
         auto home = findChild<QWK::WindowButton*>("home-button");
         auto fav = findChild<QWK::WindowButton*>("fav-button");
+        auto title = findChild<QLabel*>("win-title-label");
+        auto macTitle = findChild<QLabel*>("mac-title-label");
+        auto macNav = findChild<QWidget*>("mac-titlebar-nav");
+        auto macNavSpacer = findChild<QWidget*>("mac-titlebar-nav-spacer");
         
         
         if (currentView == m_homeView) {
@@ -362,18 +437,64 @@ MainWindow::MainWindow(QWidget *parent)
 
         QVariant customTitle = currentView->property("viewTitle");
         if (customTitle.isValid()) {
-            if (auto tLabel = findChild<QLabel*>("win-title-label")) {
-                tLabel->setText(customTitle.toString());
+            if (title) {
+                title->setText(customTitle.toString());
+            }
+            if (macTitle) {
+                macTitle->setText(customTitle.toString());
             }
         }
+
+#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
+        const bool useCenteredLoginTitle = (currentView == m_loginView);
+        const bool showMacTitlebarNav = (currentView == m_homeView);
+        if (icon) {
+            icon->setVisible(false);
+        }
+        if (title) {
+            title->setVisible(false);
+        }
+        if (macTitle) {
+            macTitle->setVisible(useCenteredLoginTitle);
+        }
+        if (macNav) {
+            macNav->setVisible(showMacTitlebarNav);
+        }
+        if (macNavSpacer) {
+            macNavSpacer->setVisible(showMacTitlebarNav);
+        }
+#else
+        if (macTitle) {
+            macTitle->hide();
+        }
+#endif
     });
 
     
-    connect(m_homeView, &HomeView::immersiveStateChanged, this, [this](bool isImmersive) {
+    connect(m_homeView, &HomeView::immersiveStateChanged, this, [this, agent](bool isImmersive) {
         if (this->menuWidget()) {
             this->menuWidget()->setVisible(!isImmersive);
         }
+#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
+        if (!isImmersive) {
+            agent->setWindowAttribute("no-system-buttons", false);
+        }
+#else
+        Q_UNUSED(agent);
+#endif
     });
+
+    connect(m_homeView, &HomeView::playerChromeVisibilityChanged, this,
+            [this, agent](bool visible) {
+#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
+                if (m_homeView && m_homeView->activePlayerView()) {
+                    agent->setWindowAttribute("no-system-buttons", !visible);
+                }
+#else
+                Q_UNUSED(visible);
+                Q_UNUSED(agent);
+#endif
+            });
 
     
     connect(m_homeView, &HomeView::canNavigateBackChanged, this, [this](bool canBack) {
@@ -566,6 +687,18 @@ MainWindow::MainWindow(QWidget *parent)
     minButton->hide();
     maxButton->hide();
     m_viewStack->setCurrentWidget(m_loginView);
+#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
+    iconButton->hide();
+    titleLabel->hide();
+    macCenteredTitleLabel->setText(m_loginView->property("viewTitle").toString());
+    macCenteredTitleLabel->show();
+    if (macTitlebarNav) {
+        macTitlebarNav->hide();
+    }
+    if (macTitlebarNavSpacer) {
+        macTitlebarNavSpacer->hide();
+    }
+#endif
     resize(m_defaultWidth, m_defaultHeight);
 
     
@@ -784,8 +917,10 @@ void MainWindow::navigateToHome()
         bool shouldMaximize = (windowState == "maximized");
 
         setMinimumSize(900, 600);
+#if !defined(Q_OS_MACOS) && !defined(Q_OS_MAC)
         if (auto* minBtn = findChild<QWidget*>("min-button")) minBtn->show();
         if (auto* maxBtn = findChild<QWidget*>("max-button")) maxBtn->show();
+#endif
 
         m_viewStack->setCurrentWidget(m_homeView);
 
@@ -859,8 +994,10 @@ void MainWindow::navigateToHome()
             
             setMinimumSize(900, 600);
             
+#if !defined(Q_OS_MACOS) && !defined(Q_OS_MAC)
             if (auto* minBtn = findChild<QWidget*>("min-button")) minBtn->show();
             if (auto* maxBtn = findChild<QWidget*>("max-button")) maxBtn->show();
+#endif
 
             
             m_loginView->setGraphicsEffect(nullptr);
@@ -902,8 +1039,10 @@ void MainWindow::navigateToLogin() {
     
     bool reduceAnimations = ConfigStore::instance()->get<bool>(ConfigKeys::UiAnimations, false);
     if (reduceAnimations) {
+#if !defined(Q_OS_MACOS) && !defined(Q_OS_MAC)
         if (auto* m = findChild<QWidget*>("min-button")) m->hide();
         if (auto* x = findChild<QWidget*>("max-button")) x->hide();
+#endif
 
         if (isMaximized()) showNormal();
 
@@ -934,8 +1073,10 @@ void MainWindow::navigateToLogin() {
 
     connect(fadeOut, &QPropertyAnimation::finished, this, [this]() {
         
+#if !defined(Q_OS_MACOS) && !defined(Q_OS_MAC)
         if (auto* m = findChild<QWidget*>("min-button")) m->hide();
         if (auto* x = findChild<QWidget*>("max-button")) x->hide();
+#endif
 
         
         if (isMaximized()) {

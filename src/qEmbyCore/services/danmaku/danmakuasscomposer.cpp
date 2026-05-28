@@ -2,6 +2,7 @@
 
 #include <QDebug>
 #include <QFont>
+#include <QFontDatabase>
 #include <QFontMetricsF>
 #include <QHash>
 #include <QTextStream>
@@ -31,6 +32,34 @@ constexpr qint64 kMinScrollDurationMs = 2200;
 constexpr qint64 kMaxScrollDurationMs = 22000;
 constexpr double kMaxScrollQueueDelayRatio = 0.42;
 constexpr qint64 kMaxStaticQueueDelayMs = 1800;
+
+
+
+
+QString findCjkFontFamily()
+{
+    QFontDatabase db;
+    const QStringList families = db.families();
+    const QStringList preferredCjk = {
+        QStringLiteral("PingFang SC"),
+        QStringLiteral("PingFang TC"),
+        QStringLiteral("Heiti SC"),
+        QStringLiteral("STHeiti"),
+        QStringLiteral("Microsoft YaHei UI"),
+        QStringLiteral("Microsoft YaHei"),
+        QStringLiteral("SimHei"),
+        QStringLiteral("Noto Sans CJK SC"),
+        QStringLiteral("Noto Sans CJK TC"),
+        QStringLiteral("WenQuanYi Micro Hei"),
+        QStringLiteral("WenQuanYi Zen Hei"),
+    };
+    for (const QString &family : preferredCjk) {
+        if (families.contains(family)) {
+            return family;
+        }
+    }
+    return QStringLiteral("sans-serif");
+}
 
 QString assTime(qint64 milliseconds)
 {
@@ -260,7 +289,7 @@ QString DanmakuAssComposer::composeAss(const QList<DanmakuComment> &comments,
                            std::max<qint64>(1, referenceDurationMs)));
 
     QFont font;
-    font.setFamily(QFont().family());
+    font.setFamily(findCjkFontFamily());
     font.setPixelSize(baseFontSize);
     font.setWeight(static_cast<QFont::Weight>(fontWeight));
     QHash<int, QFontMetricsF> fontMetricsCache;

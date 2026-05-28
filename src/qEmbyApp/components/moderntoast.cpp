@@ -242,7 +242,7 @@ void ModernToast::paintEvent(QPaintEvent *event) {
     painter.translate(-center);
 
     painter.drawText(textRect(),
-                     Qt::AlignHCenter | Qt::AlignVCenter | Qt::TextWordWrap,
+                     Qt::AlignHCenter | Qt::AlignVCenter | Qt::TextDontClip,
                      m_wrappedMessage);
 }
 
@@ -323,10 +323,12 @@ void ModernToast::showWithAnimation(const QString &msg, int durationMs) {
         setWindowOpacity(1.0);
 
         m_popSequentialGroup->stop();
+        setTextScale(1.0);
+        setGeometry(m_baseGeometry);
 
         QRect expandedRect = m_baseGeometry.adjusted(-dx, -dy, dx, dy);
 
-        m_shellExpand->setStartValue(geometry());
+        m_shellExpand->setStartValue(m_baseGeometry);
         m_shellExpand->setEndValue(expandedRect);
 
         m_textExpand->setStartValue(m_textScale);

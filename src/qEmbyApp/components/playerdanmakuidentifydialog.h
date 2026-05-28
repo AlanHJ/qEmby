@@ -42,11 +42,13 @@ private:
     QCoro::Task<void> searchMatches(QString queryText);
     void triggerSearch();
     void rebuildResultList();
+    void applyResultFilter();
     void refreshDetail();
     void updateLoadingOverlayGeometry();
     void updateUiState();
     void updateApplyButtonState();
     void updateStatusText(const QString &text);
+    void updateResultStatusText();
 
     QEmbyCore *m_core = nullptr;
     DanmakuMediaContext m_context;
@@ -56,6 +58,7 @@ private:
     QPushButton *m_searchButton = nullptr;
     QLabel *m_statusLabel = nullptr;
     QWidget *m_resultListContainer = nullptr;
+    QLineEdit *m_filterEdit = nullptr;
     QListWidget *m_resultList = nullptr;
     QLabel *m_detailLabel = nullptr;
     LoadingOverlay *m_loadingOverlay = nullptr;
@@ -63,6 +66,8 @@ private:
     bool m_loaded = false;
     bool m_isLoading = false;
     QList<DanmakuMatchCandidate> m_results;
+    QString m_filterText;
+    int m_visibleResultCount = 0;
     std::optional<QCoro::Task<void>> m_pendingTask;
     QString m_activeTargetId;
     QString m_activeEndpointId;

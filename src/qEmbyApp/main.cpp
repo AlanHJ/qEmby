@@ -1,10 +1,13 @@
 #include "mainwindow.h"
 
 #include <QApplication>
+#include <QIcon>
 #include <QLocale>
 #include <QSurfaceFormat>
 #include <QThread>
 #include <QTranslator>
+#include "api/proxymanager.h"
+#include "components/mpvcontroller.h"
 #include "managers/languagemanager.h"
 #include "managers/logmanager.h"
 
@@ -37,13 +40,40 @@ int main(int argc, char *argv[]) {
   a.setApplicationVersion(APP_VERSION);
   a.setOrganizationName("AlanHJ");
   a.setOrganizationDomain("github.com/AlanHJ/qEmby");
-  a.setWindowIcon(QIcon(":/svg/qemby_logo.svg"));
+#if !defined(Q_OS_MACOS) && !defined(Q_OS_MAC)
+  QGuiApplication::setDesktopFileName(QStringLiteral("qemby"));
+  const QIcon appIcon(QStringLiteral(":/svg/qemby_logo.svg"));
+  a.setWindowIcon(appIcon);
+#endif
 
-  LanguageManager::instance()->init();
   LogManager::instance()->init();
+  LanguageManager::instance()->init();
+
+  
+  
+  ProxyManager::installApplicationFactory();
 
   MainWindow w;
+#if !defined(Q_OS_MACOS) && !defined(Q_OS_MAC)
+  w.setWindowIcon(appIcon);
+#endif
   w.show();
+
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  MpvController::warmupOnce();
+
   int ret = a.exec();
   
   return ret;

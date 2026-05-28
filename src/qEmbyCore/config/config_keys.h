@@ -21,6 +21,11 @@ inline QString forCategory(const QString& serverId, const QString& categoryId, c
 }
 
 
+inline QString forServerMedia(const QString& serverId, const QString& mediaId, const char* baseKey) {
+    return QStringLiteral("%1/%2/%3").arg(QString::fromLatin1(baseKey), serverId, mediaId);
+}
+
+
 
 constexpr const char* Language = "general/language";
 constexpr const char* RememberServer = "general/remember_server";
@@ -33,11 +38,26 @@ constexpr const char* ImageCacheLimit = "general/image_cache_limit";
 
 
 
+constexpr const char* ProxyMode             = "network/proxy_mode";
+constexpr const char* ProxyType             = "network/proxy_type";
+constexpr const char* ProxyHost             = "network/proxy_host";
+constexpr const char* ProxyPort             = "network/proxy_port";
+constexpr const char* ProxyUsername         = "network/proxy_username";
+constexpr const char* ProxyPassword         = "network/proxy_password";
+constexpr const char* ProxyBypassLocalhost  = "network/proxy_bypass_local";
+
+
+
+
 constexpr const char* ThemeMode = "appearance/theme_mode";
 constexpr const char* DefaultLibraryView = "appearance/default_library_view";
 constexpr const char* FontSize = "appearance/font_size";
 constexpr const char* SidebarPosition = "appearance/sidebar_position";
 constexpr const char* SidebarPinned = "appearance/sidebar_pinned";
+constexpr const char* SidebarCustomEnabled = "appearance/sidebar_custom_enabled";
+constexpr const char* SidebarHideSearch = "appearance/sidebar_hide_search";
+constexpr const char* SidebarHideHome = "appearance/sidebar_hide_home";
+constexpr const char* SidebarHideFavorites = "appearance/sidebar_hide_favorites";
 constexpr const char* StartupWindowState = "appearance/startup_window_state";
 constexpr const char* UiAnimations = "appearance/ui_animations";
 constexpr const char* SnapshotNavigation = "appearance/snapshot_navigation";
@@ -91,6 +111,8 @@ constexpr const char* PlayerMouseEdgeLongPress =
 constexpr const char* PlayerMediaSwitcherMode =
     "player/media_switcher_mode";
 constexpr const char* PlayerClickToPause = "player/click_to_pause";
+constexpr const char* PlayerSkipIntro = "player/skip_intro";
+constexpr const char* PlayerSkipOutro = "player/skip_outro";
 constexpr const char* PlayerIndependentWindow = "player/independent_window";
 constexpr const char* PlayerUseMpvConf = "player/use_mpv_conf";
 constexpr const char* PlayerVolumeLevel = "player/volume_level";
@@ -104,6 +126,9 @@ constexpr const char* PlayerSubtitleOutlineSize =
 constexpr const char* PlayerSubtitleShadowOffset =
     "player/subtitle_shadow_offset";
 constexpr const char* PlayerSubtitleScale = "player/subtitle_scale";
+constexpr const char* PlayerLastSubtitleDir = "player/last_subtitle_dir";
+
+constexpr const char* PlayerExternalSubtitle = "player/external_subtitle";
 constexpr const char* PlayerDanmakuEnabled = "player/danmaku_enabled";
 constexpr const char* PlayerDanmakuRenderer = "player/danmaku_renderer";
 constexpr const char* PlayerDanmakuOpacity = "player/danmaku_opacity";

@@ -75,6 +75,17 @@ QWK--WindowBar>QLabel#win-title-label {
     font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
 }
 
+QLabel#mac-title-label {
+    padding: 0;
+    border: none;
+    color: #1F2937;
+    background-color: transparent;
+    min-height: 32px;
+    font-size: 15px;
+    font-weight: 700;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
 /* =========================================
    搜索框组件：全新现代胶囊风格与微交互
    ========================================= */
@@ -283,7 +294,7 @@ QListView#SearchHistoryCompleterPopup QScrollBar::sub-page:vertical {
 }
 
 
-QWK--WindowBar>QAbstractButton[system-button=true] {
+QWK--WindowBar QAbstractButton[system-button=true] {
     qproperty-iconSize: 12px 12px;
     min-width: 50px;
     border: none;
@@ -292,71 +303,75 @@ QWK--WindowBar>QAbstractButton[system-button=true] {
     background-color: transparent;
 }
 
-QWK--WindowBar>QAbstractButton#pin-button {
+QWK--WindowBar QAbstractButton#pin-button {
     qproperty-iconNormal: url(":/svg/light/pin.svg");
     qproperty-iconChecked: url(":/svg/light/pin-fill.svg");
     qproperty-iconSize: 15px 15px;
 }
 
-QWK--WindowBar>QAbstractButton#back-button:hover,
-QWK--WindowBar>QAbstractButton#home-button:hover,
-QWK--WindowBar>QAbstractButton#fav-button:hover,
-QWK--WindowBar>QAbstractButton#pin-button:hover,
-QWK--WindowBar>QAbstractButton#pin-button:pressed,
-QWK--WindowBar>QAbstractButton#theme-button:hover,
-QWK--WindowBar>QAbstractButton#theme-button:pressed,
-QWK--WindowBar>QAbstractButton#min-button:hover,
-QWK--WindowBar>QAbstractButton#min-button:pressed,
-QWK--WindowBar>QAbstractButton#max-button:hover,
-QWK--WindowBar>QAbstractButton#max-button:pressed {
+QWK--WindowBar QAbstractButton#back-button:hover,
+QWK--WindowBar QAbstractButton#home-button:hover,
+QWK--WindowBar QAbstractButton#fav-button:hover,
+QWK--WindowBar QAbstractButton#pin-button:hover,
+QWK--WindowBar QAbstractButton#pin-button:pressed,
+QWK--WindowBar QAbstractButton#theme-button:hover,
+QWK--WindowBar QAbstractButton#theme-button:pressed,
+QWK--WindowBar QAbstractButton#min-button:hover,
+QWK--WindowBar QAbstractButton#min-button:pressed,
+QWK--WindowBar QAbstractButton#max-button:hover,
+QWK--WindowBar QAbstractButton#max-button:pressed {
     background-color: rgba(0, 0, 0, 8%);
 }
 
-QWK--WindowBar>QAbstractButton#fav-button {
+QWK--WindowBar QAbstractButton#fav-button {
     margin-right: 10px;
 }
 
+QWidget#mac-titlebar-nav QAbstractButton#fav-button {
+    margin-right: 0px;
+}
 
-QWK--WindowBar>QAbstractButton#back-button:pressed,
-QWK--WindowBar>QAbstractButton#home-button:pressed,
-QWK--WindowBar>QAbstractButton#fav-button:pressed {
+
+QWK--WindowBar QAbstractButton#back-button:pressed,
+QWK--WindowBar QAbstractButton#home-button:pressed,
+QWK--WindowBar QAbstractButton#fav-button:pressed {
     background-color: rgba(0, 0, 0, 18%);
 }
 
-QWK--WindowBar>QAbstractButton#min-button {
+QWK--WindowBar QAbstractButton#min-button {
     qproperty-iconNormal: url(":/svg/light/minimize.svg");
 }
 
-QWK--WindowBar>QAbstractButton#back-button {
+QWK--WindowBar QAbstractButton#back-button {
     qproperty-iconNormal: url(":/svg/light/arrow-left.svg");
 }
 
-QWK--WindowBar>QAbstractButton#home-button {
+QWK--WindowBar QAbstractButton#home-button {
     qproperty-iconNormal: url(":/svg/light/bar-home.svg");
 }
 
-QWK--WindowBar>QAbstractButton#fav-button {
+QWK--WindowBar QAbstractButton#fav-button {
     qproperty-iconNormal: url(":/svg/light/bar-heart.svg");
 }
 
 
 
-QWK--WindowBar>QAbstractButton#max-button {
+QWK--WindowBar QAbstractButton#max-button {
     qproperty-iconNormal: url(":/svg/light/maximize.svg");
     qproperty-iconChecked: url(":/svg/light/restore.svg");
 }
 
-QWK--WindowBar>QAbstractButton#close-button {
+QWK--WindowBar QAbstractButton#close-button {
     qproperty-iconNormal: url(":/svg/light/close.svg");
 }
 
-QWK--WindowBar>QAbstractButton#close-button:hover,
-QWK--WindowBar>QAbstractButton#close-button:pressed {
+QWK--WindowBar QAbstractButton#close-button:hover,
+QWK--WindowBar QAbstractButton#close-button:pressed {
     background-color: #E81123;
     qproperty-iconNormal: url(":/svg/close.svg");
 }
 
-QWK--WindowBar>QAbstractButton#icon-button {
+QWK--WindowBar QAbstractButton#icon-button {
     qproperty-iconNormal: url(":/svg/qemby_logo.svg");
     qproperty-iconSize: 18px 18px;
     min-width: 40px;
@@ -823,6 +838,146 @@ QLabel#app-version-label {
     font-weight: 500;
     color: #9CA3AF;
     letter-spacing: 0.5px;
+}
+
+/* ── 登录页：端口框右侧的代理图标按钮（与 QLineEdit 同款视觉与尺寸） ── */
+QWidget#login-add-page QPushButton#login-proxy-icon-btn {
+    background-color: #FFFFFF;
+    border: 1px solid #CBD5E1;
+    border-radius: 8px;
+    padding: 5px;
+    min-height: 24px;
+    min-width: 24px;
+}
+
+QWidget#login-add-page QPushButton#login-proxy-icon-btn:hover {
+    background-color: #F8FAFC;
+    border-color: #94A3B8;
+}
+
+QWidget#login-add-page QPushButton#login-proxy-icon-btn:pressed {
+    background-color: #EFF6FF;
+    border-color: #3B82F6;
+}
+
+/* ── 登录页 footer：云同步图标按钮（扁平图标，纯透明背景，悬停柔和高亮） ── */
+QPushButton#login-cloud-sync-btn {
+    background-color: transparent;
+    border: none;
+    border-radius: 14px;
+    padding: 0px;
+}
+
+QPushButton#login-cloud-sync-btn:hover {
+    background-color: rgba(15, 23, 42, 0.06);
+}
+
+QPushButton#login-cloud-sync-btn:pressed {
+    background-color: rgba(59, 130, 246, 0.14);
+}
+
+/* ── 代理设置对话框（继承 ModernDialogBase） ──
+   主要复用 LibAdvancedPanel / ManageCardTitle / ManageInfoKey / ManageLibInput
+   等通用样式，这里仅保留少量对话框专属的 hint 与 test status 样式。 */
+
+/* Global 模式顶部说明横幅（PerServer 模式下不显示） */
+QLabel#ProxyDialogHint {
+    color: #64748B;
+    font-size: 12px;
+    padding: 2px 2px 4px 2px;
+}
+
+/* 测试连接状态文本：默认中性色，根据 [status] 动态着色 */
+QLabel#ProxyDialogTestStatus {
+    font-size: 12px;
+    color: #64748B;
+}
+
+QLabel#ProxyDialogTestStatus[status="ok"] {
+    color: #16A34A;
+}
+
+QLabel#ProxyDialogTestStatus[status="error"] {
+    color: #DC2626;
+}
+
+QLabel#ProxyDialogTestStatus[status="pending"] {
+    color: #CA8A04;
+}
+
+/* 代理对话框内的 ModernComboBox：与登录页 login-protocol-combo 同款紧凑外观，
+   避免落入 Qt 原生默认样式（视觉偏高、不一致） */
+#ProxySettingsDialog ModernComboBox {
+    background-color: #FFFFFF;
+    border: 1px solid #CBD5E1;
+    border-radius: 8px;
+    color: #1E293B;
+    font-size: 13px;
+    font-weight: 500;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    padding: 5px 32px 5px 16px;
+    min-height: 24px;
+    selection-background-color: transparent;
+}
+
+#ProxySettingsDialog ModernComboBox:hover {
+    background-color: #F8FAFC;
+    border-color: #94A3B8;
+}
+
+#ProxySettingsDialog ModernComboBox:focus {
+    background-color: #EFF6FF;
+    border-color: #3B82F6;
+    outline: none;
+}
+
+#ProxySettingsDialog ModernComboBox:disabled {
+    color: #94A3B8;
+    background-color: #F1F5F9;
+    border-color: #E2E8F0;
+}
+
+#ProxySettingsDialog ModernComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: center right;
+    width: 32px;
+    border: none;
+    background: transparent;
+}
+
+#ProxySettingsDialog ModernComboBox::down-arrow {
+    image: url(":/svg/light/chevron-down.svg");
+    width: 14px;
+    height: 14px;
+}
+
+#ProxySettingsDialog ModernComboBox QAbstractItemView {
+    background-color: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 8px;
+    color: #334155;
+    font-size: 13px;
+    outline: none;
+    selection-background-color: rgba(59, 130, 246, 0.10);
+    selection-color: #2563EB;
+    padding: 4px;
+}
+
+#ProxySettingsDialog ModernComboBox QAbstractItemView::item {
+    padding: 5px 12px;
+    border-radius: 6px;
+    color: #334155;
+}
+
+#ProxySettingsDialog ModernComboBox QAbstractItemView::item:hover {
+    background-color: #F1F5F9;
+    color: #0F172A;
+}
+
+#ProxySettingsDialog ModernComboBox QAbstractItemView::item:selected,
+#ProxySettingsDialog ModernComboBox QAbstractItemView::item:selected:hover {
+    background-color: rgba(59, 130, 246, 0.10);
+    color: #2563EB;
 }
 
 /* =========================================
@@ -1416,6 +1571,21 @@ QWidget#floating-sidebar[pinned="true"] QLabel#sidebar-user-name {
     font-size: 11px;
 }
 
+QPushButton#sidebar-icon-btn {
+    background-color: transparent;
+    border: none;
+    border-radius: 6px;
+    padding: 0px;
+}
+
+QPushButton#sidebar-icon-btn:hover {
+    background-color: rgba(15, 23, 42, 0.06);
+}
+
+QPushButton#sidebar-icon-btn:pressed {
+    background-color: rgba(59, 130, 246, 0.14);
+}
+
 QLabel#sidebar-title {
     color: #6B7280;
     /* Tailwind Gray 500 */
@@ -1880,10 +2050,11 @@ QPushButton#detail-genre-tag {
     font-size: 12px;
     /* 从 14px 降级到更精致的 12px */
     font-weight: 600;
-    padding: 4px 12px;
-    /* 收缩内边距，让高度降低 */
-    border-radius: 12px;
-    /* 纯圆角匹配更低的高度 */
+    min-height: 28px;
+    max-height: 28px;
+    padding: 0px 12px;
+    /* 固定标签高度，避免 macOS 按全局 QPushButton 内边距计算行高 */
+    border-radius: 14px;
     border: 1px solid #E5E7EB;
 }
 
@@ -2690,13 +2861,25 @@ QLabel#playerMouseEdgeIndicatorText {
     /* 剥夺系统级默认的 Menu Padding */
 }
 
-/* 2. 背景、圆角与边框全部由内部的 ScrollArea 接管 */
+/* 2. 边框与圆角由 QScrollArea 承担，background 留给 viewport 直接画 */
 QScrollArea#modernMenuScrollArea {
-    background-color: rgba(30, 30, 30, 0.95);
-    /* 半透明高雅底色 */
+    background: transparent;
+    /* 让 QScrollArea 自身不画背景；viewport 自己负责玻璃色。
+       原因：light 主题下 palette Base = #FFFFFF，且 Qt 把 QScrollArea
+       的 background QSS 转发到 viewport 这条路径在 Win11 native style
+       下不稳定，导致 light 主题菜单看起来变白底。直接让 viewport
+       自己承担 background 才是最稳妥的方案。 */
     border: 1px solid rgba(255, 255, 255, 0.1);
-    /* 极细描边 */
     border-radius: 6px;
+}
+
+/* viewport 保持透明，让外层 ModernScrollPanel::paintEvent 自绘的
+   玻璃 + 圆角 + 描边透出来。
+   light 主题下尤其依赖此方案 —— Qt 把 QSS background 转发到 viewport
+   或直接对 viewport 应用 QSS background-color 在 Win11 native style 路径下
+   都不稳定，唯一靠谱的方式就是 cpp 自绘。 */
+QWidget#modernMenuViewport {
+    background: transparent;
 }
 
 QWidget#modernMenuContainer {
@@ -2709,9 +2892,12 @@ QPushButton#modernMenuItemBtn {
     color: #E0E0E0;
     border: none;
     border-radius: 4px;
+    /* 与 modernscrollpanel.cpp 中 kMenuItemMinHeight 同步，
+       避免 QSS 与 C++ 在跨平台下出现项高失配的"挤压"观感。 */
+    min-height: 42px;
 
     text-align: left;
-    padding-left: 6px;
+    padding: 0px 0px 0px 6px;
     font-size: 13px;
 }
 
@@ -2720,29 +2906,42 @@ QPushButton#modernMenuItemBtn:hover {
     color: #FFFFFF;
 }
 
-/* 4. 微型隐藏式滚动条 */
-QScrollArea#modernMenuScrollArea QScrollBar:vertical {
+/* 4. 微型隐藏式滚动条
+   用直接 ID 选择器 (QScrollBar#modernMenuScrollBar) 命中，
+   避开「QScrollArea#... QScrollBar::handle」后代+子控件叠加时
+   全局 QScrollBar::handle 反而胜出的 specificity 陷阱。
+   light 主题全局 handle 是 rgba(15,23,42,0.15) 近黑色，落在
+   rgba(30,30,30,0.95) 黑色玻璃菜单上几乎隐形，必须强制覆盖。 */
+/* ModernMenuScrollBar 总宽度 10px，跟项目全局 QScrollBar 风格一致。
+   handle 实际宽度由 cpp 自绘控制：默认 4px、hover/drag 时撑到 8px（变粗）。 */
+QScrollBar#modernMenuScrollBar:vertical {
     background: transparent;
-    width: 4px;
-    margin: 2px 2px 2px 0;
+    width: 10px;
+    margin: 3px 3px 3px 0;
+    border: none;
 }
 
-QScrollArea#modernMenuScrollArea QScrollBar::handle:vertical {
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 2px;
-    min-height: 20px;
+QScrollBar#modernMenuScrollBar::handle:vertical {
+    background: rgba(255, 255, 255, 0.45);
+    border-radius: 3px;
+    min-height: 28px;
+    /* 显式归零，覆盖全局规则的 margin: 0px 3px，否则会被压缩成 0 宽不可见 */
+    margin: 0px;
 }
 
-QScrollArea#modernMenuScrollArea QScrollBar::handle:vertical:hover {
-    background: rgba(255, 255, 255, 0.4);
+QScrollBar#modernMenuScrollBar::handle:vertical:hover,
+QScrollBar#modernMenuScrollBar::handle:vertical:pressed {
+    background: rgba(255, 255, 255, 0.7);
+    margin: 0px;
 }
 
-QScrollArea#modernMenuScrollArea QScrollBar::add-line:vertical,
-QScrollArea#modernMenuScrollArea QScrollBar::sub-line:vertical,
-QScrollArea#modernMenuScrollArea QScrollBar::add-page:vertical,
-QScrollArea#modernMenuScrollArea QScrollBar::sub-page:vertical {
+QScrollBar#modernMenuScrollBar::add-line:vertical,
+QScrollBar#modernMenuScrollBar::sub-line:vertical,
+QScrollBar#modernMenuScrollBar::add-page:vertical,
+QScrollBar#modernMenuScrollBar::sub-page:vertical {
     height: 0px;
     background: none;
+    border: none;
 }
 
 /* =========================================
@@ -2823,120 +3022,6 @@ LoadingOverlay {
     qproperty-sweepColor: #3B82F6;
 }
 
-/* =======================================================
-   设置模块 (Settings Module) - 明亮模式 (Light Theme)
-   ======================================================= */
-
-/* 1. 设置项卡片容器 */
-#SettingsCard {
-    background-color: rgba(0, 0, 0, 0.03);
-    /* 半透明微黑，在浅色背景上形成卡片质感 */
-    border-radius: 10px;
-    /* 可选: border: 1px solid #E5E5E5; 如果你喜欢带边框的卡片 */
-}
-
-#SettingsCard:hover {
-    background-color: rgba(0, 0, 0, 0.06);
-    /* 鼠标悬停时加深一点点 */
-}
-
-/* 2. 设置项标题 */
-#SettingsCardTitle {
-    font-size: 15px;
-    font-weight: 600;
-    color: #1A1A1A;
-    /* 接近黑色的深灰，避免纯黑刺眼 */
-}
-
-/* 3. 设置项描述文本 */
-#SettingsCardDesc {
-    font-size: 13px;
-    color: #666666;
-    /* 中度灰色 */
-}
-
-/* 4. 现代拨动开关 (ModernSwitch 颜色注入) */
-ModernSwitch {
-    /* 开启状态的轨道颜色 (保持品牌蓝) */
-    qproperty-trackColorActive: #00A4FF;
-    /* 关闭状态的轨道颜色 (浅灰色) */
-    qproperty-trackColorInactive: #D0D0D0;
-    /* 滑块原点颜色 (纯白，在明亮模式下也显得干净) */
-    qproperty-thumbColor: #FFFFFF;
-}
-
-/* ==============================================
-   Settings View (主控视图布局) - Light Mode 全新沉浸式重构
-============================================== */
-
-#SettingsRootView {
-    background-color: #F1F5F9;
-    /* Slate-100 与全局背景色统一 */
-}
-
-/* 左侧控制面板容器 */
-#SettingsLeftPanel {
-    background-color: transparent;
-    border-right: 1px solid rgba(0, 0, 0, 0.06);
-    /* 极弱的暗线分割 */
-}
-
-/* 全局主标题 */
-#SettingsMainTitle {
-    font-size: 28px;
-    font-weight: 800;
-    color: #0F172A;
-    /* Slate-900 极深灰，提供强烈的清晰度 */
-    letter-spacing: -0.5px;
-    padding-left: 12px;
-}
-
-/* 左侧导航列表容器 */
-#SettingsNavMenu {
-    background-color: transparent;
-    border: none;
-    outline: none;
-}
-
-/* 菜单项基础（胶囊按钮预备） */
-#SettingsNavMenu::item {
-    padding-left: 16px;
-    border-radius: 8px;
-    margin: 4px 0px;
-    color: #64748B;
-    /* Slate-500 未选状态的柔和灰 */
-    font-size: 14px;
-    font-weight: 600;
-    border: 1px solid transparent;
-}
-
-/* 菜单项悬停态 */
-#SettingsNavMenu::item:hover {
-    background-color: rgba(0, 0, 0, 0.04);
-    /* 微弱的深色遮罩 */
-    color: #0F172A;
-    /* 悬停时文字变深，增强反馈 */
-}
-
-/* 菜单项选中态（品牌蓝高亮） */
-#SettingsNavMenu::item:selected {
-    background-color: rgba(37, 99, 235, 0.08);
-    /* Tailwind Primary Blue 极低透明度底色 */
-    color: #2563EB;
-    /* Blue-600 亮色模式下需要稍深的蓝以保证对比度 */
-    font-weight: 700;
-}
-
-/* 隐藏滚动条背景，确保沉浸感，并赋予右侧滚动区适当呼吸感留白 */
-#SettingsScrollArea {
-    background-color: transparent;
-    margin: 24px 32px 24px 0px;
-}
-
-#SettingsScrollArea>QWidget>QWidget {
-    background-color: transparent;
-}
-
 /* =========================================
    关于页面 (PageAbout)
    ========================================= */
@@ -3006,15 +3091,70 @@ QLabel#AboutIntroLabel {
     font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
 }
 
+QFrame#AboutThanksPanel {
+    margin-top: 8px;
+    min-width: 360px;
+    max-width: 560px;
+}
+
+QLabel#AboutThanksTitle {
+    color: #475569;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+QLabel#AboutThanksSubtitle {
+    color: #64748B;
+    font-size: 12px;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+QFrame#AboutThanksCard {
+    background-color: rgba(255, 255, 255, 0.72);
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 16px;
+}
+
+QFrame#AboutThanksCard:hover {
+    background-color: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(37, 99, 235, 0.26);
+}
+
+QLabel#AboutThanksAvatar {
+    color: #FFFFFF;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+            stop:0 #FB923C, stop:0.48 #DB2777, stop:1 #2563EB);
+    border-radius: 11px;
+    font-size: 10px;
+    font-weight: 700;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+QLabel#AboutThanksName {
+    color: #0F172A;
+    font-size: 11px;
+    font-weight: 700;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+QLabel#AboutThanksRole {
+    color: #2563EB;
+    font-size: 10px;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
 /* =========================================
    About 页面 - 开源协议文本浏览器主框体
+   说明：当前用于 LicenseDialog 内的全宽文本展示，
+        通过透明底色 + 无边框 让自身完全融入 ModernDialogBase，
+        垂直滚动条因此天然贴齐对话框右边缘。
    ========================================= */
 QTextBrowser#AboutLicenseBrowser {
-    background-color: rgba(241, 245, 249, 0.7);
-    /* Slate-100 浅色毛玻璃/微灰底 */
-    border: 1px solid rgba(0, 0, 0, 0.05);
-    /* 极弱的边框刻画边缘 */
-    border-radius: 8px;
+    background-color: transparent;
+    border: none;
+    border-radius: 0px;
     color: #334155;
     /* Slate-700 深灰文字 */
     outline: none;
@@ -3104,25 +3244,6 @@ QPushButton#AboutLicenseBtn:pressed {
     background-color: rgba(0, 0, 0, 0.08);
     /* 按下时阴影加重 */
     color: #0F172A;
-}
-
-/* 2. 弹窗底层卡片容器 */
-QFrame#LicenseDialogContainer {
-    background-color: rgba(255, 255, 255, 0.98);
-    /* 纯白高不透明度，充当白纸 */
-    border: 1px solid rgba(0, 0, 0, 0.08);
-    /* 给纯白卡片加一圈极细的描边，压住质感 */
-    border-radius: 16px;
-}
-
-/* 3. 弹窗标题 */
-QLabel#LicenseDialogTitle {
-    color: #0F172A;
-    /* 极致深的黑色标题 */
-    font-size: 15px;
-    font-weight: bold;
-    letter-spacing: 1px;
-    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
 }
 
 /* =========================================
@@ -5901,4 +6022,191 @@ QPushButton#DownloadIconButton[tone="danger"]:hover {
 QPushButton#DownloadIconButton:disabled {
     background-color: rgba(241, 245, 249, 0.70);
     border-color: rgba(148, 163, 184, 0.14);
+}
+
+/* ============================================================================
+ * WebDAV 云同步对话框（继承 ModernDialogBase）—— Light 主题
+ * 命名约定见 dark-style.qss 同位置注释。
+ * ============================================================================ */
+
+/* 与 dark 主题一致：对话框内默认 QLabel / QRadioButton 显式着色，避免
+ * QFormLayout::addRow(QString, QWidget*) 自动生成的标签继承默认色出现可读性问题。
+ * 同时把内嵌 QLineEdit 调整到与登录页 EditServer 密码框一致的视觉密度。
+ * 应用策略使用 checkable QPushButton 渲染为分段按钮，避免原生 radio 圆点。 */
+#webdav-sync-dialog QLabel {
+    color: #1F2937;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+#webdav-sync-dialog QRadioButton {
+    color: #1F2937;
+    font-size: 13px;
+    spacing: 6px;
+}
+
+#webdav-sync-dialog QLineEdit {
+    background-color: #FFFFFF;
+    border: 1px solid #CBD5E1;
+    border-radius: 7px;
+    padding: 6px 10px;
+    font-size: 13px;
+    color: #1F2937;
+    min-height: 18px;
+    placeholder-text-color: #9CA3AF;
+    selection-background-color: rgba(59, 130, 246, 0.20);
+    selection-color: #1E3A8A;
+}
+
+#webdav-sync-dialog QLineEdit:hover {
+    border-color: #94A3B8;
+}
+
+#webdav-sync-dialog QLineEdit:focus {
+    border-color: #3B82F6;
+    background-color: #FAFCFF;
+    padding: 6px 10px;
+}
+
+QFrame#webdav-card {
+    background-color: #FFFFFF;
+    border: 1px solid #E5E7EB;
+    border-radius: 8px;
+}
+
+QLabel#webdav-card-title {
+    color: #1F2937;
+    font-size: 13px;
+    font-weight: 700;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+QLabel#webdav-field-label {
+    color: #475569;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+QLabel#webdav-hint {
+    color: #64748B;
+    font-size: 12px;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+QLabel#webdav-strategy-label {
+    color: #475569;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+QFrame#webdav-strategy-selector {
+    background-color: #F8FAFC;
+    border: 1px solid #E2E8F0;
+    border-radius: 8px;
+}
+
+QFrame#webdav-strategy-selector QPushButton[webdavStrategyOption="true"] {
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    color: #475569;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 5px 13px;
+    min-width: 70px;
+    min-height: 18px;
+}
+
+QFrame#webdav-strategy-selector QPushButton[webdavStrategyOption="true"]:hover:!checked {
+    background-color: #EEF2FF;
+    color: #1E40AF;
+}
+
+QFrame#webdav-strategy-selector QPushButton[webdavStrategyOption="true"]:checked {
+    background-color: #DBEAFE;
+    border-color: #93C5FD;
+    color: #1D4ED8;
+}
+
+QFrame#webdav-strategy-selector QPushButton[webdavStrategyOption="true"]:checked:hover {
+    background-color: #BFDBFE;
+    border-color: #60A5FA;
+    color: #1E40AF;
+}
+
+/* 旧 QToolButton 密码切换样式保留：避免其他位置如有引用时不报错；
+ * 当前对话框已改用 QAction + eye/eye-off，下面规则不会被命中。 */
+QToolButton#webdav-visibility-toggle {
+    background-color: #FFFFFF;
+    border: 1px solid #CBD5E1;
+    border-radius: 6px;
+    padding: 4px 10px;
+    color: #475569;
+    font-size: 12px;
+    min-width: 56px;
+}
+
+QToolButton#webdav-visibility-toggle:hover {
+    background-color: #F8FAFC;
+    border-color: #94A3B8;
+    color: #1F2937;
+}
+
+QToolButton#webdav-visibility-toggle:pressed,
+QToolButton#webdav-visibility-toggle:checked {
+    background-color: #EFF6FF;
+    border-color: #3B82F6;
+    color: #1E3A8A;
+}
+
+QTableView#webdav-snapshot-table {
+    background-color: #FFFFFF;
+    alternate-background-color: #F8FAFC;
+    border: 1px solid #E5E7EB;
+    border-radius: 8px;
+    gridline-color: #EEF2F7;
+    color: #1F2937;
+    font-size: 12px;
+    selection-background-color: rgba(59, 130, 246, 0.18);
+    selection-color: #1E3A8A;
+    outline: none;
+}
+
+QTableView#webdav-snapshot-table::item {
+    padding: 6px 8px;
+    border: none;
+}
+
+QTableView#webdav-snapshot-table::item:selected {
+    background-color: rgba(59, 130, 246, 0.18);
+    color: #1E3A8A;
+}
+
+QWidget#webdav-snapshot-viewport {
+    background-color: #FFFFFF;
+}
+
+QTableView#webdav-snapshot-table::item:hover:!selected {
+    background-color: #F1F5F9;
+}
+
+QTableView#webdav-snapshot-table QHeaderView::section {
+    background-color: #F8FAFC;
+    color: #475569;
+    border: none;
+    border-right: 1px solid #E5E7EB;
+    border-bottom: 1px solid #E5E7EB;
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+QTableView#webdav-snapshot-table QHeaderView::section:last {
+    border-right: none;
+}
+
+QTableView#webdav-snapshot-table QTableCornerButton::section {
+    background-color: #F8FAFC;
+    border: none;
 }

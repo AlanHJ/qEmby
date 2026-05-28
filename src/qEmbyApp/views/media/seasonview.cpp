@@ -233,7 +233,7 @@ void SeasonView::setupUi()
     connect(m_sortButton, &ModernSortButton::sortChanged, this, [this]() { onFilterChanged(); });
 
     connect(m_mediaGrid, &MediaGridWidget::itemClicked, this,
-            [this](const MediaItem &item) { Q_EMIT navigateToDetail(item.id, item.name); });
+            [this](const MediaItem &item) { Q_EMIT navigateToDetail(item.id, item.name, item); });
     connect(m_mediaGrid, &MediaGridWidget::playRequested, this, &BaseView::handlePlayRequested);
     connect(m_mediaGrid, &MediaGridWidget::favoriteRequested, this, &BaseView::handleFavoriteRequested);
     connect(m_mediaGrid, &MediaGridWidget::moreMenuRequested, this, &BaseView::handleMoreMenuRequested);

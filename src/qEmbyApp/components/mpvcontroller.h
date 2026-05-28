@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QVariant>
 #include <QString>
+#include <QAtomicInt>
 #include <mpv/client.h>
 
 class MpvController : public QObject {
@@ -20,9 +21,30 @@ public:
     
     void forceCleanup();
 
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    static void warmupOnce();
+
     void observeProperty(const QString &property, mpv_format format, uint64_t id = 0);
     int setProperty(const QString &property, const QVariant &value);
     QVariant getProperty(const QString &property);
+    int command(const QVariant &params, QVariant *resultOut);
     QVariant command(const QVariant &params);
 
 signals:
@@ -50,6 +72,10 @@ private:
     mpv_node_list *createList(mpv_node *dst, bool is_map, int num);
 
     mpv_handle *m_mpv;
+
+    
+    
+    static QAtomicInt s_warmedUp;
 };
 
 #endif 

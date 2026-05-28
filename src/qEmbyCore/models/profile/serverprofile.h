@@ -1,6 +1,7 @@
 #ifndef SERVERPROFILE_H
 #define SERVERPROFILE_H
 
+#include "proxyconfig.h"
 #include <QString>
 #include <QUuid>
 
@@ -21,6 +22,13 @@ struct ServerProfile {
     bool canDownloadMedia = false;
 
     QString iconBase64;
+
+    
+    
+    
+    
+    bool useGlobalProxy = false;
+    ProxyConfig proxy;
 
     bool isValid() const { return !accessToken.isEmpty(); }
 };

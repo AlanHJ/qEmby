@@ -23,6 +23,7 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFrame>
+#include <QFutureWatcher>
 #include <QHBoxLayout>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -30,6 +31,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPlainTextEdit>
+#include <QPointer>
 #include <QPushButton>
 #include <QComboBox>
 #include <QRegularExpression>
@@ -41,6 +43,7 @@
 #include <QTextStream>
 #include <QVariantAnimation>
 #include <QVBoxLayout>
+#include <QtConcurrent/QtConcurrent>
 #include <memory>
 #include <qembycore.h>
 
@@ -283,6 +286,19 @@ PagePlayer::PagePlayer(QEmbyCore *core, QWidget *parent)
       tr("Single click on the video area to toggle play/pause"),
       new ModernSwitch(this), ConfigKeys::PlayerClickToPause, this,
       QVariant(true)));
+
+  
+  m_mainLayout->addWidget(new SettingsCard(
+      ":/svg/dark/skip-intro.svg", tr("Auto Skip Intro"),
+      tr("Automatically skip the intro sequence when playback starts"),
+      new ModernSwitch(this), ConfigKeys::PlayerSkipIntro, this,
+      QVariant(false)));
+
+  m_mainLayout->addWidget(new SettingsCard(
+      ":/svg/dark/skip-outro.svg", tr("Auto Skip Outro"),
+      tr("Automatically skip the ending credits during playback"),
+      new ModernSwitch(this), ConfigKeys::PlayerSkipOutro, this,
+      QVariant(false)));
 
   
   m_mainLayout->addWidget(new SettingsCard(
@@ -911,7 +927,13 @@ PagePlayer::PagePlayer(QEmbyCore *core, QWidget *parent)
   };
 
   
-  QList<DetectedPlayer> detectedPlayers = ExternalPlayerDetector::detect();
+  
+  
+  
+  
+  
+  QList<DetectedPlayer> detectedPlayers =
+      ExternalPlayerDetector::loadFromConfig();
   QString currentPath =
       ConfigStore::instance()->get<QString>(ConfigKeys::ExtPlayerPath);
   int selectedIdx = -1;
@@ -940,7 +962,53 @@ PagePlayer::PagePlayer(QEmbyCore *core, QWidget *parent)
   }
 
   
-  syncAllPlayersToConfig(playerCombo);
+  
+  qDebug() << "[PagePlayer] Async external player detection scheduled"
+           << "| cached count:" << detectedPlayers.size();
+  auto *detectWatcher = new QFutureWatcher<QList<DetectedPlayer>>(this);
+  QPointer<PlayerComboBox> safeCombo(playerCombo);
+  connect(detectWatcher,
+          &QFutureWatcher<QList<DetectedPlayer>>::finished, this,
+          [detectWatcher, safeCombo, syncAllPlayersToConfig]() {
+            detectWatcher->deleteLater();
+            if (!safeCombo) {
+              qDebug() << "[PagePlayer] Detection finished but combo was "
+                          "destroyed; skip refresh";
+              return;
+            }
+            const QList<DetectedPlayer> fresh = detectWatcher->result();
+            qDebug() << "[PagePlayer] External player detection finished"
+                     << "| detected count:" << fresh.size();
+
+            const QString prevPath = safeCombo->currentPlayerPath();
+
+            
+            
+            QSignalBlocker blocker(safeCombo);
+            safeCombo->removeAutoDetected();
+
+            
+            
+            for (const auto &p : fresh) {
+              safeCombo->addPlayer(QString("%1  (%2)").arg(p.name, p.path),
+                                   p.path, PlayerComboBox::SourceAuto);
+            }
+
+            
+            const int restoreIdx = safeCombo->findData(prevPath);
+            if (restoreIdx >= 0) {
+              safeCombo->setCurrentIndex(restoreIdx);
+            } else if (safeCombo->count() > 0) {
+              safeCombo->setCurrentIndex(0);
+            }
+
+            
+            syncAllPlayersToConfig(safeCombo);
+            ExternalPlayerDetector::saveToConfig(fresh);
+          });
+
+  detectWatcher->setFuture(QtConcurrent::run(
+      []() { return ExternalPlayerDetector::detect(); }));
 
   auto *playerLabel = new QLabel(tr("Player"), this);
   playerLabel->setObjectName("SettingsCardDesc");

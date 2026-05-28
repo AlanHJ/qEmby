@@ -9,6 +9,7 @@ class HorizontalWidgetGallery;
 class QLabel;
 class QVBoxLayout;
 class QGridLayout;
+class QResizeEvent;
 
 class DetailBottomInfoWidget : public QWidget {
     Q_OBJECT
@@ -21,11 +22,16 @@ public:
 signals:
     void filterClicked(const QString& filterType, const QString& filterValue);
 
+protected:
+    void resizeEvent(QResizeEvent* event) override;
+
 private:
     void clearLayout(QLayout* layout);
     QString formatSize(long long bytes);
     void addInfoRow(QGridLayout* layout, int& row, const QString& key, const QString& value);
     QWidget* wrapMaxWidth(QWidget* child, int maxW);
+    void updateFlowLayoutHeight(QWidget* widget, FlowLayout* layout);
+    void updateFlowLayoutHeights();
 
     QLabel* m_tagsBottomTitle;
     QWidget* m_tagsBottomWidget;

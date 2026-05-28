@@ -72,6 +72,7 @@ void SlidingStackedWidget::slideInIdx(int idx, SlideDirection direction)
         QWidget *w = widget(idx);
         if (w) w->raise();
         flushPendingWidgetDisposals();
+        Q_EMIT animationFinished();
         return;
     }
 
@@ -204,6 +205,7 @@ void SlidingStackedWidget::animationDoneSlot()
     }
     m_isAnimating = false;
     flushPendingWidgetDisposals();
+    Q_EMIT animationFinished();
 }
 
 void SlidingStackedWidget::flushPendingWidgetDisposals()

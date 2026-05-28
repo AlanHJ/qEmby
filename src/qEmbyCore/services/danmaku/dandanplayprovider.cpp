@@ -317,6 +317,125 @@ int extractYear(const QString &title)
     return (ok && year >= 1900 && year <= 2100) ? year : 0;
 }
 
+
+int chineseDigitsToInt(const QString &digits)
+{
+    if (digits.isEmpty()) {
+        return 0;
+    }
+
+    bool ok = false;
+    const int direct = digits.toInt(&ok);
+    if (ok && direct > 0) {
+        return direct;
+    }
+
+    static const QHash<QChar, int> digitMap = {
+        {QChar(0x4E00), 1}, {QChar(0x4E8C), 2}, {QChar(0x4E09), 3},
+        {QChar(0x56DB), 4}, {QChar(0x4E94), 5}, {QChar(0x516D), 6},
+        {QChar(0x4E03), 7}, {QChar(0x516B), 8}, {QChar(0x4E5D), 9}};
+    static const QChar shi(0x5341); 
+
+    int total = 0;
+    int currentDigit = 0;
+    for (const QChar ch : digits) {
+        if (ch == shi) {
+            total += currentDigit == 0 ? 10 : currentDigit * 10;
+            currentDigit = 0;
+        } else if (digitMap.contains(ch)) {
+            currentDigit = digitMap.value(ch);
+        }
+    }
+    total += currentDigit;
+    return total;
+}
+
+
+QString chineseOrdinalString(int value)
+{
+    if (value <= 0) {
+        return {};
+    }
+
+    static const QChar digits[] = {
+        QChar(0x4E00), QChar(0x4E8C), QChar(0x4E09),
+        QChar(0x56DB), QChar(0x4E94), QChar(0x516D),
+        QChar(0x4E03), QChar(0x516B), QChar(0x4E5D)};
+    static const QChar shi(0x5341);
+
+    if (value < 10) {
+        return QString(digits[value - 1]);
+    }
+    if (value == 10) {
+        return QString(shi);
+    }
+    if (value < 20) {
+        return QString(shi) + digits[value - 10 - 1];
+    }
+    if (value < 100) {
+        const int tens = value / 10;
+        const int ones = value % 10;
+        QString result = QString(digits[tens - 1]) + shi;
+        if (ones > 0) {
+            result += digits[ones - 1];
+        }
+        return result;
+    }
+    return QString::number(value);
+}
+
+
+
+
+
+int extractSeasonNumber(const QString &title)
+{
+    const QString trimmed = title.trimmed();
+    if (trimmed.isEmpty()) {
+        return 0;
+    }
+
+    static const QRegularExpression cnPattern(
+        QStringLiteral(R"(第\s*([\x{4E00}-\x{9FFF}0-9]+)\s*[季部])"));
+    QRegularExpressionMatch match = cnPattern.match(trimmed);
+    if (match.hasMatch()) {
+        const int parsed = chineseDigitsToInt(match.captured(1).trimmed());
+        if (parsed > 0) {
+            return parsed;
+        }
+    }
+
+    static const QRegularExpression enPattern(
+        QStringLiteral(R"((?:^|[^A-Za-z])(?:Season|S)\s*0*(\d{1,2})(?:[^A-Za-z0-9]|$))"),
+        QRegularExpression::CaseInsensitiveOption);
+    match = enPattern.match(trimmed);
+    if (match.hasMatch()) {
+        const int parsed = match.captured(1).toInt();
+        if (parsed > 0) {
+            return parsed;
+        }
+    }
+
+    static const QRegularExpression romanPattern(
+        QStringLiteral(R"((?:^|\s)(VIII|VII|VI|IV|IX|III|II|V|X)\s*$)"));
+    match = romanPattern.match(trimmed);
+    if (match.hasMatch()) {
+        const QString roman = match.captured(1).toUpper();
+        static const QHash<QString, int> romanMap = {
+            {QStringLiteral("II"), 2},   {QStringLiteral("III"), 3},
+            {QStringLiteral("IV"), 4},   {QStringLiteral("V"), 5},
+            {QStringLiteral("VI"), 6},   {QStringLiteral("VII"), 7},
+            {QStringLiteral("VIII"), 8}, {QStringLiteral("IX"), 9},
+            {QStringLiteral("X"), 10}};
+        const int parsed = romanMap.value(roman, 0);
+        if (parsed > 1) {
+            return parsed;
+        }
+    }
+
+    return 0;
+}
+
 double computeScore(const DanmakuMediaContext &context,
                     const DanmakuMatchCandidate &candidate,
                     const QString &queryKeyword)
@@ -336,6 +455,26 @@ double computeScore(const DanmakuMediaContext &context,
         candidate.episodeNumber > 0 &&
         context.episodeNumber == candidate.episodeNumber) {
         score += 24.0;
+    }
+
+    
+    
+    
+    if (context.isEpisode() && context.seasonNumber > 0) {
+        const int candidateSeason = extractSeasonNumber(candidateSubject);
+        if (candidateSeason > 0) {
+            if (candidateSeason == context.seasonNumber) {
+                score += 30.0; 
+            } else {
+                score -= 30.0; 
+            }
+        } else if (context.seasonNumber == 1) {
+            
+            score += 6.0;
+        } else {
+            
+            score -= 8.0;
+        }
     }
 
     if (context.durationMs > 0 && candidate.durationMs > 0) {
@@ -613,11 +752,37 @@ QCoro::Task<QList<DanmakuMatchCandidate>> DandanplayProvider::searchCandidates(
     bool hadSuccessfulSearchResponse = false;
     QString lastSearchError;
 
+    
+    
+    
+    
+    
+    
+    
     QStringList keywords;
     if (!manualKeyword.trimmed().isEmpty()) {
         keywords << manualKeyword.trimmed();
     } else if (context.isEpisode()) {
-        keywords << context.seriesName << context.title << context.originalTitle;
+        const QString trimmedSeries = context.seriesName.trimmed();
+        const QString trimmedOriginal = context.originalTitle.trimmed();
+        const QString trimmedTitle = context.title.trimmed();
+        if (!trimmedSeries.isEmpty()) {
+            
+            if (context.seasonNumber > 1) {
+                const QString ordinal = chineseOrdinalString(context.seasonNumber);
+                if (!ordinal.isEmpty()) {
+                    keywords << QStringLiteral("%1 第%2季")
+                                    .arg(trimmedSeries, ordinal);
+                }
+            }
+            keywords << trimmedSeries;
+            if (!trimmedOriginal.isEmpty() && trimmedOriginal != trimmedSeries) {
+                keywords << trimmedOriginal;
+            }
+        } else {
+            
+            keywords << trimmedTitle << trimmedOriginal;
+        }
     } else {
         keywords << context.title << context.originalTitle;
     }
@@ -645,6 +810,9 @@ QCoro::Task<QList<DanmakuMatchCandidate>> DandanplayProvider::searchCandidates(
         << "| media:" << context.displayTitle()
         << "| mediaId:" << context.mediaId
         << "| isEpisode:" << context.isEpisode()
+        << "| seriesName:" << context.seriesName.trimmed()
+        << "| seasonNumber:" << context.seasonNumber
+        << "| episodeNumber:" << context.episodeNumber
         << "| contentScope:" << config.contentScope
         << "| fileName:" << fileName
         << "| keywords:" << keywords.join(QStringLiteral(" | "));
@@ -742,6 +910,37 @@ QCoro::Task<QList<DanmakuMatchCandidate>> DandanplayProvider::searchCandidates(
         }
 
         if (!keywordCandidates.isEmpty()) {
+            
+            
+            
+            if (context.isEpisode() && context.seasonNumber > 0 &&
+                context.episodeNumber > 0) {
+                bool hasConfidentMatch = false;
+                for (const DanmakuMatchCandidate &c : keywordCandidates) {
+                    const QString candidateSubject =
+                        c.subtitle.isEmpty() ? c.title : c.subtitle;
+                    const int candidateSeason =
+                        extractSeasonNumber(candidateSubject);
+                    const bool seasonHit =
+                        candidateSeason == context.seasonNumber ||
+                        (candidateSeason == 0 && context.seasonNumber == 1);
+                    const bool episodeHit =
+                        c.episodeNumber == context.episodeNumber;
+                    if (seasonHit && episodeHit && c.score >= 60.0) {
+                        hasConfidentMatch = true;
+                        break;
+                    }
+                }
+                if (hasConfidentMatch) {
+                    qDebug().noquote()
+                        << "[Danmaku][DandanPlay] Confident match found,"
+                           " skipping remaining keywords"
+                        << "| keyword:" << keyword
+                        << "| seasonNumber:" << context.seasonNumber
+                        << "| episodeNumber:" << context.episodeNumber;
+                    break;
+                }
+            }
             continue;
         }
 
@@ -792,6 +991,32 @@ QCoro::Task<QList<DanmakuMatchCandidate>> DandanplayProvider::searchCandidates(
         << "| mediaId:" << context.mediaId
         << "| rawCount:" << allCandidates.size()
         << "| deduplicatedCount:" << deduplicated.size();
+
+    
+    if (context.isEpisode() && !deduplicated.isEmpty()) {
+        const int topN = std::min<int>(deduplicated.size(), 5);
+        for (int i = 0; i < topN; ++i) {
+            const DanmakuMatchCandidate &c = deduplicated.at(i);
+            const QString candidateSubject =
+                c.subtitle.isEmpty() ? c.title : c.subtitle;
+            const int candidateSeason = extractSeasonNumber(candidateSubject);
+            qDebug().noquote()
+                << "[Danmaku][DandanPlay] Search top candidate"
+                << "| rank:" << (i + 1)
+                << "| title:" << c.title
+                << "| subtitle:" << c.subtitle
+                << "| candidateSeason:" << candidateSeason
+                << "| candidateEpisode:" << c.episodeNumber
+                << "| seasonHit:"
+                << (context.seasonNumber > 0 && candidateSeason > 0 &&
+                    candidateSeason == context.seasonNumber)
+                << "| episodeHit:"
+                << (context.episodeNumber > 0 && c.episodeNumber > 0 &&
+                    c.episodeNumber == context.episodeNumber)
+                << "| score:" << c.score
+                << "| commentCount:" << c.commentCount;
+        }
+    }
     co_return deduplicated;
 }
 

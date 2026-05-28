@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+  <!-- 客户端节点（左） -->
+  <circle cx="3.5" cy="12" r="1.6" fill="#475569" stroke="none"/>
+  <!-- 远端服务器节点（右） -->
+  <circle cx="20.5" cy="12" r="1.6" fill="#475569" stroke="none"/>
+  <!-- 中央代理（圆环） -->
+  <circle cx="12" cy="12" r="3.6"/>
+  <!-- 左侧连接线 -->
+  <path d="M5.1 12h3.3"/>
+  <!-- 右侧连接线 -->
+  <path d="M15.6 12h3.3"/>
+</svg>

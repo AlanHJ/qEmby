@@ -539,6 +539,9 @@ void MediaCardDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opt
 
     if (isHovered) {
         targetImgRect = hoverImageRect(baseImgRect);
+        const int expandH = targetImgRect.bottom() - baseImgRect.bottom();
+        titleRect.translate(0, expandH);
+        yearRect.translate(0, expandH);
 
         
         painter->setPen(Qt::NoPen);

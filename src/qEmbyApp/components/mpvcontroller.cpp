@@ -3,6 +3,8 @@
 #include "../utils/playerpreferenceutils.h"
 #include <QDebug>
 #include <QMetaType>
+#include <QElapsedTimer>
+#include <QThreadPool>
 #include <clocale>
 #include <config/configstore.h>
 #include <config/config_keys.h>
@@ -12,6 +14,9 @@
 #include <QThread>
 #include <windows.h>
 #endif
+
+
+QAtomicInt MpvController::s_warmedUp(0);
 
 
 struct node_autofree {
@@ -40,6 +45,57 @@ void MpvController::forceCleanup() {
         mpv_terminate_destroy(m_mpv);
         m_mpv = nullptr;
     }
+}
+
+void MpvController::warmupOnce() {
+    
+    
+    if (!s_warmedUp.testAndSetOrdered(0, 1)) {
+        qDebug() << "[MpvController::warmupOnce] already warmed up, skip";
+        return;
+    }
+
+    qDebug() << "[MpvController::warmupOnce] dispatch mpv warmup to worker thread"
+             << "(preload libmpv DLLs + FFmpeg codec tables to avoid first-play UI freeze)";
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    QThreadPool::globalInstance()->start([]() {
+        QElapsedTimer timer;
+        timer.start();
+
+        {
+            MpvController warmup;
+            const bool ok = warmup.init();
+            qDebug() << "[MpvController::warmupOnce] mpv_initialize completed"
+                     << "| ok=" << ok
+                     << "| elapsed=" << timer.elapsed() << "ms";
+        }
+        
+
+        qDebug() << "[MpvController::warmupOnce] total elapsed" << timer.elapsed() << "ms"
+                 << "(libmpv DLLs + codec tables now resident in process memory;"
+                 << "next mpv_initialize will run on hot path)";
+    });
 }
 
 bool MpvController::init() {
@@ -273,6 +329,17 @@ int MpvController::setProperty(const QString &property, const QVariant &value) {
     setNode(&node, value);
     int err = mpv_set_property(m_mpv, property.toUtf8().constData(), MPV_FORMAT_NODE, &node);
     freeNode(&node);
+    if (err < 0) {
+        if (property.startsWith(QStringLiteral("secondary-sub-"))) {
+            qDebug() << "[MpvController] setProperty failed"
+                     << "| property:" << property
+                     << "| error:" << mpv_error_string(err);
+        } else {
+            qWarning() << "[MpvController] setProperty failed"
+                       << "| property:" << property
+                       << "| error:" << mpv_error_string(err);
+        }
+    }
     return err;
 }
 
@@ -286,22 +353,44 @@ QVariant MpvController::getProperty(const QString &property) {
     return nodeToVariant(&node);
 }
 
-QVariant MpvController::command(const QVariant &params) {
-    if (!m_mpv) return QVariant();
+int MpvController::command(const QVariant &params, QVariant *resultOut) {
+    if (!m_mpv) return MPV_ERROR_UNINITIALIZED;
 
     mpv_node node;
     memset(&node, 0, sizeof(mpv_node));
     setNode(&node, params);
 
-    mpv_node result;
-    memset(&result, 0, sizeof(mpv_node)); 
+    mpv_node mpvResult;
+    memset(&mpvResult, 0, sizeof(mpv_node)); 
 
-    int err = mpv_command_node(m_mpv, &node, &result);
+    int err = mpv_command_node(m_mpv, &node, &mpvResult);
     freeNode(&node);
+    node_autofree f(&mpvResult);
 
-    if (err < 0) return QVariant();
-    node_autofree f(&result);
-    return nodeToVariant(&result);
+    if (err < 0) {
+        QString commandName;
+        const QVariantList args = params.toList();
+        if (!args.isEmpty()) {
+            commandName = args.first().toString();
+        }
+        qWarning() << "[MpvController] command failed"
+                   << "| command:" << (commandName.isEmpty()
+                                           ? QStringLiteral("<unknown>")
+                                           : commandName)
+                   << "| error:" << mpv_error_string(err);
+        return err;
+    }
+
+    if (resultOut) {
+        *resultOut = nodeToVariant(&mpvResult);
+    }
+    return err;
+}
+
+QVariant MpvController::command(const QVariant &params) {
+    QVariant result;
+    const int err = command(params, &result);
+    return err < 0 ? QVariant() : result;
 }
 
 

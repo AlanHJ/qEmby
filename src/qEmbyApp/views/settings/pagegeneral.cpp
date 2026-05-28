@@ -1,13 +1,19 @@
 #include "pagegeneral.h"
+#include "../../components/elidedlabel.h"
 #include "../../components/moderncombobox.h"
 #include "../../components/modernmessagebox.h"
 #include "../../components/modernswitch.h"
 #include "../../components/moderntoast.h"
+#include "../../components/proxysettingsdialog.h"
 #include "../../components/settingscard.h"
 #include "../../components/settingssubpanel.h"
 #include "../../managers/logmanager.h"
+#include "api/proxymanager.h"
 #include "config/config_keys.h"
 #include "config/configstore.h"
+#include "models/profile/proxyconfig.h"
+#include "qembycore.h"
+#include "services/manager/servermanager.h"
 #include <QDesktopServices>
 #include <QDir>
 #include <QFileInfo>
@@ -22,6 +28,7 @@ PageGeneral::PageGeneral(QEmbyCore *core, QWidget *parent)
   langCombo->addItem(tr("System"), "system");
   langCombo->addItem(tr("简体中文"), "zh_CN");
   langCombo->addItem(tr("English"), "en_US");
+  langCombo->addItem(tr("French"), "fr_FR");
   m_mainLayout->addWidget(
       new SettingsCard(":/svg/dark/language.svg", tr("Language"),
                        tr("App interface language (requires restart)"),
@@ -37,6 +44,97 @@ PageGeneral::PageGeneral(QEmbyCore *core, QWidget *parent)
       ":/svg/dark/tray.svg", tr("Close to Tray"),
       tr("Minimize to system tray instead of exiting the application"),
       new ModernSwitch(this), ConfigKeys::CloseToTray, this));
+
+  
+  
+  
+  auto *proxyBtn = new QPushButton(tr("Configure..."), this);
+  proxyBtn->setObjectName("SettingsCardButton");
+  proxyBtn->setCursor(Qt::PointingHandCursor);
+  proxyBtn->setFixedHeight(30);
+
+  auto *proxyCard = new SettingsCard(
+      ":/svg/dark/proxy.svg", tr("Network Proxy"),
+      tr("Proxy for the current server (global or server-specific)"),
+      proxyBtn, QString(), this);
+  m_mainLayout->addWidget(proxyCard);
+
+  auto proxyStateText = [](const ProxyConfig &cfg) -> QString {
+    switch (cfg.mode) {
+    case ProxyConfig::None:
+      return PageGeneral::tr("no proxy");
+    case ProxyConfig::System:
+      return PageGeneral::tr("system proxy");
+    case ProxyConfig::Custom: {
+      const QString typeLabel =
+          (cfg.type == ProxyConfig::Socks5) ? QStringLiteral("SOCKS5")
+                                            : QStringLiteral("HTTP");
+      if (cfg.host.isEmpty() || cfg.port == 0) {
+        return PageGeneral::tr("custom (incomplete)");
+      }
+      return PageGeneral::tr("%1 %2:%3")
+          .arg(typeLabel, cfg.host, QString::number(cfg.port));
+    }
+    }
+    return QString();
+  };
+
+  auto buildProxySummaryDesc = [this, proxyStateText]() -> QString {
+    if (m_core && m_core->serverManager()) {
+      const ServerProfile profile = m_core->serverManager()->activeProfile();
+      if (profile.isValid()) {
+        if (profile.useGlobalProxy) {
+          return PageGeneral::tr(
+                     "Proxy for the current server — using global: %1")
+              .arg(proxyStateText(ProxyManager::instance()->globalConfig()));
+        }
+        return PageGeneral::tr(
+                   "Proxy for the current server — currently: %1")
+            .arg(proxyStateText(profile.proxy));
+      }
+    }
+
+    return PageGeneral::tr("Default proxy for all servers — currently: %1")
+        .arg(proxyStateText(ProxyManager::instance()->globalConfig()));
+  };
+
+  
+  
+  
+  auto refreshProxyDesc = [proxyCard, buildProxySummaryDesc]() {
+    const auto labels =
+        proxyCard->findChildren<ElidedLabel *>("SettingsCardDesc");
+    for (ElidedLabel *lbl : labels) {
+      lbl->setFullText(buildProxySummaryDesc());
+    }
+  };
+  refreshProxyDesc();
+
+  
+  connect(ProxyManager::instance(), &ProxyManager::proxyChanged, proxyCard,
+          refreshProxyDesc);
+  if (m_core && m_core->serverManager()) {
+    connect(m_core->serverManager(), &ServerManager::activeServerChanged,
+            proxyCard,
+            [refreshProxyDesc](const ServerProfile &) { refreshProxyDesc(); });
+  }
+
+  connect(proxyBtn, &QPushButton::clicked, this, [this, refreshProxyDesc]() {
+    ProxySettingsDialog *dlg = nullptr;
+    if (m_core && m_core->serverManager()) {
+      const ServerProfile profile = m_core->serverManager()->activeProfile();
+      if (profile.isValid()) {
+        dlg = ProxySettingsDialog::createForServer(m_core->serverManager(),
+                                                   profile.id, this);
+      }
+    }
+    if (!dlg) {
+      dlg = ProxySettingsDialog::createForGlobal(this);
+    }
+    dlg->exec();
+    refreshProxyDesc();
+    dlg->deleteLater();
+  });
 
   
   auto *logSwitch = new ModernSwitch(this);

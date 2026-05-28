@@ -1,64 +1,23 @@
 #include "pageabout.h"
+#include "../../components/flowlayout.h"
+#include "../../components/licensesdialog.h"
 #include <QCoreApplication>
 #include <QGuiApplication>
-#include <QFile>
-#include <QTextStream>
 #include <QDebug>
-#include <QScrollBar>
-#include <QDialog>
-#include <QGraphicsDropShadowEffect>
-#include <QTextBrowser>
-#include <QStyle>
-#include <QMouseEvent>
-#include <QPropertyAnimation>
+#include <QFrame>
+#include <QHBoxLayout>
+#include <QVBoxLayout>
+#include <QVector>
 
+namespace {
 
-
-
-class DialogCloseFilter : public QObject {
-public:
-    
-    explicit DialogCloseFilter(QDialog* dialog)
-        : QObject(dialog), m_dialog(dialog), m_isClosing(false) {}
-
-protected:
-    bool eventFilter(QObject* watched, QEvent* event) override {
-        if (m_isClosing) {
-            return true;
-        }
-
-        
-        if (event->type() == QEvent::MouseButtonPress && watched == m_dialog) {
-            fadeOutAndClose();
-            return true;
-        }
-        
-        
-        
-        
-        
-
-        return QObject::eventFilter(watched, event);
-    }
-
-private:
-    void fadeOutAndClose() {
-        m_isClosing = true;
-
-        QPropertyAnimation* fadeOutAnim = new QPropertyAnimation(m_dialog, "windowOpacity", this);
-        fadeOutAnim->setDuration(200);
-        fadeOutAnim->setStartValue(1.0);
-        fadeOutAnim->setEndValue(0.0);
-        fadeOutAnim->setEasingCurve(QEasingCurve::OutQuad);
-
-        connect(fadeOutAnim, &QPropertyAnimation::finished, m_dialog, &QDialog::accept);
-        fadeOutAnim->start(QAbstractAnimation::DeleteWhenStopped);
-    }
-
-    QDialog* m_dialog;
-    bool m_isClosing;
+struct ThanksEntry {
+    QString name;
+    QString contribution;
+    QString initials;
 };
 
+} 
 
 PageAbout::PageAbout(QEmbyCore* core, QWidget *parent)
     : SettingsPageBase(core, tr("About"), parent)
@@ -119,6 +78,8 @@ PageAbout::PageAbout(QEmbyCore* core, QWidget *parent)
     m_licenseLabel->setObjectName("AboutIntroLabel");
     m_mainLayout->addWidget(m_licenseLabel);
 
+    m_mainLayout->addWidget(createAcknowledgementsPanel(), 0, Qt::AlignHCenter);
+
     m_mainLayout->addSpacing(25);
 
     m_licenseBtn = new QPushButton(tr("Open Source Licenses"), this);
@@ -131,79 +92,67 @@ PageAbout::PageAbout(QEmbyCore* core, QWidget *parent)
     m_mainLayout->addStretch(2);
 }
 
+QWidget *PageAbout::createAcknowledgementsPanel()
+{
+    auto *thanksPanel = new QFrame(this);
+    thanksPanel->setObjectName("AboutThanksPanel");
+
+    auto *thanksLayout = new QVBoxLayout(thanksPanel);
+    thanksLayout->setContentsMargins(0, 0, 0, 0);
+    thanksLayout->setSpacing(10);
+
+    auto *thanksTitle = new QLabel(tr("Acknowledgements"), thanksPanel);
+    thanksTitle->setAlignment(Qt::AlignCenter);
+    thanksTitle->setObjectName("AboutThanksTitle");
+    thanksLayout->addWidget(thanksTitle);
+
+    auto *thanksSubtitle = new QLabel(tr("People who help qEmby reach more users."), thanksPanel);
+    thanksSubtitle->setAlignment(Qt::AlignCenter);
+    thanksSubtitle->setObjectName("AboutThanksSubtitle");
+    thanksLayout->addWidget(thanksSubtitle);
+
+    auto *cardsWidget = new QWidget(thanksPanel);
+    cardsWidget->setObjectName("AboutThanksCards");
+    auto *cardsLayout = new FlowLayout(cardsWidget, 0, 6, 6);
+
+    const QVector<ThanksEntry> thanksEntries = {
+        {QStringLiteral("Arkoth79"), tr("French translation"), QStringLiteral("A")},
+    };
+    for (const auto &entry : thanksEntries) {
+        auto *card = new QFrame(cardsWidget);
+        card->setObjectName("AboutThanksCard");
+        auto *cardLayout = new QHBoxLayout(card);
+        cardLayout->setContentsMargins(5, 3, 8, 3);
+        cardLayout->setSpacing(6);
+
+        auto *avatarLabel = new QLabel(entry.initials, card);
+        avatarLabel->setFixedSize(22, 22);
+        avatarLabel->setAlignment(Qt::AlignCenter);
+        avatarLabel->setObjectName("AboutThanksAvatar");
+        cardLayout->addWidget(avatarLabel, 0, Qt::AlignVCenter);
+
+        auto *textLayout = new QVBoxLayout();
+        textLayout->setContentsMargins(0, 0, 0, 0);
+        textLayout->setSpacing(1);
+
+        auto *nameLabel = new QLabel(entry.name, card);
+        nameLabel->setObjectName("AboutThanksName");
+        textLayout->addWidget(nameLabel);
+
+        auto *roleLabel = new QLabel(entry.contribution, card);
+        roleLabel->setObjectName("AboutThanksRole");
+        textLayout->addWidget(roleLabel);
+
+        cardLayout->addLayout(textLayout);
+        cardsLayout->addWidget(card);
+    }
+
+    thanksLayout->addWidget(cardsWidget, 0, Qt::AlignCenter);
+    return thanksPanel;
+}
 
 void PageAbout::showLicensesDialog()
 {
-    QDialog dialog(this->window());
-    dialog.setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint);
-    dialog.setAttribute(Qt::WA_TranslucentBackground);
-    dialog.setFixedSize(600, 520);
-
-    dialog.setWindowOpacity(0.0);
-
-    QFrame *container = new QFrame(&dialog);
-    container->setObjectName("LicenseDialogContainer");
-    container->setFixedSize(540, 460);
-
-    QGraphicsDropShadowEffect *shadow = new QGraphicsDropShadowEffect(container);
-    shadow->setBlurRadius(30);
-    shadow->setColor(QColor(0, 0, 0, 180));
-    shadow->setOffset(0, 10);
-    container->setGraphicsEffect(shadow);
-
-    QVBoxLayout *dialogLayout = new QVBoxLayout(&dialog);
-    dialogLayout->setContentsMargins(0, 0, 0, 0);
-    dialogLayout->addWidget(container, 0, Qt::AlignCenter);
-
-    QVBoxLayout *layout = new QVBoxLayout(container);
-    layout->setContentsMargins(24, 24, 24, 24);
-    layout->setSpacing(16);
-
-    QLabel *titleLabel = new QLabel(tr("Open Source Licenses"), container);
-    titleLabel->setObjectName("LicenseDialogTitle");
-    titleLabel->setAlignment(Qt::AlignCenter);
-    layout->addWidget(titleLabel);
-
-    QTextBrowser *browser = new QTextBrowser(container);
-    browser->setObjectName("AboutLicenseBrowser");
-    browser->setOpenExternalLinks(true);
-    browser->setReadOnly(true);
-    browser->document()->setDocumentMargin(14);
-
-    QScrollBar *vBar = browser->verticalScrollBar();
-    vBar->setObjectName("AboutLicenseScrollBar");
-
-    browser->style()->unpolish(browser);
-    browser->style()->polish(browser);
-    vBar->style()->unpolish(vBar);
-    vBar->style()->polish(vBar);
-    browser->ensurePolished();
-
-    QFile licenseFile(":/html/licenses.html");
-    if (licenseFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        QTextStream in(&licenseFile);
-        in.setEncoding(QStringConverter::Utf8);
-        browser->setHtml(in.readAll());
-        licenseFile.close();
-    }
-
-    layout->addWidget(browser);
-
-    
-    
-    
-    DialogCloseFilter* closeFilter = new DialogCloseFilter(&dialog);
-    dialog.installEventFilter(closeFilter);
-    
-
-    dialog.setGeometry(QStyle::alignedRect(Qt::LeftToRight, Qt::AlignCenter, dialog.size(), this->window()->geometry()));
-
-    QPropertyAnimation* fadeInAnim = new QPropertyAnimation(&dialog, "windowOpacity");
-    fadeInAnim->setDuration(250);
-    fadeInAnim->setStartValue(0.0);
-    fadeInAnim->setEndValue(1.0);
-    fadeInAnim->setEasingCurve(QEasingCurve::OutCubic);
-    fadeInAnim->start();
-
+    LicensesDialog dialog(this->window());
     dialog.exec();
 }

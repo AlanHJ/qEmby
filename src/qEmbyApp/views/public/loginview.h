@@ -4,6 +4,7 @@
 #include <QWidget>
 #include <qcorotask.h>
 #include "../../managers/thememanager.h" 
+#include "models/profile/proxyconfig.h"  
 
 class QLineEdit;
 class QPushButton;
@@ -20,6 +21,7 @@ class LoadingOverlay;
 class ModernComboBox;
 class ModernSwitch;
 class ServerWheelView;
+class WebdavProfileStore;
 
 class LoginView : public QWidget
 {
@@ -44,7 +46,10 @@ private Q_SLOTS:
     void showListPage();
     void onRemoveServerClicked(const QString& serverId);
     void onEditServerClicked(const QString& serverId);
+
     
+    void onCloudSyncClicked();
+
     
     void onThemeChanged(ThemeManager::Theme theme);
 
@@ -86,10 +91,27 @@ private:
 
     bool m_autoLoginAttempted = false;
 
+    
+    
+    QPushButton* m_serverProxyBtn = nullptr;
+
+    
+    QPushButton* m_cloudSyncBtn = nullptr;
+
+    
+    WebdavProfileStore* m_webdavStore = nullptr;
+
+    
+    
+    ProxyConfig m_pendingProxy;
+    bool        m_pendingUseGlobalProxy = false;
+
     void setupUi();
     void setupListPage();
     void setupAddPage();
     void refreshServerList();
+    void refreshServerProxyTooltip();
+    void openProxyDialogForCurrentEntry();
     
     
     QString getThemeSvgPath(const QString& iconName) const;

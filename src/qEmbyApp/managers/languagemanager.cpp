@@ -1,6 +1,7 @@
 #include "languagemanager.h"
 #include <QCoreApplication>
 #include <QDebug>
+#include <QFile>
 #include <QLocale>
 #include <config/config_keys.h>
 #include <config/configstore.h>
@@ -39,6 +40,8 @@ void LanguageManager::init() {
 
     
     QString savedLang = ConfigStore::instance()->get<QString>(ConfigKeys::Language, "system");
+    qDebug() << "LanguageManager: saved language" << savedLang
+             << "| config:" << ConfigStore::instance()->filePath();
     applyLanguage(savedLang);
 }
 
@@ -73,14 +76,30 @@ void LanguageManager::applyLanguage(const QString& langCode) {
     
     removeCurrentTranslator();
 
+    const auto loadTranslation = [this, app](const QString &baseName) {
+        const QString resourcePath = QStringLiteral(":/i18n/%1.qm").arg(baseName);
+        const bool resourceExists = QFile::exists(resourcePath);
+        if (resourceExists && m_translator.load(resourcePath)) {
+            app->installTranslator(&m_translator);
+            m_translatorInstalled = true;
+            qDebug() << "LanguageManager: Loaded translation"
+                     << resourcePath
+                     << "| language:" << m_translator.language()
+                     << "| filePath:" << m_translator.filePath();
+            return true;
+        }
+
+        qWarning() << "LanguageManager: Failed to load translation"
+                   << resourcePath << "| resourceExists:" << resourceExists;
+        return false;
+    };
+
     if (langCode == "system" || langCode.isEmpty()) {
         const QStringList uiLanguages = QLocale::system().uiLanguages();
         bool loaded = false;
         for (const QString &locale : uiLanguages) {
             const QString baseName = "qEmby_" + QLocale(locale).name();
-            if (m_translator.load(":/i18n/" + baseName)) {
-                app->installTranslator(&m_translator);
-                m_translatorInstalled = true;
+            if (loadTranslation(baseName)) {
                 qDebug() << "LanguageManager: Loaded system translation" << baseName;
                 loaded = true;
                 break;
@@ -91,12 +110,8 @@ void LanguageManager::applyLanguage(const QString& langCode) {
         }
     } else {
         const QString baseName = "qEmby_" + langCode;
-        if (m_translator.load(":/i18n/" + baseName)) {
-            app->installTranslator(&m_translator);
-            m_translatorInstalled = true;
-            qDebug() << "LanguageManager: Loaded translation" << baseName;
-        } else {
-            qWarning() << "LanguageManager: Failed to load translation" << baseName << ", falling back to internal default.";
+        if (!loadTranslation(baseName)) {
+            qWarning() << "LanguageManager: Falling back to internal default for" << baseName;
         }
     }
 

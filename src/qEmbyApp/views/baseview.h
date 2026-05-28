@@ -50,7 +50,11 @@ public Q_SLOTS:
     virtual void handleRemoveFromResumeRequested(const MediaItem& item);
 
 Q_SIGNALS:
-    void navigateToDetail(const QString& itemId, const QString& itemName);
+    
+    
+    
+    
+    void navigateToDetail(const QString& itemId, const QString& itemName, const MediaItem& seedItem = {});
     void navigateToFolder(const QString& folderId, const QString& folderName);
     void navigateToPerson(const QString& personId, const QString& personName);
     void triggerSearch(const QString& query);

@@ -1,7 +1,7 @@
 # src/qEmbyCore/CMakeLists.txt
 
-file(GLOB_RECURSE CORE_HEADERS "*.h")
-file(GLOB_RECURSE CORE_SOURCES "*.cpp")
+file(GLOB_RECURSE CORE_HEADERS CONFIGURE_DEPENDS "*.h")
+file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS "*.cpp")
 
 add_library(qEmbyCore SHARED
     ${CORE_HEADERS}
@@ -25,8 +25,14 @@ target_compile_definitions(qEmbyCore PRIVATE QEMBYCORE_LIBRARY)
 
 include(GNUInstallDirs)
 
+set(_qemby_core_library_install_dir "${CMAKE_INSTALL_LIBDIR}")
+if(UNIX AND NOT APPLE AND QEMBY_RUNTIME_LIB_SUBDIR)
+    set(_qemby_core_library_install_dir
+        "${CMAKE_INSTALL_LIBDIR}/${QEMBY_RUNTIME_LIB_SUBDIR}")
+endif()
+
 install(TARGETS qEmbyCore
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${_qemby_core_library_install_dir}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${_qemby_core_library_install_dir}
 )

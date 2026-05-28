@@ -1,4 +1,5 @@
 #include "playeroverlaydialog.h"
+#include "../managers/thememanager.h"
 
 #include <QEvent>
 #include <QGraphicsDropShadowEffect>
@@ -69,11 +70,26 @@ PlayerOverlayDialog::PlayerOverlayDialog(QWidget *parent)
     auto *closeButton = new QPushButton(m_titleBarWidget);
     closeButton->setObjectName("dialog-close-btn");
     closeButton->setCursor(Qt::PointingHandCursor);
-    
-    
-    
-    closeButton->setIcon(QIcon(QStringLiteral(":/svg/dark/close.svg")));
     closeButton->setIconSize(QSize(12, 12));
+
+    
+    
+    
+    
+    
+    
+    auto updateCloseIcon = [closeButton]() {
+        const QString iconPath = ThemeManager::instance()->isDarkMode()
+            ? QStringLiteral(":/svg/dark/close.svg")
+            : QStringLiteral(":/svg/light/close.svg");
+        closeButton->setIcon(QIcon(iconPath));
+    };
+    updateCloseIcon();
+    connect(ThemeManager::instance(), &ThemeManager::themeChanged,
+            closeButton, [updateCloseIcon](ThemeManager::Theme) {
+                updateCloseIcon();
+            });
+
     connect(closeButton, &QPushButton::clicked, this,
             &PlayerOverlayDialog::reject);
     titleBarLayout->addWidget(closeButton);

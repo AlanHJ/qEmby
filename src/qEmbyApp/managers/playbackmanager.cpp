@@ -8,6 +8,7 @@
 #include <models/media/playbackinfo.h>
 #include "../components/playerwindow.h"
 #include "../components/moderntoast.h"
+#include "../utils/logredactionutils.h"
 #include "../utils/playerpreferenceutils.h"
 #include <QProcess>
 #include <QFile>
@@ -53,7 +54,7 @@ void PlaybackManager::startPlayback(const QString& mediaId, const QString& title
     qDebug() << "[PlaybackManager] ===== startPlayback =====";
     qDebug() << "[PlaybackManager] mediaId:" << mediaId;
     qDebug() << "[PlaybackManager] title:" << title;
-    qDebug() << "[PlaybackManager] streamUrl:" << streamUrl;
+    qDebug() << "[PlaybackManager] streamUrl:" << LogRedactionUtils::url(streamUrl);
     qDebug() << "[PlaybackManager] startPositionTicks:" << startPositionTicks
              << "(" << ticksToTimeString(startPositionTicks) << ")";
 
@@ -104,7 +105,7 @@ void PlaybackManager::startInternalPlayback(const QString& mediaId, const QStrin
 
     qDebug() << "[PlaybackManager] ===== startInternalPlayback =====";
     qDebug() << "[PlaybackManager] mediaId:" << mediaId << "title:" << title;
-    qDebug() << "[PlaybackManager] streamUrl:" << streamUrl;
+    qDebug() << "[PlaybackManager] streamUrl:" << LogRedactionUtils::url(streamUrl);
 
     
     bool independent = ConfigStore::instance()->get<bool>(ConfigKeys::PlayerIndependentWindow, false);
@@ -447,10 +448,12 @@ void PlaybackManager::launchExternalPlayer(const QString& mediaId, const QString
 
     
     QString actualStreamUrl = streamUrl;
-    qDebug() << "[PlaybackManager] Original streamUrl:" << streamUrl;
+    qDebug() << "[PlaybackManager] Original streamUrl:"
+             << LogRedactionUtils::url(streamUrl);
     if (ConfigStore::instance()->get<bool>(ConfigKeys::ExtPlayerDirectStream, false) && hasSourceInfo) {
         qDebug() << "[PlaybackManager] DirectStream enabled, sourceInfo.path:" << sourceInfo.path;
-        qDebug() << "[PlaybackManager] sourceInfo.directStreamUrl:" << sourceInfo.directStreamUrl;
+        qDebug() << "[PlaybackManager] sourceInfo.directStreamUrl:"
+                 << LogRedactionUtils::url(sourceInfo.directStreamUrl);
         
         if (!sourceInfo.path.isEmpty()) {
             actualStreamUrl = sourceInfo.path;
@@ -460,12 +463,14 @@ void PlaybackManager::launchExternalPlayer(const QString& mediaId, const QString
             if (sourceInfo.directStreamUrl.startsWith("http://", Qt::CaseInsensitive) ||
                 sourceInfo.directStreamUrl.startsWith("https://", Qt::CaseInsensitive)) {
                 actualStreamUrl = sourceInfo.directStreamUrl;
-                qDebug() << "[PlaybackManager] Using directStreamUrl (absolute):" << actualStreamUrl;
+                qDebug() << "[PlaybackManager] Using directStreamUrl (absolute):"
+                         << LogRedactionUtils::url(actualStreamUrl);
             } else {
                 auto profile = m_core->serverManager()->activeProfile();
                 if (profile.isValid()) {
                     actualStreamUrl = profile.url + sourceInfo.directStreamUrl;
-                    qDebug() << "[PlaybackManager] Using directStreamUrl (relative, joined):" << actualStreamUrl;
+                    qDebug() << "[PlaybackManager] Using directStreamUrl (relative, joined):"
+                             << LogRedactionUtils::url(actualStreamUrl);
                 }
             }
         } else {
@@ -474,7 +479,8 @@ void PlaybackManager::launchExternalPlayer(const QString& mediaId, const QString
             if (profile.isValid()) {
                 actualStreamUrl = QString("%1/Videos/%2/stream?static=true&mediaSourceId=%3&api_key=%4")
                     .arg(profile.url, mediaId, sourceInfo.id, profile.accessToken);
-                qDebug() << "[PlaybackManager] Using fallback static stream URL:" << actualStreamUrl;
+                qDebug() << "[PlaybackManager] Using fallback static stream URL:"
+                         << LogRedactionUtils::url(actualStreamUrl);
             }
         }
     }
@@ -493,7 +499,8 @@ void PlaybackManager::launchExternalPlayer(const QString& mediaId, const QString
             if (!src.isEmpty() && actualStreamUrl.contains(src)) {
                 qDebug() << "[PlaybackManager] URL replace rule matched:" << src << "=>" << dst;
                 actualStreamUrl.replace(src, dst);
-                qDebug() << "[PlaybackManager] After replace:" << actualStreamUrl;
+                qDebug() << "[PlaybackManager] After replace:"
+                         << LogRedactionUtils::url(actualStreamUrl);
                 
                 
                 if (!actualStreamUrl.startsWith("http://", Qt::CaseInsensitive) &&
@@ -505,7 +512,9 @@ void PlaybackManager::launchExternalPlayer(const QString& mediaId, const QString
             }
         }
         if (actualStreamUrl != beforeReplace) {
-            qDebug() << "[PlaybackManager] URL changed by replace rules:" << beforeReplace << "->" << actualStreamUrl;
+            qDebug() << "[PlaybackManager] URL changed by replace rules:"
+                     << LogRedactionUtils::url(beforeReplace)
+                     << "->" << LogRedactionUtils::url(actualStreamUrl);
         }
     }
 
@@ -551,7 +560,8 @@ void PlaybackManager::launchExternalPlayer(const QString& mediaId, const QString
         }
     }
 
-    qDebug() << "[PlaybackManager] Final playback URL:" << actualStreamUrl;
+    qDebug() << "[PlaybackManager] Final playback URL:"
+             << LogRedactionUtils::url(actualStreamUrl);
 
     
     args << actualStreamUrl;
@@ -656,7 +666,7 @@ void PlaybackManager::launchExternalPlayer(const QString& mediaId, const QString
     qDebug() << "[PlaybackManager] Launching external player:"
              << playerPath
              << "Type:" << static_cast<int>(playerType)
-             << "Args:" << args
+             << "Args:" << LogRedactionUtils::stringList(args)
              << "IPC:" << (m_ipc ? (m_ipc->isPrecise() ? "precise" : "estimation") : "none");
 }
 
@@ -669,7 +679,7 @@ void PlaybackManager::launchIndependentWindow(const QString& mediaId, const QStr
 {
     qDebug() << "[PlaybackManager] ===== launchIndependentWindow =====";
     qDebug() << "[PlaybackManager] mediaId:" << mediaId << "title:" << title;
-    qDebug() << "[PlaybackManager] streamUrl:" << streamUrl;
+    qDebug() << "[PlaybackManager] streamUrl:" << LogRedactionUtils::url(streamUrl);
     qDebug() << "[PlaybackManager] startPositionTicks:" << startPositionTicks
              << "(" << ticksToTimeString(startPositionTicks) << ")";
 

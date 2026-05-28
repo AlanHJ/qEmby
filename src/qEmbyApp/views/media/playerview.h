@@ -6,7 +6,8 @@
 #include "../../components/modernslider.h"
 #include "../../components/loadingoverlay.h" 
 #include "../../components/playerdanmakucontroller.h"
-#include <models/media/mediaitem.h> 
+#include <models/media/mediaitem.h>
+#include <services/introdb/introdbservice.h>
 
 #include <QVariant>
 #include <qcorotask.h>
@@ -50,6 +51,10 @@ public:
     void resumePlayback();
     void stopAndReport(); 
 
+signals:
+    void playerChromeVisibilityChanged(bool visible);
+    void playbackTitleChanged(const QString &title);
+
 protected:
     void resizeEvent(QResizeEvent *event) override;
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -80,6 +85,7 @@ private slots:
     void showDanmakuMenu();
     void showDanmakuIdentifyDialog();
     void loadLocalDanmakuFile();
+    void loadExternalSubtitleFile();
     void openSubtitleSettingsDialog();
     void openDanmakuSettingsDialog();
     void showSettingsMenu(); 
@@ -128,6 +134,7 @@ private:
     void handlePointerActivity(const QPoint &globalPos);
     void setCursorHidden(bool hidden);
     bool areControlsFullyVisible() const;
+    void setPlayerChromeVisible(bool visible);
 
     void stopTransientUiAnimations(bool immediate = false);
     void beginViewTeardown();
@@ -135,6 +142,17 @@ private:
     QPushButton* createHudButton(const QString& iconPath, const QSize& size = QSize(24, 24));
     QString formatTime(double seconds, double totalSeconds) const;
     void applySubtitleStyleSettings();
+
+    
+    QString externalSubtitleConfigKey() const;
+    QString readPersistedExternalSubtitle() const;
+    void persistExternalSubtitle(const QString &absPath);
+    void clearPersistedExternalSubtitle();
+    void applyPersistedExternalSubtitleIfAny();
+    QString openPlayerFileDialog(const QString &title, const QString &startDir,
+                                 const QString &filter);
+    
+    int findSubtitleTrackIdByPath(const QString &absPath) const;
     
     void showToast(const QString& msg);
     void updateStatisticsDisplay();
@@ -147,6 +165,8 @@ private:
     void closeActivePlayerDialog();
     void trackPlayerDialog(PlayerOverlayDialog *dialog);
     void updatePowerInhibition();
+    QCoro::Task<void> requestIntroDBSegments();
+    void checkAndSkipSegment(double position);
 
     void showCenteredPopup(QWidget* popup, QPushButton* btn); 
     QWidget* m_activePopup = nullptr; 
@@ -245,6 +265,7 @@ private:
     bool m_isPlaying;
     bool m_isBuffering = false; 
     bool m_isSeeking = false;   
+    bool m_playerChromeVisible = true;
     
     double m_currentPosition;
     double m_totalDuration = 0.0; 
@@ -258,7 +279,9 @@ private:
     bool m_isMuted = false;
 
     bool m_showNetworkSpeed = true; 
+    bool m_useRelayNetworkSpeed = false;
     bool m_showStatisticsOverlay = false; 
+    qint64 m_effectiveNetworkSpeed = 0;
     bool m_hasSetVideoSize = false; 
     bool m_hasReportedStop = false; 
     bool m_isViewTearingDown = false;
@@ -274,6 +297,12 @@ private:
     bool m_isSeriesMode = false;
     QString m_seriesId;
     QString m_seriesName;
+
+    
+    IntroDBService::EpisodeSegments m_episodeSegments;
+    bool m_introSkipped = false;
+    bool m_outroSkipped = false;
+    bool m_segmentsRequested = false;
 
     
     QString m_switcherCacheMediaId;

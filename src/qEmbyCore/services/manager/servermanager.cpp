@@ -69,6 +69,54 @@ void ServerManager::setActiveServer(const QString& id) {
     }
 }
 
+void ServerManager::updateServerProxy(const QString& id,
+                                      const ProxyConfig& proxy,
+                                      bool useGlobalProxy) {
+    bool found = false;
+    bool isActive = false;
+    for (int i = 0; i < m_servers.size(); ++i) {
+        if (m_servers[i].id != id) {
+            continue;
+        }
+        
+        if (m_servers[i].proxy == proxy &&
+            m_servers[i].useGlobalProxy == useGlobalProxy) {
+            qDebug() << "[ServerManager] updateServerProxy skipped: no change"
+                     << "| id:" << id;
+            return;
+        }
+        m_servers[i].proxy = proxy;
+        m_servers[i].useGlobalProxy = useGlobalProxy;
+
+        
+        
+        if (m_activeProfile.id == id) {
+            m_activeProfile = m_servers[i];
+            isActive = true;
+        }
+        found = true;
+        break;
+    }
+
+    if (!found) {
+        qWarning() << "[ServerManager] updateServerProxy: server not found"
+                   << "| id:" << id;
+        return;
+    }
+
+    saveSettings();
+    qInfo() << "[ServerManager] proxy updated"
+            << "| id:" << id
+            << "| useGlobalProxy:" << useGlobalProxy
+            << "| proxy:" << proxy.summary();
+
+    Q_EMIT serversChanged();
+    Q_EMIT serverProxyChanged(id);
+    if (isActive) {
+        Q_EMIT activeServerChanged(m_activeProfile);
+    }
+}
+
 
 
 
@@ -128,6 +176,8 @@ void ServerManager::saveSettings() {
         obj["isAdmin"] = p.isAdmin;
         obj["canDownloadMedia"] = p.canDownloadMedia;
         obj["iconBase64"] = p.iconBase64;
+        obj["useGlobalProxy"] = p.useGlobalProxy;
+        obj["proxy"] = p.proxy.toJson();
         array.append(obj);
     }
 
@@ -161,6 +211,8 @@ void ServerManager::loadSettings() {
         p.isAdmin = obj["isAdmin"].toBool();
         p.canDownloadMedia = obj["canDownloadMedia"].toBool(false);
         p.iconBase64 = obj["iconBase64"].toString();
+        p.useGlobalProxy = obj["useGlobalProxy"].toBool(false);
+        p.proxy = ProxyConfig::fromJson(obj["proxy"].toObject());
         m_servers.append(p);
     }
 

@@ -22,6 +22,13 @@ public:
     void setActiveServer(const QString& id);
 
     
+    
+    
+    
+    void updateServerProxy(const QString& id, const ProxyConfig& proxy,
+                           bool useGlobalProxy);
+
+    
     QList<ServerProfile> servers() const { return m_servers; }
     ServerProfile activeProfile() const { return m_activeProfile; }
     ApiClient* activeClient() const { return m_activeClient.data(); }
@@ -39,6 +46,9 @@ public:
 Q_SIGNALS:
     void serversChanged();
     void activeServerChanged(const ServerProfile& profile);
+
+    
+    void serverProxyChanged(const QString& serverId);
 
 private:
     NetworkManager* m_network;

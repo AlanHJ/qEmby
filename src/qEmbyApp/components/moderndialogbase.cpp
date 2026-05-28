@@ -61,8 +61,13 @@ ModernDialogBase::ModernDialogBase(QWidget *parent,
     m_titleBarWidget->setObjectName("dialog-titlebar");
 
     auto *titleBarLayout = new QHBoxLayout(m_titleBarWidget);
+#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
+    
+    titleBarLayout->setContentsMargins(52, 0, 16, 0);
+#else
     
     titleBarLayout->setContentsMargins(16, 0, 0, 0);
+#endif
     titleBarLayout->setSpacing(0);
 
     m_titleLabel = new QLabel(m_titleBarWidget);
@@ -71,20 +76,30 @@ ModernDialogBase::ModernDialogBase(QWidget *parent,
     
     auto *agent = new QWK::WidgetWindowAgent(this);
     agent->setup(this);
+#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
+    agent->setWindowAttribute("no-system-buttons", false);
+    agent->setWindowAttribute("macos-close-button-only", true);
+#endif
 
+#if !defined(Q_OS_MACOS) && !defined(Q_OS_MAC)
     
     auto *closeBtn = new QWK::WindowButton(m_titleBarWidget);
     closeBtn->setObjectName("dialog-close-btn");
     closeBtn->setProperty("system-button", true); 
     connect(closeBtn, &QWK::WindowButton::clicked, this, &QDialog::reject);
+#endif
 
     titleBarLayout->addWidget(m_titleLabel);
     titleBarLayout->addStretch();
+#if !defined(Q_OS_MACOS) && !defined(Q_OS_MAC)
     titleBarLayout->addWidget(closeBtn);
+#endif
 
     
     agent->setTitleBar(m_titleBarWidget);
+#if !defined(Q_OS_MACOS) && !defined(Q_OS_MAC)
     agent->setSystemButton(QWK::WindowAgentBase::Close, closeBtn);
+#endif
 
 #ifdef Q_OS_WIN
     if (disableNativeTransitions) {

@@ -73,6 +73,38 @@
         <translation>忽略 SSL 证书验证</translation>
     </message>
     <message>
+        <source>Proxy settings</source>
+        <translation>代理设置</translation>
+    </message>
+    <message>
+        <source>Server Proxy</source>
+        <translation>服务器代理</translation>
+    </message>
+    <message>
+        <source>Configure...</source>
+        <translation>配置...</translation>
+    </message>
+    <message>
+        <source>Using global proxy</source>
+        <translation>使用全局代理</translation>
+    </message>
+    <message>
+        <source>No proxy</source>
+        <translation>不使用代理</translation>
+    </message>
+    <message>
+        <source>System proxy</source>
+        <translation>使用系统代理</translation>
+    </message>
+    <message>
+        <source>Custom (incomplete)</source>
+        <translation>自定义代理（信息不完整）</translation>
+    </message>
+    <message>
+        <source>Server Proxy — %1</source>
+        <translation>服务器代理 — %1</translation>
+    </message>
+    <message>
         <source>Use this only for trusted self-signed or private CA HTTPS servers.</source>
         <translation>仅对可信任的自签名或私有 CA HTTPS 服务器使用此选项。</translation>
     </message>
@@ -172,6 +204,10 @@ Error: </source>
         <translation>连接失败或会话已过期。请重新登录。
 错误: </translation>
     </message>
+    <message>
+        <source>Cloud Sync (WebDAV)</source>
+        <translation>云同步（WebDAV）</translation>
+    </message>
 </context>
 
 <context>
@@ -219,6 +255,10 @@ Error: </source>
     <message>
         <source>Downloads</source>
         <translation>下载</translation>
+    </message>
+    <message>
+        <source>Cloud Sync (WebDAV)</source>
+        <translation>云同步（WebDAV）</translation>
     </message>
     <message>
         <source>Logout</source>
@@ -1767,6 +1807,22 @@ Choose a file, paste an image URL, or drag one onto the preview.</source>
         <translation>字幕已关闭</translation>
     </message>
     <message>
+        <source>Load Local Subtitle File</source>
+        <translation>加载本地字幕文件</translation>
+    </message>
+    <message>
+        <source>Subtitle Loaded: %1</source>
+        <translation>已加载字幕：%1</translation>
+    </message>
+    <message>
+        <source>Player is not ready</source>
+        <translation>播放器尚未就绪</translation>
+    </message>
+    <message>
+        <source>Subtitle Files (*.srt *.ass *.ssa *.sub *.idx *.vtt *.smi *.sup *.txt);;SubRip (*.srt);;Advanced SubStation Alpha (*.ass *.ssa);;WebVTT (*.vtt);;MicroDVD / SubViewer (*.sub);;VobSub (*.idx);;SAMI (*.smi);;PGS / HDMV (*.sup);;All Files (*)</source>
+        <translation>字幕文件 (*.srt *.ass *.ssa *.sub *.idx *.vtt *.smi *.sup *.txt);;SubRip (*.srt);;高级 SubStation Alpha (*.ass *.ssa);;WebVTT (*.vtt);;MicroDVD / SubViewer (*.sub);;VobSub (*.idx);;SAMI (*.smi);;PGS / HDMV (*.sup);;所有文件 (*)</translation>
+    </message>
+    <message>
         <source>External Sub %1</source>
         <translation>外挂字幕 %1</translation>
     </message>
@@ -1903,6 +1959,10 @@ Choose a file, paste an image URL, or drag one onto the preview.</source>
         <translation>英文</translation>
     </message>
     <message>
+        <source>French</source>
+        <translation>法语</translation>
+    </message>
+    <message>
         <source>Language</source>
         <translation>语言</translation>
     </message>
@@ -1973,6 +2033,198 @@ This will remove the current log and rotated backups. This action cannot be undo
     <message>
         <source>Open Location</source>
         <translation>打开所在位置</translation>
+    </message>
+    <message>
+        <source>Configure...</source>
+        <translation>配置...</translation>
+    </message>
+    <message>
+        <source>Network Proxy</source>
+        <translation>网络代理</translation>
+    </message>
+    <message>
+        <source>Proxy for the current server (global or server-specific)</source>
+        <translation>当前服务器代理（全局或服务器专用）</translation>
+    </message>
+    <message>
+        <source>no proxy</source>
+        <translation>不使用代理</translation>
+    </message>
+    <message>
+        <source>system proxy</source>
+        <translation>使用系统代理</translation>
+    </message>
+    <message>
+        <source>custom (incomplete)</source>
+        <translation>自定义代理（信息不完整）</translation>
+    </message>
+    <message>
+        <source>%1 %2:%3</source>
+        <translation>%1 %2:%3</translation>
+    </message>
+    <message>
+        <source>Proxy for the current server — using global: %1</source>
+        <translation>当前服务器代理 — 使用全局：%1</translation>
+    </message>
+    <message>
+        <source>Proxy for the current server — currently: %1</source>
+        <translation>当前服务器代理 — 当前：%1</translation>
+    </message>
+    <message>
+        <source>Default proxy for all servers — currently: %1</source>
+        <translation>所有服务器的默认代理 — 当前：%1</translation>
+    </message>
+    <message>
+        <source>Default proxy for all servers (per-server settings override this)</source>
+        <translation>所有服务器的默认代理（服务器级设置可覆盖）</translation>
+    </message>
+    <message>
+        <source>Default proxy for all servers (per-server settings override this) — currently: no proxy</source>
+        <translation>所有服务器的默认代理（服务器级设置可覆盖） — 当前：不使用代理</translation>
+    </message>
+    <message>
+        <source>Default proxy for all servers (per-server settings override this) — currently: system proxy</source>
+        <translation>所有服务器的默认代理（服务器级设置可覆盖） — 当前：使用系统代理</translation>
+    </message>
+    <message>
+        <source>Default proxy for all servers (per-server settings override this) — currently: custom (incomplete)</source>
+        <translation>所有服务器的默认代理（服务器级设置可覆盖） — 当前：自定义代理（信息不完整）</translation>
+    </message>
+    <message>
+        <source>Default proxy for all servers (per-server settings override this) — currently: %1 %2:%3</source>
+        <translation>所有服务器的默认代理（服务器级设置可覆盖） — 当前：%1 %2:%3</translation>
+    </message>
+</context>
+
+<context>
+    <name>ProxySettingsDialog</name>
+    <message>
+        <source>Proxy Settings</source>
+        <translation>代理设置</translation>
+    </message>
+    <message>
+        <source>Server Proxy Settings</source>
+        <translation>服务器代理设置</translation>
+    </message>
+    <message>
+        <source>Use Global Proxy</source>
+        <translation>使用全局代理</translation>
+    </message>
+    <message>
+        <source>When enabled, this server uses the global proxy settings. Disable to configure a proxy specific to this server.</source>
+        <translation>开启后，此服务器将使用全局代理设置。关闭以为该服务器单独配置代理。</translation>
+    </message>
+    <message>
+        <source>These settings apply as the default proxy for all servers, unless a server overrides them.</source>
+        <translation>这些设置作为所有服务器的默认代理，除非服务器另行覆盖。</translation>
+    </message>
+    <message>
+        <source>Proxy Mode</source>
+        <translation>代理模式</translation>
+    </message>
+    <message>
+        <source>Do not use proxy</source>
+        <translation>不使用代理</translation>
+    </message>
+    <message>
+        <source>Use system proxy</source>
+        <translation>使用系统代理</translation>
+    </message>
+    <message>
+        <source>Custom proxy</source>
+        <translation>自定义代理</translation>
+    </message>
+    <message>
+        <source>Type</source>
+        <translation>类型</translation>
+    </message>
+    <message>
+        <source>Host</source>
+        <translation>主机</translation>
+    </message>
+    <message>
+        <source>e.g. 127.0.0.1</source>
+        <translation>例如：127.0.0.1</translation>
+    </message>
+    <message>
+        <source>Port</source>
+        <translation>端口</translation>
+    </message>
+    <message>
+        <source>1 - 65535</source>
+        <translation>1 - 65535</translation>
+    </message>
+    <message>
+        <source>Username</source>
+        <translation>用户名</translation>
+    </message>
+    <message>
+        <source>Optional</source>
+        <translation>可选</translation>
+    </message>
+    <message>
+        <source>Password</source>
+        <translation>密码</translation>
+    </message>
+    <message>
+        <source>Bypass for local addresses</source>
+        <translation>本地地址直连</translation>
+    </message>
+    <message>
+        <source>Test Connection</source>
+        <translation>测试连接</translation>
+    </message>
+    <message>
+        <source>Save</source>
+        <translation>保存</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <source>Invalid Proxy</source>
+        <translation>代理配置无效</translation>
+    </message>
+    <message>
+        <source>Please enter the proxy host.</source>
+        <translation>请输入代理主机地址。</translation>
+    </message>
+    <message>
+        <source>Please enter a valid port (1 - 65535).</source>
+        <translation>请输入有效端口（1 - 65535）。</translation>
+    </message>
+    <message>
+        <source>Testing...</source>
+        <translation>测试中...</translation>
+    </message>
+    <message>
+        <source>✓ Success (HTTP %1, %2 ms)</source>
+        <translation>✓ 成功（HTTP %1，%2 ms）</translation>
+    </message>
+    <message>
+        <source>✗ Failed (%1)</source>
+        <translation>✗ 失败（%1）</translation>
+    </message>
+    <message>
+        <source>✗ %1</source>
+        <translation>✗ %1</translation>
+    </message>
+    <message>
+        <source>Probe URL used to verify the proxy connection. Leave empty to use the default.</source>
+        <translation>用于验证代理连接的探测地址。留空将使用内置默认地址。</translation>
+    </message>
+    <message>
+        <source>Invalid test URL.</source>
+        <translation>测试地址无效。</translation>
+    </message>
+    <message>
+        <source>Editing global proxy. Fill in the form below and save to apply it globally.</source>
+        <translation>正在编辑全局代理。在下方填写并保存即可应用为全局代理。</translation>
+    </message>
+    <message>
+        <source>Loaded global proxy settings below. You can review or modify them before saving.</source>
+        <translation>已将全局代理设置加载到下方，可在保存前进行查看或修改。</translation>
     </message>
 </context>
 
@@ -2258,6 +2510,18 @@ This will remove the current log and rotated backups. This action cannot be undo
         <source>GitHub Repository</source>
         <translation>GitHub 仓库</translation>
     </message>
+    <message>
+        <source>Acknowledgements</source>
+        <translation>致谢</translation>
+    </message>
+    <message>
+        <source>People who help qEmby reach more users.</source>
+        <translation>帮助 qEmby 触达更多用户的贡献者。</translation>
+    </message>
+    <message>
+        <source>French translation</source>
+        <translation>法语翻译</translation>
+    </message>
 </context>
 
 <context>
@@ -2381,6 +2645,26 @@ This will remove the current log and rotated backups. This action cannot be undo
     <message>
         <source>Keep the sidebar always visible and integrated into the main layout</source>
         <translation>始终显示侧边栏并将其融入主界面布局</translation>
+    </message>
+    <message>
+        <source>Custom Sidebar</source>
+        <translation>自定义侧边栏</translation>
+    </message>
+    <message>
+        <source>Customize which items appear in the navigation sidebar</source>
+        <translation>自定义导航侧边栏中显示的项目</translation>
+    </message>
+    <message>
+        <source>Hide Search Bar</source>
+        <translation>隐藏搜索栏</translation>
+    </message>
+    <message>
+        <source>Hide Home Item</source>
+        <translation>隐藏主页项</translation>
+    </message>
+    <message>
+        <source>Hide Favorites Item</source>
+        <translation>隐藏收藏项</translation>
     </message>
     <message>
         <source>Normal Window</source>
@@ -2878,6 +3162,22 @@ This action cannot be undone.</source>
     <message>
         <source>Single click on the video area to toggle play/pause</source>
         <translation>在视频画面上单击鼠标左键以切换播放/暂停</translation>
+    </message>
+    <message>
+        <source>Auto Skip Intro</source>
+        <translation>自动跳过片头</translation>
+    </message>
+    <message>
+        <source>Automatically skip the intro sequence when playback starts</source>
+        <translation>播放开始时自动跳过片头片段</translation>
+    </message>
+    <message>
+        <source>Auto Skip Outro</source>
+        <translation>自动跳过片尾</translation>
+    </message>
+    <message>
+        <source>Automatically skip the ending credits during playback</source>
+        <translation>播放时自动跳过片尾演职员表</translation>
     </message>
 </context>
 <context>
@@ -7508,6 +7808,18 @@ Comments: %4</source>
         <source>Failed to search danmaku: %1</source>
         <translation>搜索弹幕失败：%1</translation>
     </message>
+    <message>
+        <source>Filter results (title, series, server)</source>
+        <translation>在结果中筛选（标题、系列、服务器）</translation>
+    </message>
+    <message>
+        <source>Showing %1 of %2 matches for &quot;%3&quot;</source>
+        <translation>已筛选出 %1 / %2 条匹配「%3」的结果</translation>
+    </message>
+    <message>
+        <source>No results match &quot;%1&quot; (%2 total)</source>
+        <translation>没有匹配「%1」的结果（共 %2 条）</translation>
+    </message>
 </context>
 
 <context>
@@ -8355,6 +8667,510 @@ Address: %2</source>
     <message>
         <source>Season %1</source>
         <translation>第 %1 季</translation>
+    </message>
+</context>
+
+<context>
+    <name>WebdavClient</name>
+    <message>
+        <source>Authentication failed. Please check the username and password.</source>
+        <translation>身份验证失败，请检查用户名和密码。</translation>
+    </message>
+    <message>
+        <source>Access denied. The account does not have permission for this operation.</source>
+        <translation>访问被拒绝，当前账号没有执行此操作的权限。</translation>
+    </message>
+    <message>
+        <source>Resource not found on the WebDAV server.</source>
+        <translation>WebDAV 服务器上未找到该资源。</translation>
+    </message>
+    <message>
+        <source>The WebDAV server does not allow this method on this resource.</source>
+        <translation>WebDAV 服务器不允许对该资源执行此方法。</translation>
+    </message>
+    <message>
+        <source>Conflict. The parent directory may not exist on the WebDAV server.</source>
+        <translation>冲突。WebDAV 服务器上父目录可能不存在。</translation>
+    </message>
+    <message>
+        <source>Precondition failed (HTTP 412).</source>
+        <translation>前置条件失败（HTTP 412）。</translation>
+    </message>
+    <message>
+        <source>The resource is locked by another client.</source>
+        <translation>该资源正被其他客户端锁定。</translation>
+    </message>
+    <message>
+        <source>WebDAV server is temporarily unavailable. Please try again later.</source>
+        <translation>WebDAV 服务器暂时不可用，请稍后再试。</translation>
+    </message>
+    <message>
+        <source>Insufficient storage on the WebDAV server.</source>
+        <translation>WebDAV 服务器存储空间不足。</translation>
+    </message>
+    <message>
+        <source>Could not reach the WebDAV server.</source>
+        <translation>无法连接到 WebDAV 服务器。</translation>
+    </message>
+    <message>
+        <source>Network error: %1</source>
+        <translation>网络错误：%1</translation>
+    </message>
+    <message>
+        <source>Unexpected response from the WebDAV server.</source>
+        <translation>WebDAV 服务器返回了意外的响应。</translation>
+    </message>
+    <message>
+        <source>%1 failed (HTTP %2): %3</source>
+        <translation>%1 失败（HTTP %2）：%3</translation>
+    </message>
+    <message>
+        <source>%1 failed: %2</source>
+        <translation>%1 失败：%2</translation>
+    </message>
+    <message>
+        <source>Cannot download: relative path is empty.</source>
+        <translation>无法下载：相对路径为空。</translation>
+    </message>
+    <message>
+        <source>Cannot upload: relative path is empty.</source>
+        <translation>无法上传：相对路径为空。</translation>
+    </message>
+    <message>
+        <source>Refused to delete the WebDAV root directory itself.</source>
+        <translation>已拒绝删除 WebDAV 根目录本身。</translation>
+    </message>
+</context>
+
+<context>
+    <name>WebdavSyncService</name>
+    <message>
+        <source>Internal error: WebDAV profile store is unavailable.</source>
+        <translation>内部错误：WebDAV 配置存储不可用。</translation>
+    </message>
+    <message>
+        <source>WebDAV profile is not configured. Please save a profile first.</source>
+        <translation>尚未配置 WebDAV 信息，请先保存配置。</translation>
+    </message>
+    <message>
+        <source>WebDAV profile is incomplete. Please fill in URL, username and password.</source>
+        <translation>WebDAV 配置不完整，请填写服务器 URL、用户名和密码。</translation>
+    </message>
+    <message>
+        <source>Passphrase cannot be empty.</source>
+        <translation>密码短语不能为空。</translation>
+    </message>
+    <message>
+        <source>Passphrase is required for encrypted snapshots.</source>
+        <translation>加密快照需要密码短语。</translation>
+    </message>
+    <message>
+        <source>There is no local configuration to upload.</source>
+        <translation>当前没有可上传的本地配置。</translation>
+    </message>
+    <message>
+        <source>Failed to encrypt the snapshot.</source>
+        <translation>加密快照失败。</translation>
+    </message>
+    <message>
+        <source>Selected file is not a valid qEmby snapshot.</source>
+        <translation>所选文件不是有效的 qEmby 快照。</translation>
+    </message>
+    <message>
+        <source>Failed to decrypt the snapshot. The passphrase may be wrong or the file is corrupted.</source>
+        <translation>解密快照失败，密码短语可能错误或文件已损坏。</translation>
+    </message>
+    <message>
+        <source>Snapshot is not a valid qEmby configuration bundle.</source>
+        <translation>该快照不是有效的 qEmby 配置包。</translation>
+    </message>
+    <message>
+        <source>Refused to delete a file that is not a qEmby snapshot.</source>
+        <translation>已拒绝删除非 qEmby 快照的文件。</translation>
+    </message>
+</context>
+
+<context>
+    <name>WebdavSyncDialog</name>
+    <message>
+        <source>Cloud Sync (WebDAV)</source>
+        <translation>云同步（WebDAV）</translation>
+    </message>
+    <message>
+        <source>Server Configuration</source>
+        <translation>服务器配置</translation>
+    </message>
+    <message>
+        <source>Server URL:</source>
+        <translation>服务器 URL：</translation>
+    </message>
+    <message>
+        <source>WebDAV username</source>
+        <translation>WebDAV 用户名</translation>
+    </message>
+    <message>
+        <source>Username:</source>
+        <translation>用户名：</translation>
+    </message>
+    <message>
+        <source>WebDAV password</source>
+        <translation>WebDAV 密码</translation>
+    </message>
+    <message>
+        <source>Show Password</source>
+        <translation>显示密码</translation>
+    </message>
+    <message>
+        <source>Hide Password</source>
+        <translation>隐藏密码</translation>
+    </message>
+    <message>
+        <source>Password:</source>
+        <translation>密码：</translation>
+    </message>
+    <message>
+        <source>Root directory:</source>
+        <translation>根目录：</translation>
+    </message>
+    <message>
+        <source>Ignore SSL certificate errors</source>
+        <translation>忽略 SSL 证书错误</translation>
+    </message>
+    <message>
+        <source>HTTPS:</source>
+        <translation>HTTPS：</translation>
+    </message>
+    <message>
+        <source>Test Connection</source>
+        <translation>测试连接</translation>
+    </message>
+    <message>
+        <source>Save Profile</source>
+        <translation>保存配置</translation>
+    </message>
+    <message>
+        <source>Upload Current Configuration</source>
+        <translation>上传当前配置</translation>
+    </message>
+    <message>
+        <source>Encrypt save</source>
+        <translation>加密保存</translation>
+    </message>
+    <message>
+        <source>Custom tag:</source>
+        <translation>自定义标记：</translation>
+    </message>
+    <message>
+        <source>Snapshot tag</source>
+        <translation>快照标记</translation>
+    </message>
+    <message>
+        <source>Upload Now</source>
+        <translation>立即上传</translation>
+    </message>
+    <message>
+        <source>Snapshots on Server</source>
+        <translation>服务器上的快照</translation>
+    </message>
+    <message>
+        <source>Refresh</source>
+        <translation>刷新</translation>
+    </message>
+    <message>
+        <source>Device</source>
+        <translation>设备</translation>
+    </message>
+    <message>
+        <source>Version</source>
+        <translation>版本</translation>
+    </message>
+    <message>
+        <source>OS</source>
+        <translation>操作系统</translation>
+    </message>
+    <message>
+        <source>Created</source>
+        <translation>创建时间</translation>
+    </message>
+    <message>
+        <source>Size</source>
+        <translation>大小</translation>
+    </message>
+    <message>
+        <source>File Name</source>
+        <translation>文件名</translation>
+    </message>
+    <message>
+        <source>Device: %1
+Version: %2
+OS: %3
+Created: %4
+Size: %5
+File Name: %6</source>
+        <translation>设备：%1
+版本：%2
+操作系统：%3
+创建时间：%4
+大小：%5
+文件名：%6</translation>
+    </message>
+    <message>
+        <source>Apply strategy:</source>
+        <translation>应用策略：</translation>
+    </message>
+    <message>
+        <source>Replace</source>
+        <translation>覆盖</translation>
+    </message>
+    <message>
+        <source>Merge</source>
+        <translation>合并</translation>
+    </message>
+    <message>
+        <source>Local wins</source>
+        <translation>本地优先</translation>
+    </message>
+    <message>
+        <source>Delete Selected</source>
+        <translation>删除所选</translation>
+    </message>
+    <message>
+        <source>Apply to Local</source>
+        <translation>应用到本地</translation>
+    </message>
+    <message>
+        <source>Last sync: %1</source>
+        <translation>上次同步：%1</translation>
+    </message>
+    <message>
+        <source>Last sync: never</source>
+        <translation>上次同步：从未</translation>
+    </message>
+    <message>
+        <source>This device will be uploaded as:
+%1</source>
+        <translation>本机将被上传为：
+%1</translation>
+    </message>
+    <message>
+        <source>Not tested</source>
+        <translation>未测试</translation>
+    </message>
+    <message>
+        <source>Invalid profile</source>
+        <translation>配置无效</translation>
+    </message>
+    <message>
+        <source>Please fill in the server URL, username and password before testing.</source>
+        <translation>测试前请先填写服务器 URL、用户名和密码。</translation>
+    </message>
+    <message>
+        <source>Please fill in the server URL, username and password before saving.</source>
+        <translation>保存前请先填写服务器 URL、用户名和密码。</translation>
+    </message>
+    <message>
+        <source>Internal error</source>
+        <translation>内部错误</translation>
+    </message>
+    <message>
+        <source>Profile store is unavailable.</source>
+        <translation>配置存储不可用。</translation>
+    </message>
+    <message>
+        <source>Testing connection...</source>
+        <translation>正在测试连接...</translation>
+    </message>
+    <message>
+        <source>Connecting...</source>
+        <translation>正在连接...</translation>
+    </message>
+    <message>
+        <source>Connection OK</source>
+        <translation>连接成功</translation>
+    </message>
+    <message>
+        <source>WebDAV connection succeeded</source>
+        <translation>WebDAV 连接成功</translation>
+    </message>
+    <message>
+        <source>Failed</source>
+        <translation>失败</translation>
+    </message>
+    <message>
+        <source>Connection failed</source>
+        <translation>连接失败</translation>
+    </message>
+    <message>
+        <source>Server replied but the response is not valid WebDAV.</source>
+        <translation>服务器有响应，但不是有效的 WebDAV 应答。</translation>
+    </message>
+    <message>
+        <source>Profile saved</source>
+        <translation>配置已保存</translation>
+    </message>
+    <message>
+        <source>Save failed</source>
+        <translation>保存失败</translation>
+    </message>
+    <message>
+        <source>qEmby could not write to %1.</source>
+        <translation>qEmby 无法写入 %1。</translation>
+    </message>
+    <message>
+        <source>Profile not configured</source>
+        <translation>尚未配置</translation>
+    </message>
+    <message>
+        <source>Please save the WebDAV profile before uploading.</source>
+        <translation>上传前请先保存 WebDAV 配置。</translation>
+    </message>
+    <message>
+        <source>Encrypt Snapshot</source>
+        <translation>加密快照</translation>
+    </message>
+    <message>
+        <source>Enter a passphrase to encrypt this snapshot.
+You will need the same passphrase to restore it on another device.</source>
+        <translation>请输入用于加密本快照的密码短语。
+还原到其他设备时需要使用相同的密码短语。</translation>
+    </message>
+    <message>
+        <source>Upload</source>
+        <translation>上传</translation>
+    </message>
+    <message>
+        <source>Uploading snapshot...</source>
+        <translation>正在上传快照...</translation>
+    </message>
+    <message>
+        <source>Uploaded: %1</source>
+        <translation>已上传：%1</translation>
+    </message>
+    <message>
+        <source>Upload failed</source>
+        <translation>上传失败</translation>
+    </message>
+    <message>
+        <source>Loading snapshot list...</source>
+        <translation>正在加载快照列表...</translation>
+    </message>
+    <message>
+        <source>Failed to list snapshots</source>
+        <translation>无法获取快照列表</translation>
+    </message>
+    <message>
+        <source>Decrypt Snapshot</source>
+        <translation>解密快照</translation>
+    </message>
+    <message>
+        <source>Enter the passphrase used when this snapshot was created.</source>
+        <translation>请输入创建此快照时使用的密码短语。</translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation>应用</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <source>Replace local config entirely</source>
+        <translation>完全覆盖本地配置</translation>
+    </message>
+    <message>
+        <source>Merge (cloud wins on conflict)</source>
+        <translation>合并（冲突时云端优先）</translation>
+    </message>
+    <message>
+        <source>Local wins (only fill missing keys)</source>
+        <translation>本地优先（仅补齐本地缺失项）</translation>
+    </message>
+    <message>
+        <source>Confirm apply</source>
+        <translation>确认应用</translation>
+    </message>
+    <message>
+        <source>Apply snapshot &quot;%1&quot; with strategy:
+%2
+
+This will overwrite parts of your local configuration. Continue?</source>
+        <translation>将以如下策略应用快照 “%1”：
+%2
+
+此操作会覆盖本地配置的部分内容。是否继续？</translation>
+    </message>
+    <message>
+        <source>Downloading snapshot...</source>
+        <translation>正在下载快照...</translation>
+    </message>
+    <message>
+        <source>Snapshot applied</source>
+        <translation>快照已应用</translation>
+    </message>
+    <message>
+        <source>Apply failed</source>
+        <translation>应用失败</translation>
+    </message>
+    <message>
+        <source>Bundle decoded but failed to write to local.</source>
+        <translation>已成功解析配置包，但写入本地失败。</translation>
+    </message>
+    <message>
+        <source>Delete snapshot</source>
+        <translation>删除快照</translation>
+    </message>
+    <message>
+        <source>Delete &quot;%1&quot; from the WebDAV server?
+
+This cannot be undone.</source>
+        <translation>是否从 WebDAV 服务器删除 “%1”？
+
+此操作不可撤销。</translation>
+    </message>
+    <message>
+        <source>Delete</source>
+        <translation>删除</translation>
+    </message>
+    <message>
+        <source>Deleting snapshot...</source>
+        <translation>正在删除快照...</translation>
+    </message>
+    <message>
+        <source>Snapshot deleted</source>
+        <translation>快照已删除</translation>
+    </message>
+    <message>
+        <source>Delete failed</source>
+        <translation>删除失败</translation>
+    </message>
+</context>
+
+<context>
+    <name>WebdavPassphrasePrompt</name>
+    <message>
+        <source>Show Password</source>
+        <translation>显示密码</translation>
+    </message>
+    <message>
+        <source>Hide Password</source>
+        <translation>隐藏密码</translation>
+    </message>
+    <message>
+        <source>Toggle passphrase visibility</source>
+        <translation>切换密码短语可见性</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <source>OK</source>
+        <translation>确定</translation>
+    </message>
+    <message>
+        <source>Sync passphrase</source>
+        <translation>同步密码短语</translation>
     </message>
 </context>
 

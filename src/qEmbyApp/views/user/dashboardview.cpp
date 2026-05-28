@@ -154,7 +154,7 @@ void DashboardView::setupUi()
                     if (isLibraryNavigationItem(item)) {
                         Q_EMIT navigateToLibrary(item.id, item.name);
                     } else {
-                        Q_EMIT navigateToDetail(item.id, item.name);
+                        Q_EMIT navigateToDetail(item.id, item.name, item);
                     }
                 });
         connect(gallery, &HorizontalListViewGallery::playRequested, this,
@@ -1150,7 +1150,7 @@ QCoro::Task<void> DashboardView::loadLibrarySections(bool showLibraries,
                             if (isLibraryNavigationItem(item)) {
                                 Q_EMIT navigateToLibrary(item.id, item.name);
                             } else {
-                                Q_EMIT navigateToDetail(item.id, item.name);
+                                Q_EMIT navigateToDetail(item.id, item.name, item);
                             }
                         });
                 connect(section, &MediaSectionWidget::playRequested, this,

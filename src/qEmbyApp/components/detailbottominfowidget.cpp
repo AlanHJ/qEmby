@@ -1,4 +1,5 @@
 #include "detailbottominfowidget.h"
+#include "detailtagbutton.h"
 #include "flowlayout.h"
 #include "horizontalwidgetgallery.h"
 #include <QDesktopServices> 
@@ -6,6 +7,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
+#include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
 
@@ -79,12 +81,12 @@ DetailBottomInfoWidget::DetailBottomInfoWidget(QWidget *parent)
 
 QWidget *DetailBottomInfoWidget::wrapMaxWidth(QWidget *child, int maxW) {
   child->setMaximumWidth(maxW);
-  child->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+  child->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
   QWidget *wrapper = new QWidget(this);
   wrapper->setObjectName("detail-maxWidth-wrapper");
   wrapper->setStyleSheet(
       "QWidget#detail-maxWidth-wrapper { background:transparent; }");
-  wrapper->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+  wrapper->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
   auto *hl = new QHBoxLayout(wrapper);
   hl->setContentsMargins(0, 0, 0, 0);
   hl->setSpacing(0);
@@ -108,6 +110,50 @@ void DetailBottomInfoWidget::clear() {
   m_mediaInfoTitle->hide();
   m_fileInfoWidget->hide();
   m_mediaInfoGallery->hide();
+  updateFlowLayoutHeights();
+}
+
+void DetailBottomInfoWidget::resizeEvent(QResizeEvent *event) {
+  QWidget::resizeEvent(event);
+  updateFlowLayoutHeights();
+}
+
+void DetailBottomInfoWidget::updateFlowLayoutHeight(QWidget *widget,
+                                                    FlowLayout *layout) {
+  if (!widget || !layout)
+    return;
+
+  int targetHeight = 0;
+  if (layout->count() > 0) {
+    int targetWidth = widget->width();
+    if (targetWidth <= 0 && widget->parentWidget()) {
+      targetWidth = widget->parentWidget()->contentsRect().width();
+    }
+    if (widget->maximumWidth() < QWIDGETSIZE_MAX) {
+      targetWidth = qMin(targetWidth, widget->maximumWidth());
+    }
+
+    if (targetWidth > 0) {
+      layout->invalidate();
+      targetHeight = layout->heightForWidth(targetWidth);
+    }
+  }
+
+  if (widget->minimumHeight() != targetHeight) {
+    widget->setMinimumHeight(targetHeight);
+  }
+  widget->updateGeometry();
+
+  if (QWidget *wrapper = widget->parentWidget()) {
+    wrapper->updateGeometry();
+  }
+}
+
+void DetailBottomInfoWidget::updateFlowLayoutHeights() {
+  updateFlowLayoutHeight(m_tagsBottomWidget, m_tagsBottomLayout);
+  updateFlowLayoutHeight(m_studiosWidget, m_studiosLayout);
+  updateFlowLayoutHeight(m_externalLinksWidget, m_externalLinksLayout);
+  updateGeometry();
 }
 
 void DetailBottomInfoWidget::clearLayout(QLayout *layout) {
@@ -159,10 +205,7 @@ void DetailBottomInfoWidget::setInfo(const MediaItem &item,
     m_tagsBottomTitle->show();
     m_tagsBottomWrapper->show();
     for (const QString &tag : item.tags) {
-      auto *btn = new QPushButton(tag, m_tagsBottomWidget);
-      btn->setObjectName("detail-genre-tag");
-      btn->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
-      btn->setCursor(Qt::PointingHandCursor);
+      auto *btn = new DetailTagButton(tag, m_tagsBottomWidget);
       connect(btn, &QPushButton::clicked, this,
               [this, tag]() { Q_EMIT filterClicked("Tag", tag); });
       m_tagsBottomLayout->addWidget(btn);
@@ -173,10 +216,7 @@ void DetailBottomInfoWidget::setInfo(const MediaItem &item,
     m_studiosTitle->show();
     m_studiosWrapper->show();
     for (const auto &studio : item.studios) {
-      auto *btn = new QPushButton(studio.name, m_studiosWidget);
-      btn->setObjectName("detail-genre-tag");
-      btn->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
-      btn->setCursor(Qt::PointingHandCursor);
+      auto *btn = new DetailTagButton(studio.name, m_studiosWidget);
       connect(btn, &QPushButton::clicked, this,
               [this, name = studio.name]() { Q_EMIT filterClicked("Studio", name); });
       m_studiosLayout->addWidget(btn);
@@ -188,17 +228,16 @@ void DetailBottomInfoWidget::setInfo(const MediaItem &item,
     m_externalLinksTitle->show();
     m_externalLinksWrapper->show();
     for (const auto &link : item.externalUrls) {
-      auto *btn = new QPushButton(link.name, m_externalLinksWidget);
-      
-      btn->setObjectName("detail-genre-tag");
-      btn->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
-      btn->setCursor(Qt::PointingHandCursor);
+      auto *btn = new DetailTagButton(link.name, m_externalLinksWidget);
       
       connect(btn, &QPushButton::clicked, this,
               [link]() { QDesktopServices::openUrl(QUrl(link.url)); });
       m_externalLinksLayout->addWidget(btn);
     }
   }
+
+  updateFlowLayoutHeights();
+  QTimer::singleShot(0, this, [this]() { updateFlowLayoutHeights(); });
 
   if (sources.isEmpty())
     return;

@@ -6,6 +6,9 @@
 
 class QEmbyCore;
 class PlayerView;
+namespace QWK {
+class WidgetWindowAgent;
+}
 
 
 
@@ -21,7 +24,10 @@ public:
                    const QVariant& sourceInfoVar = QVariant());
 
 private:
-    PlayerView* m_playerView;
+    void setMacSystemButtonsVisible(bool visible);
+
+    PlayerView* m_playerView = nullptr;
+    QWK::WidgetWindowAgent* m_windowAgent = nullptr;
 };
 
 #endif 

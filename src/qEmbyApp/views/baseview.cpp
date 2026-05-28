@@ -997,7 +997,7 @@ void BaseView::dispatchCardContextMenuRequest(
         launchTask(executeExternalPlay(item, request.stringValue));
         return;
     case CardContextMenuAction::ViewDetails:
-        Q_EMIT navigateToDetail(item.id, item.name);
+        Q_EMIT navigateToDetail(item.id, item.name, item);
         return;
     case CardContextMenuAction::Download:
         handleDownloadRequested(item);

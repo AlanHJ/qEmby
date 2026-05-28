@@ -46,6 +46,61 @@ PageAppearance::PageAppearance(QEmbyCore *core, QWidget *parent) : SettingsPageB
                                              new ModernSwitch(this), ConfigKeys::SidebarPinned, this));
 
     
+    auto *customSidebarSwitch = new ModernSwitch(this);
+    m_mainLayout->addWidget(new SettingsCard(":/svg/dark/appearance-sidebar-custom.svg", tr("Custom Sidebar"),
+                                             tr("Customize which items appear in the navigation sidebar"),
+                                             customSidebarSwitch, ConfigKeys::SidebarCustomEnabled, this,
+                                             QVariant(false)));
+
+    auto *hideSearchPanel = new SettingsSubPanel(":/svg/light/search.svg", this);
+    auto *hideSearchLabel = new QLabel(tr("Hide Search Bar"), this);
+    hideSearchLabel->setObjectName("SettingsCardDesc");
+    auto *hideSearchSwitch = new ModernSwitch(this);
+    hideSearchSwitch->setChecked(
+        ConfigStore::instance()->get<bool>(ConfigKeys::SidebarHideSearch, false));
+    hideSearchPanel->contentLayout()->addWidget(hideSearchLabel, 1);
+    hideSearchPanel->contentLayout()->addWidget(hideSearchSwitch, 0, Qt::AlignVCenter);
+    m_mainLayout->addWidget(hideSearchPanel);
+
+    auto *hideHomePanel = new SettingsSubPanel(":/svg/light/home.svg", this);
+    auto *hideHomeLabel = new QLabel(tr("Hide Home Item"), this);
+    hideHomeLabel->setObjectName("SettingsCardDesc");
+    auto *hideHomeSwitch = new ModernSwitch(this);
+    hideHomeSwitch->setChecked(
+        ConfigStore::instance()->get<bool>(ConfigKeys::SidebarHideHome, false));
+    hideHomePanel->contentLayout()->addWidget(hideHomeLabel, 1);
+    hideHomePanel->contentLayout()->addWidget(hideHomeSwitch, 0, Qt::AlignVCenter);
+    m_mainLayout->addWidget(hideHomePanel);
+
+    auto *hideFavPanel = new SettingsSubPanel(":/svg/light/heart.svg", this);
+    auto *hideFavLabel = new QLabel(tr("Hide Favorites Item"), this);
+    hideFavLabel->setObjectName("SettingsCardDesc");
+    auto *hideFavSwitch = new ModernSwitch(this);
+    hideFavSwitch->setChecked(
+        ConfigStore::instance()->get<bool>(ConfigKeys::SidebarHideFavorites, false));
+    hideFavPanel->contentLayout()->addWidget(hideFavLabel, 1);
+    hideFavPanel->contentLayout()->addWidget(hideFavSwitch, 0, Qt::AlignVCenter);
+    m_mainLayout->addWidget(hideFavPanel);
+
+    if (ConfigStore::instance()->get<bool>(ConfigKeys::SidebarCustomEnabled, false))
+    {
+        hideSearchPanel->initExpanded();
+        hideHomePanel->initExpanded();
+        hideFavPanel->initExpanded();
+    }
+
+    connect(customSidebarSwitch, &ModernSwitch::toggled, hideSearchPanel, &SettingsSubPanel::setExpanded);
+    connect(customSidebarSwitch, &ModernSwitch::toggled, hideHomePanel, &SettingsSubPanel::setExpanded);
+    connect(customSidebarSwitch, &ModernSwitch::toggled, hideFavPanel, &SettingsSubPanel::setExpanded);
+
+    connect(hideSearchSwitch, &ModernSwitch::toggled, this,
+            [](bool checked) { ConfigStore::instance()->set(ConfigKeys::SidebarHideSearch, checked); });
+    connect(hideHomeSwitch, &ModernSwitch::toggled, this,
+            [](bool checked) { ConfigStore::instance()->set(ConfigKeys::SidebarHideHome, checked); });
+    connect(hideFavSwitch, &ModernSwitch::toggled, this,
+            [](bool checked) { ConfigStore::instance()->set(ConfigKeys::SidebarHideFavorites, checked); });
+
+    
     auto *windowStateCombo = new ModernComboBox(this);
     windowStateCombo->addItem(tr("Normal Window"), "normal");
     windowStateCombo->addItem(tr("Maximized"), "maximized");

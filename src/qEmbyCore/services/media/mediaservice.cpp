@@ -51,7 +51,12 @@ MediaQueryPage parseMediaQueryPage(const QJsonObject& response, int startIndex,
     return page;
 }
 
-constexpr int kRecommendCacheFormatVersion = 3;
+
+
+
+
+
+constexpr int kRecommendCacheFormatVersion = 6;
 
 QString appendMediaCardTooltipFields(QString fieldsCsv)
 {
@@ -62,10 +67,36 @@ QString appendMediaCardTooltipFields(QString fieldsCsv)
         field = field.trimmed();
     }
 
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     const QStringList tooltipFields = {
         QStringLiteral("PremiereDate"),
         QStringLiteral("RunTimeTicks"),
-        QStringLiteral("Overview")
+        QStringLiteral("Overview"),
+        QStringLiteral("Genres"),
+        QStringLiteral("OfficialRating"),
+        QStringLiteral("Taglines"),
+        QStringLiteral("MediaSources"),
+        QStringLiteral("MediaStreams"),
+        QStringLiteral("Tags"),
+        QStringLiteral("Studios"),
+        QStringLiteral("ExternalUrls"),
     };
 
     for (const QString& field : tooltipFields) {
@@ -914,7 +945,7 @@ QCoro::Task<MediaItem> MediaService::getItemDetail(const QString &itemId)
     const ServerProfile profile = m_serverManager->activeProfile();
     QString path = QString("/Users/%1/Items/"
                            "%2?Fields=MediaStreams,MediaSources,People,Overview,Genres,"
-                           "ProductionYear,OfficialRating,Tags,Studios,ExternalUrls,CanDownload")
+                           "ProductionYear,OfficialRating,Tags,Studios,ExternalUrls,ProviderIds,CanDownload")
                        .arg(profile.userId, itemId);
 
     QJsonObject response = co_await m_serverManager->activeClient()->get(path);

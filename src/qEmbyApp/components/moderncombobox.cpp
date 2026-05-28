@@ -18,6 +18,12 @@
 namespace {
 
 constexpr int kArrowWidth = 32;
+
+
+
+
+constexpr int kModernComboMinItemHeight = 36;
+
 constexpr auto kPopupEdgeFixMarker = "/* modern-combobox-popup-edge-fix */";
 constexpr auto kPopupEdgeFixQss = R"(
 /* modern-combobox-popup-edge-fix */
@@ -38,6 +44,24 @@ void CenterAlignDelegate::paint(QPainter *painter,
   
   opt.displayAlignment = Qt::AlignCenter;
   QStyledItemDelegate::paint(painter, opt, index);
+}
+
+QSize CenterAlignDelegate::sizeHint(const QStyleOptionViewItem &option,
+                                    const QModelIndex &index) const {
+  QSize base = QStyledItemDelegate::sizeHint(option, index);
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  base.setHeight(qMax(base.height(), kModernComboMinItemHeight));
+  return base;
 }
 
 
@@ -206,7 +230,10 @@ void ModernComboBox::showEmbeddedPopup() {
   constexpr int kMaxVisibleItems = 12;
   constexpr int kItemPadding = 12; 
   const QFontMetrics fm(listWidget->font());
-  const int itemH = fm.height() + kItemPadding;
+  
+  
+  
+  const int itemH = qMax(fm.height() + kItemPadding, kModernComboMinItemHeight);
   const int visibleItems = qMin(count(), kMaxVisibleItems);
   int popupH = itemH * visibleItems + 6; 
   int popupW = qMax(width(), 240);

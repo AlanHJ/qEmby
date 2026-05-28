@@ -82,7 +82,7 @@ LibraryView::LibraryView(QEmbyCore *core, QWidget *parent)
                 }
                 else
                 {
-                    Q_EMIT navigateToDetail(item.id, item.name);
+                    Q_EMIT navigateToDetail(item.id, item.name, item);
                 }
             });
 

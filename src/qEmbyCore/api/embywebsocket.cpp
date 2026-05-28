@@ -1,6 +1,8 @@
 #include "embywebsocket.h"
+#include "proxymanager.h"
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QNetworkProxy>
 #include <QStringList>
 #include <QUrl>
 #include <QDebug>
@@ -27,6 +29,19 @@ EmbyWebSocket::EmbyWebSocket(const ServerProfile& profile, QObject* parent)
             this, &EmbyWebSocket::onTextMessageReceived);
     connect(m_socket, &QWebSocket::errorOccurred, this, &EmbyWebSocket::onError);
     connect(m_socket, &QWebSocket::sslErrors, this, &EmbyWebSocket::onSslErrors);
+
+    
+    
+    connect(ProxyManager::instance(), &ProxyManager::proxyChanged, this,
+            [this]() {
+                if (m_socket->state() != QAbstractSocket::UnconnectedState) {
+                    qInfo() << "[EmbyWebSocket] proxy changed → reconnect"
+                            << "| profileId:" << m_profile.id;
+                    
+                    m_intentionalDisconnect = false;
+                    m_socket->close();
+                }
+            });
 }
 
 EmbyWebSocket::~EmbyWebSocket()
@@ -52,6 +67,18 @@ void EmbyWebSocket::connectToServer()
     m_intentionalDisconnect = false;
     m_reconnectAttempts = 0;
     QString url = buildWebSocketUrl();
+
+    
+    
+    const QNetworkProxy proxy =
+        ProxyManager::instance()->resolveForServer(m_profile);
+    m_socket->setProxy(proxy);
+    qDebug() << "[EmbyWebSocket] proxy set"
+             << "| profileId:" << m_profile.id
+             << "| proxyType:" << proxy.type()
+             << "| host:" << proxy.hostName()
+             << "| port:" << proxy.port();
+
     qDebug() << "[EmbyWebSocket] Connecting to:" << url;
     if (m_profile.ignoreSslVerification &&
         url.startsWith("wss://", Qt::CaseInsensitive)) {
@@ -190,6 +217,9 @@ void EmbyWebSocket::attemptReconnect()
     m_reconnectAttempts++;
     qDebug() << "[EmbyWebSocket] Reconnect attempt" << m_reconnectAttempts;
     QString url = buildWebSocketUrl();
+    
+    m_socket->setProxy(
+        ProxyManager::instance()->resolveForServer(m_profile));
     m_socket->open(QUrl(url));
 }
 

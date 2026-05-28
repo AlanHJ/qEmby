@@ -151,7 +151,7 @@ struct QEMBYCORE_EXPORT DanmakuRenderOptions {
     double shadowOffset = 1.0;
     int areaPercent = 70;
     int density = 100;
-    double speedScale = 1.0;
+    double speedScale = 0.5;
     int offsetMs = 0;
     bool hideScroll = false;
     bool hideTop = false;

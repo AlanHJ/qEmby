@@ -6,6 +6,17 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QPixmap>
+#include <QShowEvent>
+#include <QSizePolicy>
+#include <QTimer>
+
+namespace {
+
+constexpr int kMessageTextMinWidth = 360;
+constexpr int kMessageTextMaxWidth = 520;
+constexpr int kMessageTextVerticalSlack = 18;
+
+} 
 
 ModernMessageBox::ModernMessageBox(QWidget *parent) : ModernDialogBase(parent) {}
 
@@ -106,11 +117,15 @@ void ModernMessageBox::setupUi(const QString &title,
     contentVLayout->setContentsMargins(0, 0, 0, 0);
     contentVLayout->setSpacing(14);
 
-    auto *textLabel = new QLabel(text, this);
-    textLabel->setObjectName("dialog-text");
-    textLabel->setWordWrap(true);
-    textLabel->setMinimumWidth(260);
-    contentVLayout->addWidget(textLabel);
+    m_textLabel = new QLabel(text, this);
+    m_textLabel->setObjectName("dialog-text");
+    m_textLabel->setTextFormat(Qt::PlainText);
+    m_textLabel->setWordWrap(true);
+    m_textLabel->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+    m_textLabel->setMinimumWidth(kMessageTextMinWidth);
+    m_textLabel->setMaximumWidth(kMessageTextMaxWidth);
+    m_textLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
+    contentVLayout->addWidget(m_textLabel);
 
     if (!toggleText.trimmed().isEmpty()) {
         auto *toggleRow = new QWidget(this);
@@ -165,4 +180,37 @@ void ModernMessageBox::setupUi(const QString &title,
     btnLayout->addWidget(yesBtn);
 
     contentLayout()->addLayout(btnLayout);
+
+    updateTextLabelHeight();
+    QTimer::singleShot(0, this, [this]() { updateTextLabelHeight(); });
+}
+
+void ModernMessageBox::showEvent(QShowEvent *event) {
+    ModernDialogBase::showEvent(event);
+    updateTextLabelHeight();
+}
+
+void ModernMessageBox::updateTextLabelHeight() {
+    if (!m_textLabel) {
+        return;
+    }
+
+    m_textLabel->ensurePolished();
+
+    int targetWidth = m_textLabel->width();
+    if (targetWidth <= 0) {
+        targetWidth = m_textLabel->minimumWidth();
+    }
+    targetWidth = qBound(kMessageTextMinWidth, targetWidth, kMessageTextMaxWidth);
+
+    const int labelHeight = m_textLabel->heightForWidth(targetWidth);
+    const int fallbackHeight = m_textLabel->sizeHint().height();
+    const int targetHeight =
+        qMax(labelHeight, fallbackHeight) + kMessageTextVerticalSlack;
+
+    if (m_textLabel->minimumHeight() != targetHeight) {
+        m_textLabel->setMinimumHeight(targetHeight);
+    }
+    m_textLabel->updateGeometry();
+    adjustSize();
 }

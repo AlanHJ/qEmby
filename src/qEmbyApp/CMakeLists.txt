@@ -2,13 +2,14 @@
 
 set(TS_FILES
     resources/i18n/qEmby_zh_CN.ts
+    resources/i18n/qEmby_fr_FR.ts
 )
 # set(QSS_QWK_FILES ../../libs/qwindowkit/examples/mainwindow/mainwindow.qrc)
 # set(QRC_QWK_FILES ../../libs/qwindowkit/examples/shared/resources/shared.qrc)
 set(APP_QRC_FILES resources/resources.qrc)
 
-file(GLOB_RECURSE APP_HEADERS "*.h")
-file(GLOB_RECURSE APP_SOURCES "*.cpp")
+file(GLOB_RECURSE APP_HEADERS CONFIGURE_DEPENDS "*.h")
+file(GLOB_RECURSE APP_SOURCES CONFIGURE_DEPENDS "*.cpp")
  
 # ==========================================
 # 平台原生资源配置 (如 Windows .exe 图标)
@@ -69,7 +70,9 @@ target_compile_definitions(qEmbyApp PRIVATE
 target_link_libraries(qEmbyApp PRIVATE
     Qt${QT_VERSION_MAJOR}::Gui
     Qt${QT_VERSION_MAJOR}::Widgets
+    Qt${QT_VERSION_MAJOR}::Network
     Qt${QT_VERSION_MAJOR}::OpenGLWidgets
+    Qt${QT_VERSION_MAJOR}::Concurrent
     qEmbyCore
     QWKWidgets
     WidgetFrame
@@ -130,11 +133,18 @@ set_target_properties(qEmbyApp PROPERTIES
 
 # 5. 设置安装规则
 include(GNUInstallDirs)
+
+set(_qemby_app_runtime_install_dir "${CMAKE_INSTALL_BINDIR}")
+if(UNIX AND NOT APPLE AND QEMBY_RUNTIME_LIB_SUBDIR)
+    set(_qemby_app_runtime_install_dir
+        "${CMAKE_INSTALL_LIBDIR}/${QEMBY_RUNTIME_LIB_SUBDIR}")
+endif()
+
 # 注意：目标从 qEmby 改为 qEmbyApp
 install(TARGETS qEmbyApp
     BUNDLE DESTINATION .
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    RUNTIME DESTINATION ${_qemby_app_runtime_install_dir}
 )
 
 # 6. 最终确定 (必须在 install() 之后)

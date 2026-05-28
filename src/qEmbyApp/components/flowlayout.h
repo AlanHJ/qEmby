@@ -19,6 +19,7 @@ public:
     Qt::Orientations expandingDirections() const override;
     bool hasHeightForWidth() const override;
     int heightForWidth(int) const override;
+    void invalidate() override;
     int count() const override;
     QLayoutItem *itemAt(int index) const override;
     QSize minimumSize() const override;
@@ -31,6 +32,7 @@ public:
 private:
     int doLayout(const QRect &rect, bool testOnly) const;
     int smartSpacing(QStyle::PixelMetric pm) const;
+    void updateParentGeometry() const;
 
     QList<QLayoutItem *> itemList;
     int m_hSpace;

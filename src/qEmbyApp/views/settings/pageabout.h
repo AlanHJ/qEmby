@@ -18,6 +18,8 @@ private slots:
     void showLicensesDialog();
 
 private:
+    QWidget *createAcknowledgementsPanel();
+
     QLabel *m_logoLabel;
     QLabel *m_appNameLabel;
     QLabel *m_versionLabel;

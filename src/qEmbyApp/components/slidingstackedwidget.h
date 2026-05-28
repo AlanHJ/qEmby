@@ -33,6 +33,11 @@ public:
     void slideInWgt(QWidget *widget, SlideDirection direction = Automatic);
     void disposeWidgetWhenSafe(QWidget *widget);
 
+Q_SIGNALS:
+    
+    
+    void animationFinished();
+
 private Q_SLOTS:
     void animationDoneSlot();
 

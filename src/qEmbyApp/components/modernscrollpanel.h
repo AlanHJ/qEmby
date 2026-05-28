@@ -9,6 +9,7 @@
 #include <QString>
 #include <QList>
 #include <QWheelEvent>
+#include <QPaintEvent>
 
 class ModernScrollPanel : public QFrame {
     Q_OBJECT
@@ -26,6 +27,7 @@ signals:
     void itemTriggered(const QVariant &userData, const QString &text);
 
 protected:
+    void paintEvent(QPaintEvent *event) override;
     void wheelEvent(QWheelEvent *event) override;
 
 private:
