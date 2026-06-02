@@ -38,27 +38,24 @@
 
 ## 📥 下载
 
-最新版本：**v0.0.4**
+最新版本：**v0.0.5**
 
 | 安装包 | 说明 |
 |---|---|
-| [qEmby-v0.0.4-Win-x64-Setup.exe](https://github.com/AlanHJ/qEmby/releases/download/v0.0.4/qEmby-v0.0.4-Win-x64-Setup.exe) | Windows 10/11 x64 安装包 |
-| [qEmby-v0.0.4-Win-x64.zip](https://github.com/AlanHJ/qEmby/releases/download/v0.0.4/qEmby-v0.0.4-Win-x64.zip) | Windows 10/11 x64 绿色便携版 |
-| [qemby-0.0.4-macos-arm64.dmg](https://github.com/AlanHJ/qEmby/releases/download/v0.0.4/qemby-0.0.4-macos-arm64.dmg) | macOS 26+ (Apple 芯片) |
+| [qEmby-v0.0.5-Win-x64-Setup.exe](https://github.com/AlanHJ/qEmby/releases/download/v0.0.5/qEmby-v0.0.5-Win-x64-Setup.exe) | Windows 10/11 x64 安装包 |
+| [qEmby-v0.0.5-Win-x64.zip](https://github.com/AlanHJ/qEmby/releases/download/v0.0.5/qEmby-v0.0.5-Win-x64.zip) | Windows 10/11 x64 绿色便携版 |
+| [qemby-0.0.5-macos-arm64.dmg](https://github.com/AlanHJ/qEmby/releases/download/v0.0.5/qemby-0.0.5-macos-arm64.dmg) | macOS 26+ (Apple 芯片) |
 
 旧版 Windows、Linux 和 macOS 构建可以在 [Releases](https://github.com/AlanHJ/qEmby/releases) 页面下载。
 
-## 🚀 v0.0.4 更新内容
+## 🚀 v0.0.5 更新内容
 
-- 新增 macOS 26+ (Apple 芯片 / arm64) 支持。
-- 新增全局代理支持，覆盖所有网络请求。
-- 支持为每个服务器单独设置代理模式。
-- 新增自定义 WebDAV 云同步支持。
-- 内置播放器新增本地字幕加载支持。
-- 新增法语支持，感谢志愿者 @Arkoth79 的贡献。
-- 改善了多个界面的动画效果。
-- 优化了整体流畅度和响应速度。
-- 修复了一些已知问题。
+- 优化了剧集详情页展示，支持版本切换。
+- 支持播放状态展示和切换。
+- 增加了详情页的缓存，加快下一次载入速度。
+- 优化了播放界面 OSD，支持上一集和下一集，支持连续播放。
+- 优化了媒体库等上下滑动的流畅度，优化了加载图片的逻辑。
+- 新增播放完成画廊，默认关闭，可以在设置中打开。
 
 ## ✨ 功能特性
 
@@ -218,27 +215,24 @@ qEmby/
 
 ## 📥 Download
 
-Latest release: **v0.0.4**
+Latest release: **v0.0.5**
 
 | Package | Description |
 |---|---|
-| [qEmby-v0.0.4-Win-x64-Setup.exe](https://github.com/AlanHJ/qEmby/releases/download/v0.0.4/qEmby-v0.0.4-Win-x64-Setup.exe) | Windows 10/11 x64 installer |
-| [qEmby-v0.0.4-Win-x64.zip](https://github.com/AlanHJ/qEmby/releases/download/v0.0.4/qEmby-v0.0.4-Win-x64.zip) | Windows 10/11 x64 portable package |
-| [qemby-0.0.4-macos-arm64.dmg](https://github.com/AlanHJ/qEmby/releases/download/v0.0.4/qemby-0.0.4-macos-arm64.dmg) | macOS 26+ (Apple Silicon) |
+| [qEmby-v0.0.5-Win-x64-Setup.exe](https://github.com/AlanHJ/qEmby/releases/download/v0.0.5/qEmby-v0.0.5-Win-x64-Setup.exe) | Windows 10/11 x64 installer |
+| [qEmby-v0.0.5-Win-x64.zip](https://github.com/AlanHJ/qEmby/releases/download/v0.0.5/qEmby-v0.0.5-Win-x64.zip) | Windows 10/11 x64 portable package |
+| [qemby-0.0.5-macos-arm64.dmg](https://github.com/AlanHJ/qEmby/releases/download/v0.0.5/qemby-0.0.5-macos-arm64.dmg) | macOS 26+ (Apple Silicon) |
 
 Older Windows, Linux and macOS builds are available on the [Releases](https://github.com/AlanHJ/qEmby/releases) page.
 
-## 🚀 What's New in v0.0.4
+## 🚀 What's New in v0.0.5
 
-- Added macOS 26+ support for Apple Silicon (arm64) Macs.
-- Added global proxy support for all network requests.
-- Added per-server singleton configuration support.
-- Added custom WebDAV cloud sync support for user data.
-- Added local subtitle loading support in built-in player.
-- Added French language support, thanks to volunteer @Arkoth79.
-- Improved UI animations in several areas.
-- Optimized overall smoothness and responsiveness.
-- Fixed several known issues.
+- Optimized episode detail page display with version switching support.
+- Added playback status display and switching.
+- Added detail page caching for faster subsequent loading.
+- Enhanced player OSD with previous/next episode and continuous playback.
+- Improved scrolling smoothness in media library views and optimized image loading logic.
+- Added post-playback gallery (disabled by default, configurable in settings).
 
 ## ✨ Features
 
