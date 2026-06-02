@@ -62,6 +62,10 @@ QString DashboardSectionOrderWidget::titleForSectionId(
         QLatin1String(DashboardSectionOrderUtils::RecommendedSectionId)) {
         return tr("Recommended");
     }
+    if (sectionId == QLatin1String(
+                         DashboardSectionOrderUtils::CompletedWatchingSectionId)) {
+        return tr("Completed Watching");
+    }
     if (sectionId ==
         QLatin1String(DashboardSectionOrderUtils::AllLibrariesSectionId)) {
         return tr("All Libraries");

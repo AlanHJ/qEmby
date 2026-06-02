@@ -2,6 +2,7 @@
 #include "../managers/thememanager.h" 
 #include "../managers/externalplayerdetector.h" 
 #include "../utils/mediaidentifyutils.h"
+#include "../utils/mediaitemutils.h"
 #include "../utils/playlistutils.h"
 #include <qembycore.h>
 #include <services/manager/servermanager.h> 
@@ -16,17 +17,19 @@
 #include <config/configstore.h>
 
 
-MediaActionMenu::MediaActionMenu(const MediaItem& item, QEmbyCore* core, QWidget *parent)
-    : QMenu(parent), m_item(item), m_core(core)
+MediaActionMenu::MediaActionMenu(const MediaItem& item, QEmbyCore* core,
+                                 QWidget *parent,
+                                 const QList<CardContextMenuAction> &allowedActions)
+    : QMenu(parent), m_item(item), m_core(core), m_allowedActions(allowedActions)
 {
-    setObjectName("media-action-menu"); 
-    
+    setObjectName("media-action-menu");
+
     
     
     
     
     setWindowFlags(windowFlags() | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint);
-    
+
     
     setAttribute(Qt::WA_TranslucentBackground);
 
@@ -84,6 +87,15 @@ void MediaActionMenu::setupMenu()
         return ThemeManager::getAdaptiveIcon(QString(":/svg/player/%1").arg(baseName));
     };
 
+    
+    auto maybeAdd = [this](CardContextMenuAction action, const QIcon &icon,
+                           const QString &text,
+                           const QString &stringValue = QString()) -> QAction * {
+        if (!m_allowedActions.isEmpty() && !m_allowedActions.contains(action))
+            return nullptr;
+        return addMenuAction(action, icon, text, stringValue);
+    };
+
     const auto activeProfile =
         m_core && m_core->serverManager()
             ? m_core->serverManager()->activeProfile()
@@ -112,7 +124,7 @@ void MediaActionMenu::setupMenu()
         !m_item.id.trimmed().isEmpty() && m_item.canDownload;
 
     if (m_item.type == "Playlist") {
-        addMenuAction(CardContextMenuAction::DeletePlaylist,
+        maybeAdd(CardContextMenuAction::DeletePlaylist,
                       adaptiveIcon("remove.svg"), tr("Delete Playlist"));
         return;
     }
@@ -124,7 +136,7 @@ void MediaActionMenu::setupMenu()
                        m_item.type == "MusicVideo");
     
     if (isPlayable) {
-        addMenuAction(CardContextMenuAction::Play, adaptiveIcon("play.svg"),
+        maybeAdd(CardContextMenuAction::Play, adaptiveIcon("play.svg"),
                       tr("Play"));
 
         
@@ -160,7 +172,7 @@ void MediaActionMenu::setupMenu()
                 if (playerName.isEmpty())
                     playerName = QFileInfo(activePlayerPath).baseName();
 
-                addMenuAction(CardContextMenuAction::ExternalPlay,
+                maybeAdd(CardContextMenuAction::ExternalPlay,
                               adaptiveIcon("external-player.svg"),
                               tr("Play with %1").arg(playerName),
                               activePlayerPath);
@@ -169,23 +181,23 @@ void MediaActionMenu::setupMenu()
     }
 
     
-    addMenuAction(CardContextMenuAction::ViewDetails, adaptiveIcon("info.svg"),
+    maybeAdd(CardContextMenuAction::ViewDetails, adaptiveIcon("info.svg"),
                   tr("View Details"));
 
     if (canDownloadMedia) {
-        addMenuAction(CardContextMenuAction::Download,
+        maybeAdd(CardContextMenuAction::Download,
                       adaptiveIcon("download-menu.svg"), tr("Download"));
     }
 
     if (PlaylistUtils::canAddItemToPlaylist(m_item)) {
-        addMenuAction(CardContextMenuAction::AddToPlaylist,
+        maybeAdd(CardContextMenuAction::AddToPlaylist,
                       adaptiveIcon("playlist-add.svg"),
                       tr("Add to Playlist"));
     }
 
     if (!m_item.playlistId.trimmed().isEmpty() &&
         !m_item.playlistItemId.trimmed().isEmpty()) {
-        addMenuAction(CardContextMenuAction::RemoveFromPlaylist,
+        maybeAdd(CardContextMenuAction::RemoveFromPlaylist,
                       adaptiveIcon("remove.svg"),
                       tr("Remove from Playlist"));
     }
@@ -195,8 +207,8 @@ void MediaActionMenu::setupMenu()
     
     QString favText = m_item.isFavorite() ? tr("Remove from Favorites") : tr("Add to Favorites");
     QString favIconName = m_item.isFavorite() ? "heart-fill.svg" : "heart-outline.svg";
-    
-    addMenuAction(CardContextMenuAction::ToggleFavorite,
+
+    maybeAdd(CardContextMenuAction::ToggleFavorite,
                   adaptiveIcon(favIconName), favText);
 
     
@@ -206,13 +218,15 @@ void MediaActionMenu::setupMenu()
     
     QString playedText = m_item.userData.played ? tr("Mark as Unplayed") : tr("Mark as Played");
     QString playedIconName = m_item.userData.played ? "played.svg" : "unplayed.svg";
-    
-    addMenuAction(m_item.userData.played ? CardContextMenuAction::MarkUnplayed
+
+    maybeAdd(m_item.userData.played ? CardContextMenuAction::MarkUnplayed
                                          : CardContextMenuAction::MarkPlayed,
                   adaptiveIcon(playedIconName), playedText);
 
     
-    bool hasProgress = (m_item.userData.playbackPositionTicks > 0) || (m_item.userData.playedPercentage > 0.0);
+    
+    const bool canRemoveFromResume =
+        MediaItemUtils::canRemoveFromResume(m_item);
     
     
     bool isJellyfin = false;
@@ -221,8 +235,8 @@ void MediaActionMenu::setupMenu()
     }
     
     
-    if (hasProgress && !isJellyfin) {
-        addMenuAction(CardContextMenuAction::RemoveFromResume,
+    if (canRemoveFromResume && !isJellyfin) {
+        maybeAdd(CardContextMenuAction::RemoveFromResume,
                       adaptiveIcon("remove.svg"),
                       tr("Remove from Continue Watching"));
     }
@@ -231,28 +245,28 @@ void MediaActionMenu::setupMenu()
         canRemoveMedia) {
         addSeparator();
         if (canEditMetadata) {
-            addMenuAction(CardContextMenuAction::EditMetadata,
+            maybeAdd(CardContextMenuAction::EditMetadata,
                           adaptiveIcon("edit.svg"),
                           tr("Edit Metadata"));
         }
         if (canEditImages) {
-            addMenuAction(CardContextMenuAction::EditImages,
+            maybeAdd(CardContextMenuAction::EditImages,
                           adaptiveIcon("edit-images.svg"),
                           tr("Edit Images"));
         }
         if (canRefreshMetadata) {
-            addMenuAction(CardContextMenuAction::RefreshMetadata,
+            maybeAdd(CardContextMenuAction::RefreshMetadata,
                           adaptiveIcon("refresh.svg"),
                           tr("Refresh Metadata"));
         }
         if (canIdentifyMedia) {
-            addMenuAction(CardContextMenuAction::Identify,
+            maybeAdd(CardContextMenuAction::Identify,
                           adaptiveIcon("search.svg"), tr("Identify"));
         }
     }
 
     if (canRemoveMedia) {
-        addMenuAction(CardContextMenuAction::RemoveMedia,
+        maybeAdd(CardContextMenuAction::RemoveMedia,
                       adaptiveIcon("remove.svg"), tr("Remove Media"));
     }
 }

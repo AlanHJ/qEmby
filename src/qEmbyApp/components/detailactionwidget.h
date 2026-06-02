@@ -20,6 +20,7 @@ public:
     void setSeriesLoadingMode();
 
     void setFavoriteState(bool isFavorite);
+    void setPlayedState(bool played);
     void setSources(const QList<MediaSourceInfo>& sources, int currentIndex = 0);
     void setStreams(const MediaSourceInfo& source);
     void clear();
@@ -35,6 +36,7 @@ signals:
     void playRequested();
     void resumeRequested();
     void favoriteRequested();
+    void playedToggleRequested();
     void sourceVersionChanged(int index);
     void externalPlayRequested(const QString &playerPath);
 
@@ -44,6 +46,7 @@ private:
     QPushButton* m_resumeBtn;
     QPushButton* m_playBtn;
     QPushButton* m_favBtn;
+    QPushButton* m_playedBtn;
 
     QWidget* m_progressWidget;
     QProgressBar* m_progressBar;

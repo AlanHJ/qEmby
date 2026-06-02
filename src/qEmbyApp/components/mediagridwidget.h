@@ -9,8 +9,8 @@
 class QEmbyCore;
 class QListView;
 class MediaListModel;
-class QPropertyAnimation;
 class ShimmerWidget;
+class SmoothScrollController;
 
 class MediaGridWidget : public QWidget {
     Q_OBJECT
@@ -27,6 +27,7 @@ public:
 
     
     void updateItem(const MediaItem& item);
+    void prependOrUpdateItem(const MediaItem& item, int maxItems = 0);
     
     
     void removeItem(const QString& itemId);
@@ -56,6 +57,7 @@ protected:
 private:
     void adjustGrid();
     void notifyLoadMoreIfNeeded();
+    void updateVisibleImagePriority();
 
     int m_basePadding;
     MediaCardDelegate::CardStyle m_currentStyle;
@@ -65,9 +67,7 @@ private:
     MediaListModel* m_listModel;
     MediaCardDelegate* m_listDelegate;
 
-    
-    QPropertyAnimation* m_vScrollAnim;
-    int m_vScrollTarget;
+    SmoothScrollController* m_vScrollController;
 
     
     ShimmerWidget* m_shimmer = nullptr;

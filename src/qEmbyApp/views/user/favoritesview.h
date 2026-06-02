@@ -2,13 +2,13 @@
 #define FAVORITESVIEW_H
 
 #include "../baseview.h"
-#include <QPropertyAnimation>
 #include <qcorotask.h>
 
 class QListView;
 class QLabel;
 class QScrollArea;
 class HorizontalListViewGallery;
+class SmoothScrollController;
 
 class FavoritesView : public BaseView
 {
@@ -36,9 +36,7 @@ private:
 
     QScrollArea* m_mainScrollArea;
 
-    
-    QPropertyAnimation* m_vScrollAnim;
-    int m_vScrollTarget;
+    SmoothScrollController* m_vScrollController;
 
     
     QWidget* m_moviesHeader;

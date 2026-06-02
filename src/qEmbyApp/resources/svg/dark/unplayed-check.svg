@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" shape-rendering="geometricPrecision">
+  <defs><style>.cls-1 { fill: none; stroke: #6B717E; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.5px; }</style></defs>
+  <circle class="cls-1" cx="12" cy="12" r="11"/>
+  <polyline class="cls-1" points="7,12 10.5,15.5 17,8.5"/>
+</svg>

@@ -22,6 +22,7 @@
 #include "../utils/mediaidentifyutils.h"
 #include "../utils/playerpreferenceutils.h"
 #include "../utils/playlistutils.h"
+#include <QDateTime>
 #include <QDialog>
 #include <QDebug>
 #include <QJsonArray>
@@ -241,27 +242,69 @@ QCoro::Task<void> BaseView::executeMarkPlayed(MediaItem item)
     }
 
     QPointer<BaseView> safeThis(this);
+    const QString resumeItemId = MediaItemUtils::resumeActionItemId(item);
+    const bool shouldRemoveFromResume =
+        MediaItemUtils::canRemoveFromResume(item);
 
+    
+    const MediaUserDataInfo originalUserData = item.userData;
+    const MediaUserDataInfo originalResumeUserData = item.resumeUserData;
+
+    
+    item.userData.played = true;
+    item.userData.playbackPositionTicks = 0;
+    item.userData.playedPercentage = 100.0;
+    item.userData.lastPlayedDate =
+        QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+    if (item.hasResumeContext) {
+        item.resumeUserData.played = true;
+        item.resumeUserData.playbackPositionTicks = 0;
+        item.resumeUserData.playedPercentage = 100.0;
+        item.resumeUserData.lastPlayedDate = item.userData.lastPlayedDate;
+    }
+    if (safeThis) {
+        safeThis->beginOptimisticPlayedUpdate();
+        safeThis->onMediaItemUpdated(item);
+        safeThis->endOptimisticPlayedUpdate();
+    }
+
+    
     try {
         co_await m_core->mediaService()->markAsPlayed(item.id);
 
-        if (!isJellyfinServer()) {
-            co_await m_core->mediaService()->removeFromResume(item.id);
+        if (shouldRemoveFromResume && !isJellyfinServer() &&
+            !resumeItemId.isEmpty()) {
+            try {
+                qDebug() << "[BaseView] Removing completed item from Continue Watching"
+                         << "| displayItemId=" << item.id
+                         << "| resumeItemId=" << resumeItemId
+                         << "| itemType=" << item.type
+                         << "| hasResumeContext=" << item.hasResumeContext;
+                co_await m_core->mediaService()->removeFromResume(resumeItemId);
+            } catch (const std::exception& e) {
+                qWarning()
+                    << "[BaseView] Failed to remove completed item from Continue Watching"
+                    << "| displayItemId=" << item.id
+                    << "| resumeItemId=" << resumeItemId
+                    << "| error=" << e.what();
+            }
         }
 
         if (!safeThis) {
             co_return;
         }
-
-        item.userData.played = true;
-        item.userData.playbackPositionTicks = 0;
-        item.userData.playedPercentage = 100.0;
-        safeThis->onMediaItemUpdated(item);
-
-        co_await safeThis->refreshAndBroadcastItem(item.id);
+        
         ModernToast::showMessage(tr("Marked as Played"));
     } catch (const std::exception& e) {
+        
         qDebug() << "BaseView mark as played failed:" << e.what();
+        if (safeThis) {
+            item.userData = originalUserData;
+            item.resumeUserData = originalResumeUserData;
+            safeThis->beginOptimisticPlayedUpdate();
+            safeThis->onMediaItemUpdated(item);
+            safeThis->endOptimisticPlayedUpdate();
+        }
         ModernToast::showMessage(tr("Operation failed"));
     }
 }
@@ -274,21 +317,37 @@ QCoro::Task<void> BaseView::executeMarkUnplayed(MediaItem item)
 
     QPointer<BaseView> safeThis(this);
 
+    
+    const MediaUserDataInfo originalUserData = item.userData;
+
+    
+    item.userData.played = false;
+    item.userData.playbackPositionTicks = 0;
+    item.userData.playedPercentage = 0.0;
+    item.userData.lastPlayedDate.clear();
+    if (safeThis) {
+        safeThis->beginOptimisticPlayedUpdate();
+        safeThis->onMediaItemUpdated(item);
+        safeThis->endOptimisticPlayedUpdate();
+    }
+
+    
     try {
         co_await m_core->mediaService()->markAsUnplayed(item.id);
         if (!safeThis) {
             co_return;
         }
-
-        item.userData.played = false;
-        item.userData.playbackPositionTicks = 0;
-        item.userData.playedPercentage = 0.0;
-        safeThis->onMediaItemUpdated(item);
-
-        co_await safeThis->refreshAndBroadcastItem(item.id);
+        
         ModernToast::showMessage(tr("Marked as Unplayed"));
     } catch (const std::exception& e) {
+        
         qDebug() << "BaseView mark as unplayed failed:" << e.what();
+        if (safeThis) {
+            item.userData = originalUserData;
+            safeThis->beginOptimisticPlayedUpdate();
+            safeThis->onMediaItemUpdated(item);
+            safeThis->endOptimisticPlayedUpdate();
+        }
         ModernToast::showMessage(tr("Operation failed"));
     }
 }
@@ -300,18 +359,32 @@ QCoro::Task<void> BaseView::executeRemoveFromResume(MediaItem item)
     }
 
     QPointer<BaseView> safeThis(this);
+    const QString resumeItemId = MediaItemUtils::resumeActionItemId(item);
+    if (resumeItemId.isEmpty()) {
+        co_return;
+    }
 
     try {
-        co_await m_core->mediaService()->removeFromResume(item.id);
+        qDebug() << "[BaseView] Removing item from Continue Watching"
+                 << "| displayItemId=" << item.id
+                 << "| resumeItemId=" << resumeItemId
+                 << "| itemType=" << item.type
+                 << "| hasResumeContext=" << item.hasResumeContext;
+        co_await m_core->mediaService()->removeFromResume(resumeItemId);
         if (!safeThis) {
             co_return;
         }
 
         item.userData.playbackPositionTicks = 0;
         item.userData.playedPercentage = 0.0;
+        if (item.hasResumeContext) {
+            item.resumeUserData.played = true;
+            item.resumeUserData.playbackPositionTicks = 0;
+            item.resumeUserData.playedPercentage = 0.0;
+        }
         safeThis->onMediaItemUpdated(item);
 
-        co_await safeThis->refreshAndBroadcastItem(item.id);
+        co_await safeThis->refreshAndBroadcastItem(resumeItemId);
         ModernToast::showMessage(tr("Removed from Continue Watching"));
     } catch (const std::exception& e) {
         qDebug() << "BaseView remove from resume failed:" << e.what();
@@ -1046,7 +1119,9 @@ void BaseView::dispatchCardContextMenuRequest(
 
 
 
-QCoro::Task<void> BaseView::refreshAndBroadcastItem(const QString& itemId)
+QCoro::Task<void> BaseView::refreshAndBroadcastItem(
+    const QString& itemId,
+    std::optional<MediaUserDataInfo> playbackStateOverride)
 {
     if (itemId.isEmpty() || !m_core || !m_core->mediaService()) {
         co_return;
@@ -1058,6 +1133,15 @@ QCoro::Task<void> BaseView::refreshAndBroadcastItem(const QString& itemId)
     try {
         
         MediaItem latestItem = co_await m_core->mediaService()->getItemDetail(itemId);
+        if (playbackStateOverride.has_value()) {
+            latestItem.userData.played = playbackStateOverride->played;
+            latestItem.userData.playbackPositionTicks =
+                playbackStateOverride->playbackPositionTicks;
+            latestItem.userData.playedPercentage =
+                playbackStateOverride->playedPercentage;
+            latestItem.userData.lastPlayedDate =
+                playbackStateOverride->lastPlayedDate;
+        }
         
         
         if (safeThis) {

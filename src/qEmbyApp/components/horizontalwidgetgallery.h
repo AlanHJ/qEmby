@@ -38,6 +38,7 @@ protected:
     void wheelEvent(QWheelEvent* event) override;
 
 private:
+    void applyContentHeight();
     void updateButtonsVisibility();
     void updateButtonPositions();
 

@@ -5,9 +5,11 @@
 #include "../manager/servermanager.h"
 #include <QBuffer>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDebug>
 #include <QDir>
 #include <QFile>
+#include <QHash>
 #include <QImage>
 #include <QImageReader>
 #include <QJsonArray>
@@ -18,10 +20,14 @@
 #include <QNetworkReply>
 #include <QPointer>
 #include <QSettings>
+#include <QSet>
 #include <QStandardPaths>
 #include <QUrl>
 #include <QUrlQuery>
 #include <QUuid>
+#include <QtConcurrent/QtConcurrent>
+#include <algorithm>
+#include <qcorofuture.h>
 #include <qcoronetwork.h>
 #include <stdexcept>
 #include <utility>
@@ -45,6 +51,8 @@ MediaQueryPage parseMediaQueryPage(const QJsonObject& response, int startIndex,
     page.items = parseJsonArray<MediaItem>(response.value("Items").toArray());
     page.startIndex = qMax(0, startIndex);
     page.limit = limit;
+    page.hasTotalRecordCount =
+        response.contains(QStringLiteral("TotalRecordCount"));
     page.totalRecordCount =
         response.value(QStringLiteral("TotalRecordCount"))
             .toInt(page.startIndex + page.items.size());
@@ -56,7 +64,10 @@ MediaQueryPage parseMediaQueryPage(const QJsonObject& response, int startIndex,
 
 
 
-constexpr int kRecommendCacheFormatVersion = 6;
+
+
+constexpr int kRecommendCacheFormatVersion = 7;
+constexpr int kDefaultRecommendFetchLimit = 1000;
 
 QString appendMediaCardTooltipFields(QString fieldsCsv)
 {
@@ -106,6 +117,101 @@ QString appendMediaCardTooltipFields(QString fieldsCsv)
     }
 
     return fields.join(QLatin1Char(','));
+}
+
+struct PlayedItemEntry
+{
+    MediaItem item;
+    QDateTime playedAt;
+    int sequence = 0;
+};
+
+QDateTime parseServerDateTime(const QString& rawValue)
+{
+    const QString trimmed = rawValue.trimmed();
+    if (trimmed.isEmpty()) {
+        return {};
+    }
+
+    QDateTime parsed = QDateTime::fromString(trimmed, Qt::ISODateWithMs);
+    if (!parsed.isValid()) {
+        parsed = QDateTime::fromString(trimmed, Qt::ISODate);
+    }
+    return parsed.isValid() ? parsed.toUTC() : QDateTime();
+}
+
+QDateTime mediaDateCreated(const MediaItem& item)
+{
+    const QDateTime rawDate = parseServerDateTime(item.dateCreatedRaw);
+    if (rawDate.isValid()) {
+        return rawDate;
+    }
+    return parseServerDateTime(item.dateCreated);
+}
+
+QDateTime mediaPlayedAt(const MediaItem& item)
+{
+    return parseServerDateTime(item.userData.lastPlayedDate);
+}
+
+QString mediaSortTitle(const MediaItem& item)
+{
+    const QString sortTitle = item.sortName.trimmed();
+    return sortTitle.isEmpty() ? item.name.trimmed() : sortTitle;
+}
+
+int compareDateTime(const QDateTime& lhs, const QDateTime& rhs)
+{
+    const qint64 lhsValue = lhs.isValid() ? lhs.toMSecsSinceEpoch() : 0;
+    const qint64 rhsValue = rhs.isValid() ? rhs.toMSecsSinceEpoch() : 0;
+    if (lhsValue == rhsValue) {
+        return 0;
+    }
+    return lhsValue < rhsValue ? -1 : 1;
+}
+
+int comparePlayedEntries(const PlayedItemEntry& lhs,
+                         const PlayedItemEntry& rhs,
+                         const QString& sortBy)
+{
+    if (sortBy.compare(QStringLiteral("DateCreated"), Qt::CaseInsensitive) == 0) {
+        return compareDateTime(mediaDateCreated(lhs.item),
+                               mediaDateCreated(rhs.item));
+    }
+    if (sortBy.compare(QStringLiteral("Runtime"), Qt::CaseInsensitive) == 0) {
+        if (lhs.item.runTimeTicks == rhs.item.runTimeTicks) {
+            return 0;
+        }
+        return lhs.item.runTimeTicks < rhs.item.runTimeTicks ? -1 : 1;
+    }
+    if (sortBy.compare(QStringLiteral("PremiereDate"), Qt::CaseInsensitive) == 0) {
+        const int result =
+            QString::compare(lhs.item.premiereDate, rhs.item.premiereDate,
+                             Qt::CaseInsensitive);
+        return result == 0 ? 0 : (result < 0 ? -1 : 1);
+    }
+    if (sortBy.compare(QStringLiteral("SortName"), Qt::CaseInsensitive) == 0 ||
+        sortBy.compare(QStringLiteral("Title"), Qt::CaseInsensitive) == 0) {
+        const int result =
+            QString::localeAwareCompare(mediaSortTitle(lhs.item),
+                                        mediaSortTitle(rhs.item));
+        return result == 0 ? 0 : (result < 0 ? -1 : 1);
+    }
+
+    return compareDateTime(lhs.playedAt, rhs.playedAt);
+}
+
+QString mediaPageFingerprint(const QList<MediaItem>& items)
+{
+    QString fingerprint;
+    for (const MediaItem& item : items) {
+        if (item.id.isEmpty()) {
+            continue;
+        }
+        fingerprint += item.id;
+        fingerprint += QLatin1Char('|');
+    }
+    return fingerprint;
 }
 
 QString findUserViewIdByCollectionType(const QList<MediaItem> &views,
@@ -575,11 +681,21 @@ QCoro::Task<QPixmap> MediaService::fetchImage(const QString &itemId,
     if (reply->error() == QNetworkReply::NoError)
     {
         QByteArray data = reply->readAll();
-        QImage image;
-        image.loadFromData(data);
+        const int imageBytes = data.size();
+        
+        
+        
+        
+        auto future = QtConcurrent::run(
+            [data = std::move(data)]() mutable {
+                QImage decoded;
+                decoded.loadFromData(data);
+                return decoded;
+            });
+        QImage image = co_await future;
         if (!image.isNull())
         {
-            result = QPixmap::fromImage(image);
+            result = QPixmap::fromImage(std::move(image));
         }
         else
         {
@@ -587,7 +703,7 @@ QCoro::Task<QPixmap> MediaService::fetchImage(const QString &itemId,
                        << "| itemId=" << trimmedItemId
                        << "| imageType=" << trimmedImageType
                        << "| imageIndex=" << imageIndex
-                       << "| bytes=" << data.size();
+                       << "| bytes=" << imageBytes;
         }
     }
     else
@@ -641,15 +757,24 @@ QCoro::Task<QPixmap> MediaService::fetchImageByUrl(QString imageUrl)
         const DownloadedImageData downloadedImage =
             co_await downloadImageByUrl(std::move(imageUrl));
 
-        QImage image;
-        image.loadFromData(downloadedImage.data);
+        
+        
+        
+        
+        auto future = QtConcurrent::run(
+            [data = downloadedImage.data]() mutable {
+                QImage decoded;
+                decoded.loadFromData(data);
+                return decoded;
+            });
+        QImage image = co_await future;
         if (image.isNull()) {
             qWarning() << "[MediaService] fetchImageByUrl returned invalid image"
                        << "| bytes=" << downloadedImage.data.size();
             co_return QPixmap();
         }
 
-        co_return QPixmap::fromImage(image);
+        co_return QPixmap::fromImage(std::move(image));
     } catch (const std::exception& e) {
         qWarning() << "[MediaService] fetchImageByUrl failed"
                    << "| error=" << e.what();
@@ -720,6 +845,158 @@ QCoro::Task<DownloadedImageData> MediaService::downloadImageByUrl(QString imageU
     co_return result;
 }
 
+QCoro::Task<MediaQueryPage> MediaService::fetchItemPage(
+    QString basePath, int startIndex, int limit, QString context)
+{
+    ensureValidProfile();
+
+    QString path = basePath;
+    if (startIndex > 0) {
+        path += QStringLiteral("&StartIndex=%1").arg(startIndex);
+    }
+    if (limit > 0) {
+        path += QStringLiteral("&Limit=%1").arg(limit);
+    }
+
+    QJsonObject response = co_await m_serverManager->activeClient()->get(path);
+    const MediaQueryPage page = parseMediaQueryPage(response, startIndex, limit);
+
+    qDebug() << "[MediaService] paged fetch page"
+             << "| context=" << context
+             << "| startIndex=" << startIndex
+             << "| limit=" << limit
+             << "| returned=" << page.items.size()
+             << "| total=" << page.totalRecordCount;
+    co_return page;
+}
+
+QCoro::Task<QList<MediaItem>> MediaService::fetchPagedItemList(
+    QString basePath, int requestedLimit, QString context, bool deduplicateItems)
+{
+    ensureValidProfile();
+
+    QList<MediaItem> rawItems;
+    int requestCount = 0;
+    const int normalizedLimit = qMax(0, requestedLimit);
+    int totalRecordCount = 0;
+    int pageSize = 0;
+
+    if (normalizedLimit > 0) {
+        const MediaQueryPage initialPage =
+            co_await fetchItemPage(basePath, 0, normalizedLimit, context);
+        ++requestCount;
+        rawItems = initialPage.items;
+        totalRecordCount =
+            qMin(normalizedLimit,
+                 qMax(initialPage.totalRecordCount, rawItems.size()));
+        pageSize = initialPage.items.size();
+    } else {
+        const MediaQueryPage unboundedPage =
+            co_await fetchItemPage(basePath, 0, 0, context);
+        ++requestCount;
+        rawItems = unboundedPage.items;
+        totalRecordCount =
+            qMax(unboundedPage.totalRecordCount, rawItems.size());
+
+        qDebug() << "[MediaService] unbounded fetch complete"
+                 << "| context=" << context
+                 << "| returned=" << rawItems.size()
+                 << "| total=" << totalRecordCount;
+    }
+
+    QSet<QString> pageFingerprints;
+    const QString initialFingerprint = mediaPageFingerprint(rawItems);
+    if (!initialFingerprint.isEmpty()) {
+        pageFingerprints.insert(initialFingerprint);
+    }
+
+    if (normalizedLimit > 0 && rawItems.size() < totalRecordCount &&
+        pageSize > 0) {
+        qDebug() << "[MediaService] paged fetch server-side page cap detected"
+                 << "| context=" << context
+                 << "| pageSize=" << pageSize
+                 << "| loaded=" << rawItems.size()
+                 << "| total=" << totalRecordCount;
+
+        while (rawItems.size() < totalRecordCount) {
+            const int startIndex = rawItems.size();
+            const int remainingCount = totalRecordCount - startIndex;
+            const int pageLimit = qMin(pageSize, remainingCount);
+            if (pageLimit <= 0) {
+                break;
+            }
+
+            const MediaQueryPage page =
+                co_await fetchItemPage(basePath, startIndex, pageLimit, context);
+            ++requestCount;
+            if (page.items.isEmpty()) {
+                qWarning() << "[MediaService] paged fetch returned empty page"
+                           << "| context=" << context
+                           << "| startIndex=" << startIndex
+                           << "| limit=" << pageLimit
+                           << "| total=" << totalRecordCount;
+                break;
+            }
+
+            const QString fingerprint = mediaPageFingerprint(page.items);
+            if (!fingerprint.isEmpty()) {
+                if (pageFingerprints.contains(fingerprint)) {
+                    qWarning()
+                        << "[MediaService] paged fetch repeated page detected"
+                        << "| context=" << context
+                        << "| startIndex=" << startIndex
+                        << "| limit=" << pageLimit
+                        << "| returned=" << page.items.size();
+                    break;
+                }
+                pageFingerprints.insert(fingerprint);
+            }
+
+            rawItems.append(page.items);
+            totalRecordCount =
+                normalizedLimit > 0
+                    ? qMin(normalizedLimit,
+                           qMax(totalRecordCount, page.totalRecordCount))
+                    : qMax(totalRecordCount, page.totalRecordCount);
+        }
+    } else if (normalizedLimit > 0 && rawItems.size() < totalRecordCount) {
+        qWarning() << "[MediaService] paged fetch cannot continue"
+                   << "| context=" << context
+                   << "| loaded=" << rawItems.size()
+                   << "| total=" << totalRecordCount
+                   << "| pageSize=" << pageSize;
+    }
+
+    QList<MediaItem> items;
+    if (deduplicateItems) {
+        QSet<QString> itemIds;
+        for (const MediaItem& item : std::as_const(rawItems)) {
+            const QString id = item.id.trimmed();
+            if (!id.isEmpty()) {
+                if (itemIds.contains(id)) {
+                    continue;
+                }
+                itemIds.insert(id);
+            }
+            items.append(item);
+        }
+    } else {
+        items = std::move(rawItems);
+    }
+
+    if (normalizedLimit > 0 && items.size() > normalizedLimit) {
+        items = items.mid(0, normalizedLimit);
+    }
+
+    qDebug() << "[MediaService] paged fetch complete"
+             << "| context=" << context
+             << "| requestedLimit=" << requestedLimit
+             << "| returned=" << items.size()
+             << "| total=" << totalRecordCount
+             << "| requests=" << requestCount;
+    co_return items;
+}
+
 QCoro::Task<QList<MediaItem>> MediaService::getResumeItems(int limit, const QString &sortBy, const QString &sortOrder)
 {
     ensureValidProfile();
@@ -728,15 +1005,13 @@ QCoro::Task<QList<MediaItem>> MediaService::getResumeItems(int limit, const QStr
     QString path = QString("/Users/%1/Items/"
                            "Resume?Recursive=true&Fields=%2&MediaTypes=Video")
                        .arg(m_serverManager->activeProfile().userId, fieldQuery);
-    if (limit > 0)
-        path += QString("&Limit=%1").arg(limit);
     if (!sortBy.isEmpty())
         path += QString("&SortBy=%1").arg(sortBy);
     if (!sortOrder.isEmpty())
         path += QString("&SortOrder=%1").arg(sortOrder);
 
-    QJsonObject response = co_await m_serverManager->activeClient()->get(path);
-    co_return parseJsonArray<MediaItem>(response["Items"].toArray());
+    co_return co_await fetchPagedItemList(
+        path, limit, QStringLiteral("resume"));
 }
 
 QCoro::Task<QList<MediaItem>> MediaService::getLatestItems(int limit, const QString &sortBy, const QString &sortOrder)
@@ -747,15 +1022,248 @@ QCoro::Task<QList<MediaItem>> MediaService::getLatestItems(int limit, const QStr
     QString path = QString("/Users/%1/"
                            "Items?Recursive=true&Fields=%2&IncludeItemTypes=Movie,Series")
                        .arg(m_serverManager->activeProfile().userId, fieldQuery);
-    if (limit > 0)
-        path += QString("&Limit=%1").arg(limit);
     if (!sortBy.isEmpty())
         path += QString("&SortBy=%1").arg(sortBy);
     if (!sortOrder.isEmpty())
         path += QString("&SortOrder=%1").arg(sortOrder);
 
-    QJsonObject response = co_await m_serverManager->activeClient()->get(path);
-    co_return parseJsonArray<MediaItem>(response["Items"].toArray());
+    co_return co_await fetchPagedItemList(
+        path, limit, QStringLiteral("latest"));
+}
+
+QCoro::Task<MediaQueryPage> MediaService::getResumeItemsPage(
+    const QString &sortBy, const QString &sortOrder, int startIndex, int limit)
+{
+    ensureValidProfile();
+    const QString fieldQuery = appendMediaCardTooltipFields(
+        QStringLiteral("ProductionYear,RecursiveItemCount,CanDownload"));
+    QString path = QString("/Users/%1/Items/"
+                           "Resume?Recursive=true&Fields=%2&MediaTypes=Video")
+                       .arg(m_serverManager->activeProfile().userId, fieldQuery);
+    if (!sortBy.isEmpty())
+        path += QString("&SortBy=%1").arg(sortBy);
+    if (!sortOrder.isEmpty())
+        path += QString("&SortOrder=%1").arg(sortOrder);
+
+    co_return co_await fetchItemPage(
+        path, startIndex, limit, QStringLiteral("resume"));
+}
+
+QCoro::Task<MediaQueryPage> MediaService::getLatestItemsPage(
+    const QString &sortBy, const QString &sortOrder, int startIndex, int limit)
+{
+    ensureValidProfile();
+    const QString fieldQuery = appendMediaCardTooltipFields(
+        QStringLiteral("ProductionYear,RecursiveItemCount,CanDownload"));
+    QString path = QString("/Users/%1/"
+                           "Items?Recursive=true&Fields=%2&IncludeItemTypes=Movie,Series")
+                       .arg(m_serverManager->activeProfile().userId, fieldQuery);
+    if (!sortBy.isEmpty())
+        path += QString("&SortBy=%1").arg(sortBy);
+    if (!sortOrder.isEmpty())
+        path += QString("&SortOrder=%1").arg(sortOrder);
+
+    co_return co_await fetchItemPage(
+        path, startIndex, limit, QStringLiteral("latest"));
+}
+
+QCoro::Task<QList<MediaItem>> MediaService::getPlayedItems(int limit, const QString &sortBy, const QString &sortOrder)
+{
+    ensureValidProfile();
+    const QString fieldQuery = appendMediaCardTooltipFields(
+        QStringLiteral("ProductionYear,RecursiveItemCount,CanDownload"));
+    const QString userId = m_serverManager->activeProfile().userId;
+    const QString requestSortBy = sortBy;
+    const QString requestSortOrder = sortOrder;
+    const int queryLimit = limit > 0 ? qMax(limit * 2, 50) : 0;
+
+    auto fetchPlayedItems =
+        [this, fieldQuery, userId](QString includeItemTypes, int requestLimit,
+                                   QString requestSortBy,
+                                   QString requestSortOrder)
+            -> QCoro::Task<QList<MediaItem>> {
+        QString path =
+            QString("/Users/%1/"
+                    "Items?Recursive=true&Fields=%2&IncludeItemTypes=%3&Filters=IsPlayed")
+                .arg(userId, fieldQuery, includeItemTypes);
+        if (!requestSortBy.isEmpty())
+            path += QString("&SortBy=%1").arg(requestSortBy);
+        if (!requestSortOrder.isEmpty())
+            path += QString("&SortOrder=%1").arg(requestSortOrder);
+
+        co_return co_await fetchPagedItemList(
+            path, requestLimit,
+            QStringLiteral("played:%1").arg(includeItemTypes));
+    };
+
+    QList<PlayedItemEntry> entries;
+    QHash<QString, int> seriesEntryIndexes;
+    QHash<QString, bool> seriesCompletedCache;
+    int sequence = 0;
+
+    const auto appendEntry = [&entries, &sequence](MediaItem item) {
+        PlayedItemEntry entry;
+        entry.playedAt = mediaPlayedAt(item);
+        entry.sequence = sequence++;
+        entry.item = std::move(item);
+        entries.append(std::move(entry));
+    };
+
+    const QList<MediaItem> movies =
+        co_await fetchPlayedItems(QStringLiteral("Movie"), queryLimit,
+                                  requestSortBy, requestSortOrder);
+    for (MediaItem movie : movies) {
+        appendEntry(std::move(movie));
+    }
+
+    const QList<MediaItem> directSeries =
+        co_await fetchPlayedItems(QStringLiteral("Series"), queryLimit,
+                                  requestSortBy, requestSortOrder);
+    for (MediaItem series : directSeries) {
+        const QString seriesId = series.id.trimmed();
+        if (seriesId.isEmpty() || seriesEntryIndexes.contains(seriesId)) {
+            continue;
+        }
+        seriesEntryIndexes.insert(seriesId, entries.size());
+        appendEntry(std::move(series));
+    }
+
+    const QList<MediaItem> episodes =
+        co_await fetchPlayedItems(QStringLiteral("Episode"), queryLimit,
+                                  requestSortBy, requestSortOrder);
+    for (const MediaItem& episode : episodes) {
+        const QString seriesId = episode.seriesId.trimmed();
+        if (seriesId.isEmpty()) {
+            continue;
+        }
+
+        const QDateTime episodePlayedAt = mediaPlayedAt(episode);
+        if (seriesEntryIndexes.contains(seriesId)) {
+            PlayedItemEntry& entry = entries[seriesEntryIndexes.value(seriesId)];
+            if (!entry.playedAt.isValid() ||
+                compareDateTime(entry.playedAt, episodePlayedAt) < 0) {
+                entry.playedAt = episodePlayedAt;
+                entry.item.userData.lastPlayedDate =
+                    episode.userData.lastPlayedDate;
+            }
+            continue;
+        }
+
+        if (!seriesCompletedCache.contains(seriesId)) {
+            try {
+                MediaItem series = co_await getItemDetail(seriesId);
+                const bool seriesCompleted = series.userData.played;
+                seriesCompletedCache.insert(seriesId, seriesCompleted);
+                if (seriesCompleted) {
+                    series.userData.played = true;
+                    series.userData.playbackPositionTicks = 0;
+                    series.userData.playedPercentage = 100.0;
+                    series.userData.lastPlayedDate = episode.userData.lastPlayedDate;
+                    seriesEntryIndexes.insert(seriesId, entries.size());
+                    appendEntry(std::move(series));
+                    continue;
+                }
+            } catch (const std::exception& e) {
+                seriesCompletedCache.insert(seriesId, false);
+                qWarning() << "[MediaService] failed to resolve played series"
+                           << "| seriesId=" << seriesId
+                           << "| error=" << e.what();
+            }
+        }
+    }
+
+    const bool descending =
+        requestSortOrder.compare(QStringLiteral("Descending"),
+                                 Qt::CaseInsensitive) == 0;
+    std::stable_sort(entries.begin(), entries.end(),
+                     [requestSortBy, descending](const PlayedItemEntry& lhs,
+                                                 const PlayedItemEntry& rhs) {
+                         const int result =
+                             comparePlayedEntries(lhs, rhs, requestSortBy);
+                         if (result == 0) {
+                             return lhs.sequence < rhs.sequence;
+                         }
+                         return descending ? result > 0 : result < 0;
+                     });
+
+    QList<MediaItem> result;
+    result.reserve(limit > 0 ? qMin(limit, entries.size()) : entries.size());
+    for (const PlayedItemEntry& entry : std::as_const(entries)) {
+        if (limit > 0 && result.size() >= limit) {
+            break;
+        }
+        result.append(entry.item);
+    }
+
+    qDebug() << "[MediaService] getPlayedItems"
+             << "| limit=" << limit << "| queryLimit=" << queryLimit
+             << "| sortBy=" << requestSortBy
+             << "| sortOrder=" << requestSortOrder
+             << "| movies=" << movies.size()
+             << "| directSeries=" << directSeries.size()
+             << "| episodes=" << episodes.size()
+             << "| returned=" << result.size();
+    co_return result;
+}
+
+QCoro::Task<MediaQueryPage> MediaService::getPlayedItemsPage(
+    const QString &sortBy, const QString &sortOrder, int startIndex, int limit)
+{
+    const int normalizedStartIndex = qMax(0, startIndex);
+    const int normalizedLimit = qMax(0, limit);
+    const int lookAheadCount = normalizedLimit > 0 ? normalizedLimit : 1;
+    const int requestedCount =
+        normalizedLimit > 0
+            ? normalizedStartIndex + normalizedLimit + lookAheadCount
+            : 0;
+    QList<MediaItem> items =
+        co_await getPlayedItems(requestedCount, sortBy, sortOrder);
+
+    MediaQueryPage page;
+    page.startIndex = normalizedStartIndex;
+    page.limit = limit;
+    if (normalizedLimit > 0) {
+        page.items = items.mid(page.startIndex, normalizedLimit);
+    } else {
+        page.items = items.mid(page.startIndex);
+    }
+
+    const bool hasMore =
+        normalizedLimit > 0 &&
+        items.size() > normalizedStartIndex + page.items.size();
+    page.totalRecordCount =
+        hasMore ? normalizedStartIndex + page.items.size() + lookAheadCount
+                : items.size();
+
+    qDebug() << "[MediaService] getPlayedItemsPage"
+             << "| startIndex=" << startIndex
+             << "| limit=" << limit
+             << "| fetched=" << items.size()
+             << "| returned=" << page.items.size()
+             << "| total=" << page.totalRecordCount;
+    co_return page;
+}
+
+QCoro::Task<MediaQueryPage> MediaService::getRecommendedMoviesPage(
+    const QString &sortBy, const QString &sortOrder, int startIndex, int limit)
+{
+    ensureValidProfile();
+
+    const QString fieldQuery = appendMediaCardTooltipFields(
+        QStringLiteral("ProductionYear,RecursiveItemCount,PrimaryImageAspectRatio,CanDownload"));
+    QString path = QString("/Users/%1/Items?IncludeItemTypes=Movie,Series"
+                           "&Recursive=true"
+                           "&Fields=%2"
+                           "&EnableImageTypes=Primary,Backdrop,Thumb"
+                           "&ImageTypeLimit=1")
+                       .arg(m_serverManager->activeProfile().userId, fieldQuery);
+    if (!sortBy.isEmpty())
+        path += QString("&SortBy=%1").arg(sortBy);
+    if (!sortOrder.isEmpty())
+        path += QString("&SortOrder=%1").arg(sortOrder);
+
+    co_return co_await fetchItemPage(
+        path, startIndex, limit, QStringLiteral("recommended"));
 }
 
 QCoro::Task<QList<MediaItem>> MediaService::getRecommendedMovies(int limit, const QString &sortBy,
@@ -773,7 +1281,8 @@ QCoro::Task<QList<MediaItem>> MediaService::getRecommendedMovies(int limit, cons
         cacheDurationHours = 24;
 
     
-    if (m_recommendCache.isValid(currentServerId, currentUserId, cacheDurationHours))
+    if (m_recommendCache.isValid(currentServerId, currentUserId,
+                                 cacheDurationHours, limit))
     {
         QList<MediaItem> cached = m_recommendCache.items;
         if (limit > 0 && cached.size() > limit)
@@ -784,7 +1293,10 @@ QCoro::Task<QList<MediaItem>> MediaService::getRecommendedMovies(int limit, cons
     }
 
     
-    if (m_recommendCache.loadFromDisk(currentServerId, currentUserId, cacheDurationHours))
+    if (m_recommendCache.loadFromDisk(currentServerId, currentUserId,
+                                      cacheDurationHours) &&
+        m_recommendCache.isValid(currentServerId, currentUserId,
+                                 cacheDurationHours, limit))
     {
         QList<MediaItem> cached = m_recommendCache.items;
         if (limit > 0 && cached.size() > limit)
@@ -803,16 +1315,19 @@ QCoro::Task<QList<MediaItem>> MediaService::getRecommendedMovies(int limit, cons
                            "&EnableImageTypes=Primary,Backdrop,Thumb"
                            "&ImageTypeLimit=1")
                        .arg(currentUserId, fieldQuery);
-    path += "&Limit=1000&SortBy=Random&SortOrder=Ascending";
+    const int requestLimit =
+        limit > 0 ? qMax(limit, kDefaultRecommendFetchLimit) : 0;
+    path += "&SortBy=Random&SortOrder=Ascending";
 
-    QJsonObject response = co_await m_serverManager->activeClient()->get(path);
-    QList<MediaItem> allItems = parseJsonArray<MediaItem>(response["Items"].toArray());
+    QList<MediaItem> allItems = co_await fetchPagedItemList(
+        path, requestLimit, QStringLiteral("recommended"), true);
 
     
     m_recommendCache.items = allItems;
     m_recommendCache.fetchTime = QDateTime::currentDateTime();
     m_recommendCache.serverId = currentServerId;
     m_recommendCache.userId = currentUserId;
+    m_recommendCache.requestLimit = requestLimit;
     m_recommendCache.saveToDisk();
 
     if (limit > 0 && allItems.size() > limit)
@@ -1510,6 +2025,7 @@ void RecommendCache::clear()
     fetchTime = QDateTime();
     userId.clear();
     serverId.clear();
+    requestLimit = 0;
     if (!cachedServerId.isEmpty())
     {
         QFile::remove(cacheFilePath(cachedServerId));
@@ -1547,6 +2063,7 @@ void RecommendCache::saveToDisk() const
     root["formatVersion"] = kRecommendCacheFormatVersion;
     root["serverId"] = serverId;
     root["userId"] = userId;
+    root["requestLimit"] = requestLimit;
     root["fetchTime"] = fetchTime.toString(Qt::ISODate);
     root["items"] = itemsArray;
 
@@ -1581,6 +2098,7 @@ bool RecommendCache::loadFromDisk(const QString &currentServerId, const QString 
 
     QString cachedServerId = root["serverId"].toString();
     QString cachedUserId = root["userId"].toString();
+    const int cachedRequestLimit = root["requestLimit"].toInt(0);
     QDateTime cachedTime = QDateTime::fromString(root["fetchTime"].toString(), Qt::ISODate);
 
     
@@ -1604,6 +2122,7 @@ bool RecommendCache::loadFromDisk(const QString &currentServerId, const QString 
     fetchTime = cachedTime;
     serverId = cachedServerId;
     userId = cachedUserId;
+    requestLimit = cachedRequestLimit;
     qDebug() << "[RecommendCache] Loaded" << items.size() << "items from disk for server" << serverId;
     return true;
 }

@@ -3,6 +3,8 @@
 #include "../../components/mediagridwidget.h"
 #include "../../components/modernsortbutton.h"
 #include "../../managers/thememanager.h"
+#include "../../utils/dashboardrequestlimitutils.h"
+#include "../../utils/mediaitemutils.h"
 #include <QDebug>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -12,13 +14,33 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSet> 
+#include <QStringList>
 #include <QVBoxLayout>
 #include <config/config_keys.h>
 #include <config/configstore.h>
 #include <qembycore.h>
 #include <services/manager/servermanager.h>
 #include <services/media/mediaservice.h>
+#include <utility>
+#include <vector>
 
+namespace {
+constexpr int kDashboardCategoryFirstPageSize = 100;
+constexpr int kDashboardCategoryBackgroundPageSize = 300;
+
+QString pageFingerprint(const QList<MediaItem> &items) {
+  QString fingerprint;
+  for (const MediaItem &item : items) {
+    const QString id = item.id.trimmed();
+    if (id.isEmpty()) {
+      continue;
+    }
+    fingerprint += id;
+    fingerprint += QLatin1Char('|');
+  }
+  return fingerprint;
+}
+} 
 
 CategoryView::CategoryView(QEmbyCore *core, QWidget *parent)
     : BaseView(core, parent) {
@@ -194,6 +216,12 @@ bool CategoryView::isCastStyleCategory(const QString &categoryType) const {
   return categoryType == "Favorite_Person" || categoryType == "Person";
 }
 
+bool CategoryView::isProgressiveDashboardCategory(
+    const QString &categoryType) const {
+  return categoryType == "resume" || categoryType == "latest" ||
+         categoryType == "played";
+}
+
 QString CategoryView::currentViewPreferenceCategoryId() const {
   const QString categoryType = m_currentCategory.trimmed();
   if (categoryType.isEmpty() || isCastStyleCategory(categoryType)) {
@@ -260,6 +288,262 @@ void CategoryView::restoreViewPreference() {
   applyViewMode(viewMode == QLatin1String("tile"));
 }
 
+int CategoryView::dashboardCategoryRequestLimit(
+    const QString &categoryType) const {
+  const QString serverId =
+      (m_core && m_core->serverManager())
+          ? m_core->serverManager()->activeProfile().id
+          : QString();
+
+  if (categoryType == "resume") {
+    return DashboardRequestLimitUtils::configuredRequestLimit(
+        serverId, ConfigKeys::ContinueWatchingRequestLimit, 0);
+  }
+  if (categoryType == "latest") {
+    return DashboardRequestLimitUtils::configuredRequestLimit(
+        serverId, ConfigKeys::LatestMediaRequestLimit, 1000);
+  }
+  if (categoryType == "recommended") {
+    return DashboardRequestLimitUtils::configuredRequestLimit(
+        serverId, ConfigKeys::RecommendedRequestLimit, 1000);
+  }
+  if (categoryType == "played") {
+    return DashboardRequestLimitUtils::configuredRequestLimit(
+        serverId, ConfigKeys::CompletedWatchingRequestLimit, 0);
+  }
+  return 0;
+}
+
+CategoryView::DashboardCategoryQuery
+CategoryView::buildDashboardCategoryQuery(const QString &sortBy,
+                                          const QString &sortOrder) const {
+  DashboardCategoryQuery query;
+  query.category = m_currentCategory;
+  query.sortBy = sortBy;
+  query.sortOrder = sortOrder;
+  query.requestLimit = dashboardCategoryRequestLimit(m_currentCategory);
+  query.firstPageSize = kDashboardCategoryFirstPageSize;
+  query.pageSize = kDashboardCategoryBackgroundPageSize;
+
+  qDebug() << "[CategoryView] dashboard category query"
+           << "| category=" << query.category
+           << "| sortBy=" << query.sortBy
+           << "| sortOrder=" << query.sortOrder
+           << "| requestLimit=" << query.requestLimit
+           << "| firstPageSize=" << query.firstPageSize
+           << "| pageSize=" << query.pageSize;
+  return query;
+}
+
+void CategoryView::setLoadedItems(const QList<MediaItem> &items) {
+  m_loadedItems = items;
+  m_statsLabel->setText(tr("%1 Items").arg(m_loadedItems.size()));
+  m_mediaGrid->setItems(m_loadedItems);
+}
+
+void CategoryView::appendUniqueLoadedItems(const QList<MediaItem> &items) {
+  QSet<QString> existingIds;
+  for (const MediaItem &item : std::as_const(m_loadedItems)) {
+    const QString id = item.id.trimmed();
+    if (!id.isEmpty()) {
+      existingIds.insert(id);
+    }
+  }
+
+  for (const MediaItem &item : items) {
+    const QString id = item.id.trimmed();
+    if (!id.isEmpty() && existingIds.contains(id)) {
+      continue;
+    }
+    if (!id.isEmpty()) {
+      existingIds.insert(id);
+    }
+    m_loadedItems.append(item);
+  }
+
+  m_statsLabel->setText(tr("%1 Items").arg(m_loadedItems.size()));
+  m_mediaGrid->setItems(m_loadedItems);
+}
+
+QCoro::Task<CategoryView::DashboardCategoryPage>
+CategoryView::fetchDashboardCategoryPage(DashboardCategoryQuery query,
+                                         int startIndex, int limit) {
+  QPointer<CategoryView> guard(this);
+  DashboardCategoryPage categoryPage;
+  auto *mediaService = m_core->mediaService();
+  MediaQueryPage page;
+
+  if (query.category == "resume") {
+    page = co_await mediaService->getResumeItemsPage(
+        query.sortBy, query.sortOrder, startIndex, limit);
+    if (!guard)
+      co_return categoryPage;
+
+    categoryPage.rawItemCount = page.items.size();
+    categoryPage.fingerprint = pageFingerprint(page.items);
+
+    QSet<QString> seenSeriesIds;
+    QStringList seriesIdsToFetch;
+    QList<int> insertIndices;
+    QList<MediaItem> resumeContextItems;
+    QList<MediaItem> displayItems;
+
+    for (MediaItem item : page.items) {
+      if (item.type == "Episode" && !item.seriesId.isEmpty()) {
+        if (seenSeriesIds.contains(item.seriesId)) {
+          continue;
+        }
+        seenSeriesIds.insert(item.seriesId);
+        seriesIdsToFetch.append(item.seriesId);
+        insertIndices.append(displayItems.size());
+        resumeContextItems.append(item);
+        displayItems.append(MediaItem {});
+      } else {
+        displayItems.append(MediaItemUtils::withResumeContext(item, item));
+      }
+    }
+
+    std::vector<QCoro::Task<MediaItem>> detailTasks;
+    detailTasks.reserve(seriesIdsToFetch.size());
+    for (const QString &seriesId : std::as_const(seriesIdsToFetch)) {
+      detailTasks.push_back(mediaService->getItemDetail(seriesId));
+    }
+
+    for (int i = 0; i < static_cast<int>(detailTasks.size()); ++i) {
+      try {
+        MediaItem seriesItem = co_await std::move(detailTasks[i]);
+        if (!guard)
+          co_return categoryPage;
+        displayItems[insertIndices[i]] = MediaItemUtils::withResumeContext(
+            seriesItem, resumeContextItems[i]);
+      } catch (const std::exception &e) {
+        if (!guard)
+          co_return categoryPage;
+        qWarning() << "[CategoryView] failed to resolve resume series"
+                   << "| seriesId=" << seriesIdsToFetch.value(i)
+                   << "| error=" << e.what();
+      }
+    }
+
+    for (int i = displayItems.size() - 1; i >= 0; --i) {
+      if (displayItems.at(i).id.isEmpty()) {
+        displayItems.removeAt(i);
+      }
+    }
+    categoryPage.items = std::move(displayItems);
+  } else if (query.category == "latest") {
+    page = co_await mediaService->getLatestItemsPage(
+        query.sortBy, query.sortOrder, startIndex, limit);
+    if (!guard)
+      co_return categoryPage;
+    categoryPage.items = page.items;
+    categoryPage.rawItemCount = page.items.size();
+    categoryPage.fingerprint = pageFingerprint(page.items);
+  } else if (query.category == "played") {
+    page = co_await mediaService->getPlayedItemsPage(
+        query.sortBy, query.sortOrder, startIndex, limit);
+    if (!guard)
+      co_return categoryPage;
+    categoryPage.items = page.items;
+    categoryPage.rawItemCount = page.items.size();
+    categoryPage.fingerprint = pageFingerprint(page.items);
+  }
+
+  categoryPage.totalRecordCount = page.totalRecordCount;
+  categoryPage.hasTotalRecordCount = page.hasTotalRecordCount;
+
+  qDebug() << "[CategoryView] fetched dashboard category page"
+           << "| category=" << query.category
+           << "| startIndex=" << startIndex
+           << "| limit=" << limit
+           << "| rawReturned=" << categoryPage.rawItemCount
+           << "| displayReturned=" << categoryPage.items.size()
+           << "| hasTotal=" << categoryPage.hasTotalRecordCount
+           << "| total=" << categoryPage.totalRecordCount;
+  co_return categoryPage;
+}
+
+QCoro::Task<void>
+CategoryView::loadDashboardCategoryProgressively(
+    DashboardCategoryQuery query) {
+  QPointer<CategoryView> guard(this);
+  const int generation = m_requestGeneration;
+
+  m_loadedItems.clear();
+  QSet<QString> pageFingerprints;
+  int loadedRawCount = 0;
+  bool firstDisplayUpdate = true;
+
+  while (true) {
+    if (!guard || generation != m_requestGeneration) {
+      co_return;
+    }
+
+    const int preferredPageSize =
+        firstDisplayUpdate ? query.firstPageSize : query.pageSize;
+    int pageLimit = qMax(1, preferredPageSize);
+    if (query.requestLimit > 0) {
+      const int remaining = query.requestLimit - loadedRawCount;
+      if (remaining <= 0) {
+        break;
+      }
+      pageLimit = qMin(pageLimit, remaining);
+    }
+
+    DashboardCategoryPage page =
+        co_await fetchDashboardCategoryPage(query, loadedRawCount, pageLimit);
+    if (!guard || generation != m_requestGeneration) {
+      co_return;
+    }
+
+    if (page.rawItemCount <= 0) {
+      qDebug() << "[CategoryView] progressive load stopped on empty page"
+               << "| category=" << query.category
+               << "| loadedRaw=" << loadedRawCount;
+      break;
+    }
+
+    if (!page.fingerprint.isEmpty()) {
+      if (pageFingerprints.contains(page.fingerprint)) {
+        qWarning() << "[CategoryView] progressive load stopped on repeated page"
+                   << "| category=" << query.category
+                   << "| startIndex=" << loadedRawCount
+                   << "| limit=" << pageLimit;
+        break;
+      }
+      pageFingerprints.insert(page.fingerprint);
+    }
+
+    loadedRawCount += page.rawItemCount;
+    if (firstDisplayUpdate) {
+      setLoadedItems(page.items);
+      firstDisplayUpdate = false;
+      m_mediaGrid->setLoading(false);
+    } else {
+      appendUniqueLoadedItems(page.items);
+    }
+
+    if (query.requestLimit > 0 && loadedRawCount >= query.requestLimit) {
+      break;
+    }
+    if (page.hasTotalRecordCount && loadedRawCount >= page.totalRecordCount) {
+      break;
+    }
+    if (page.rawItemCount < pageLimit) {
+      break;
+    }
+  }
+
+  if (guard && generation == m_requestGeneration) {
+    m_mediaGrid->setLoading(false);
+    m_statsLabel->setText(tr("%1 Items").arg(m_loadedItems.size()));
+    qDebug() << "[CategoryView] progressive load complete"
+             << "| category=" << query.category
+             << "| loadedRaw=" << loadedRawCount
+             << "| displayed=" << m_loadedItems.size();
+  }
+}
+
 
 QCoro::Task<void> CategoryView::loadCategory(const QString &categoryType,
                                              const QString &title) {
@@ -279,6 +563,10 @@ QCoro::Task<void> CategoryView::loadCategory(const QString &categoryType,
     m_sortButton->setCurrentIndex(1); 
     m_sortButton->setDescending(true);
     m_sortButton->setEnabled(false);
+  } else if (categoryType == "played") {
+    m_sortButton->setCurrentIndex(1); 
+    m_sortButton->setDescending(true);
+    m_sortButton->setEnabled(true);
   } else if (categoryType == "Favorite_Movie" || categoryType == "Movie") {
     m_sortButton->setCurrentIndex(1); 
     m_sortButton->setDescending(true);
@@ -316,8 +604,9 @@ QCoro::Task<void> CategoryView::onFilterChanged() {
   
   QPointer<CategoryView> guard(this);
 
-  m_mediaGrid->setItems(
-      QList<MediaItem>()); 
+  
+  m_mediaGrid->setItems(QList<MediaItem>());
+  m_mediaGrid->setLoading(false);
   m_statsLabel->setText(tr("Loading..."));
 
   
@@ -340,6 +629,16 @@ QCoro::Task<void> CategoryView::onFilterChanged() {
     break;
   }
   QString sortOrder = m_sortButton->isDescending() ? "Descending" : "Ascending";
+  const int generation = ++m_requestGeneration;
+  m_loadedItems.clear();
+
+  if (isProgressiveDashboardCategory(m_currentCategory)) {
+    co_await loadDashboardCategoryProgressively(
+        buildDashboardCategoryQuery(sortBy, sortOrder));
+    co_return;
+  }
+
+  const int requestLimit = dashboardCategoryRequestLimit(m_currentCategory);
 
   auto *mediaService = m_core->mediaService();
 
@@ -349,13 +648,14 @@ QCoro::Task<void> CategoryView::onFilterChanged() {
     
     if (m_currentCategory == "resume") {
       QList<MediaItem> rawItems =
-          co_await mediaService->getResumeItems(0, sortBy, sortOrder);
+          co_await mediaService->getResumeItems(requestLimit, sortBy,
+                                                sortOrder);
       if (!guard)
         co_return;
 
       
       QSet<QString> seenSeriesIds;
-      for (const auto &item : rawItems) {
+      for (MediaItem item : rawItems) {
         if (item.type == "Episode" && !item.seriesId.isEmpty()) {
           if (seenSeriesIds.contains(item.seriesId))
             continue;
@@ -365,21 +665,27 @@ QCoro::Task<void> CategoryView::onFilterChanged() {
                 co_await mediaService->getItemDetail(item.seriesId);
             if (!guard)
               co_return;
-            resultItems.append(seriesItem);
+            resultItems.append(
+                MediaItemUtils::withResumeContext(seriesItem, item));
           } catch (...) {
             if (!guard)
               co_return;
           }
         } else {
-          resultItems.append(item);
+          resultItems.append(MediaItemUtils::withResumeContext(item, item));
         }
       }
     } else if (m_currentCategory == "latest") {
       resultItems =
-          co_await mediaService->getLatestItems(1000, sortBy, sortOrder);
+          co_await mediaService->getLatestItems(requestLimit, sortBy,
+                                                sortOrder);
     } else if (m_currentCategory == "recommended") {
+      resultItems = co_await mediaService->getRecommendedMovies(
+          requestLimit, QStringLiteral("Random"), QStringLiteral("Ascending"));
+    } else if (m_currentCategory == "played") {
       resultItems =
-          co_await mediaService->getRecommendedMovies(1000, sortBy, sortOrder);
+          co_await mediaService->getPlayedItems(requestLimit, sortBy,
+                                                sortOrder);
     } else if (m_currentCategory == "Favorite_Movie" ||
                m_currentCategory == "Movie") {
       resultItems =
@@ -405,17 +711,19 @@ QCoro::Task<void> CategoryView::onFilterChanged() {
     
     
     
-    if (!guard)
+    if (!guard || generation != m_requestGeneration)
       co_return;
 
     
     m_statsLabel->setText(tr("%1 Items").arg(resultItems.size()));
     m_mediaGrid->setItems(resultItems);
+    m_mediaGrid->setLoading(false);
 
   } catch (const std::exception &e) {
     
     if (!guard)
       co_return;
+    m_mediaGrid->setLoading(false);
     m_statsLabel->setText(tr("Error Loading Items"));
     qDebug() << "Category View fetching error:" << e.what();
   }
@@ -428,17 +736,28 @@ void CategoryView::onMediaItemUpdated(const MediaItem &item) {
   if (m_mediaGrid) {
     
     if (m_currentCategory == "resume") {
-      bool hasProgress = (item.userData.playbackPositionTicks > 0) ||
-                         (item.userData.playedPercentage > 0.0 &&
-                          item.userData.playedPercentage < 100.0);
+      const bool isSeriesDetailWithoutResumeContext =
+          item.type == "Series" && !item.hasResumeContext;
+      const bool canRemoveFromResume =
+          MediaItemUtils::canRemoveFromResume(item);
 
       
-      if (item.userData.played || !hasProgress) {
+      if ((!isSeriesDetailWithoutResumeContext || item.userData.played) &&
+          !canRemoveFromResume) {
         m_mediaGrid->removeItem(item.id);
         
         m_statsLabel->setText(tr("%1 Items").arg(m_mediaGrid->itemCount()));
         return;
       }
+    }
+    if (m_currentCategory == "played") {
+      if (MediaItemUtils::isCompletedWatchingItem(item)) {
+        m_mediaGrid->prependOrUpdateItem(item);
+      } else {
+        m_mediaGrid->removeItem(item.id);
+      }
+      m_statsLabel->setText(tr("%1 Items").arg(m_mediaGrid->itemCount()));
+      return;
     }
 
     

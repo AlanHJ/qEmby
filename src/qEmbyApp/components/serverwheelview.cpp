@@ -165,7 +165,10 @@ bool ServerWheelView::eventFilter(QObject* obj, QEvent* event) {
 void ServerWheelView::wheelEvent(QWheelEvent* event) {
     if (m_items.isEmpty()) return;
 
-    int step = event->angleDelta().y() > 0 ? -1 : 1;
+    
+    
+    qreal angleDelta = event->angleDelta().y();
+    qreal step = -angleDelta / 120.0; 
 
     
     qreal baseTarget = m_scrollAnim->state() == QAbstractAnimation::Running ?

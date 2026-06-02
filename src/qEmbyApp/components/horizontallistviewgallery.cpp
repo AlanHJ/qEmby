@@ -15,6 +15,8 @@
 #include <QStyleOptionViewItem>
 #include <QTimer>
 #include <QDebug>
+#include <QSet>
+#include <algorithm>
 
 HorizontalListViewGallery::HorizontalListViewGallery(QEmbyCore* core, QWidget* parent)
     : QWidget(parent), m_core(core), m_hScrollAnim(nullptr), m_hScrollTarget(0), m_cardStyle(MediaCardDelegate::Poster)
@@ -131,7 +133,11 @@ HorizontalListViewGallery::HorizontalListViewGallery(QEmbyCore* core, QWidget* p
     connect(m_btnLeft, &QPushButton::clicked, [scrollAction]() { scrollAction(-1); });
     connect(m_btnRight, &QPushButton::clicked, [scrollAction]() { scrollAction(1); });
 
-    connect(m_listView->horizontalScrollBar(), &QScrollBar::valueChanged, this, &HorizontalListViewGallery::updateButtonsVisibility);
+    connect(m_listView->horizontalScrollBar(), &QScrollBar::valueChanged, this,
+            [this]() {
+                updateButtonsVisibility();
+                updateVisibleImagePriority();
+            });
     connect(m_listView->horizontalScrollBar(), &QScrollBar::rangeChanged, this, &HorizontalListViewGallery::updateButtonsVisibility);
 
     m_listView->viewport()->installEventFilter(this);
@@ -155,6 +161,8 @@ void HorizontalListViewGallery::setItems(const QList<MediaItem>& items)
 {
     if (m_listModel) {
         m_listModel->setItems(items);
+        QTimer::singleShot(0, this,
+                           [this]() { updateVisibleImagePriority(); });
     }
     
     if (m_shimmer && m_shimmer->isVisible() && !items.isEmpty()) {
@@ -168,6 +176,18 @@ void HorizontalListViewGallery::updateItem(const MediaItem& item)
 {
     if (m_listModel) {
         m_listModel->updateItem(item);
+    }
+}
+
+void HorizontalListViewGallery::prependOrUpdateItem(const MediaItem& item,
+                                                    int maxItems)
+{
+    if (m_listModel) {
+        m_listModel->prependOrUpdateItem(item, maxItems);
+        QTimer::singleShot(0, this, [this]() {
+            updateVisibleImagePriority();
+            updateButtonsVisibility();
+        });
     }
 }
 
@@ -219,7 +239,9 @@ void HorizontalListViewGallery::setCardStyle(MediaCardDelegate::CardStyle style)
             int imgHeight = 160;
             int imgWidth = qRound(imgHeight * 16.0 / 9.0); 
             int cardWidth = imgWidth + 16;  
-            int cardHeight = 8 + imgHeight + 6 + 20; 
+            const int hoverExpandH = qRound(imgHeight * 0.035);
+            const int cardHeight =
+                8 + imgHeight + hoverExpandH + 4 + 20 + 1 + 18 + 8;
             m_listDelegate->setTileSize(QSize(cardWidth, cardHeight));
         } else if (style == MediaCardDelegate::Poster) {
             m_listDelegate->setTileSize(QSize(160, 270));
@@ -351,6 +373,7 @@ void HorizontalListViewGallery::resizeEvent(QResizeEvent* event)
     QWidget::resizeEvent(event);
     updateButtonPositions();
     updateButtonsVisibility();
+    updateVisibleImagePriority();
 
     
     if (m_shimmer && m_shimmer->isVisible()) {
@@ -457,4 +480,36 @@ void HorizontalListViewGallery::updateButtonsVisibility()
 
     m_btnLeft->setVisible(isLeftHalf && bar->value() > 0);
     m_btnRight->setVisible(!isLeftHalf && bar->value() < bar->maximum());
+}
+
+void HorizontalListViewGallery::updateVisibleImagePriority()
+{
+    if (!m_listView || !m_listModel) {
+        return;
+    }
+
+    QWidget* viewport = m_listView->viewport();
+    if (!viewport) {
+        return;
+    }
+
+    QStyleOptionViewItem option;
+    const QSize cellSize = m_listDelegate->sizeHint(option, QModelIndex());
+    const int stepX = qMax(1, cellSize.width() / 2);
+    const int stepY = qMax(1, cellSize.height() / 2);
+
+    QSet<int> rowSet;
+    const QRect rect = viewport->rect();
+    for (int y = rect.top(); y <= rect.bottom(); y += stepY) {
+        for (int x = rect.left(); x <= rect.right(); x += stepX) {
+            const QModelIndex idx = m_listView->indexAt(QPoint(x, y));
+            if (idx.isValid()) {
+                rowSet.insert(idx.row());
+            }
+        }
+    }
+
+    QList<int> rows = rowSet.values();
+    std::sort(rows.begin(), rows.end());
+    m_listModel->setPriorityRows(rows);
 }

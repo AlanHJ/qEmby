@@ -8,6 +8,7 @@
 #include "../../managers/thememanager.h"
 #include "../../managers/searchhistorymanager.h"
 #include "../../managers/playbackmanager.h"
+#include "../../utils/smoothscrollcontroller.h"
 #include "../admin/manageview.h" 
 #include "../media/detailview.h"
 #include "../media/libraryview.h"
@@ -40,13 +41,16 @@
 #include <QPointer> 
 #include <QPropertyAnimation>
 #include <QPushButton>
+#include <QScrollBar>
 #include <QSize>
 #include <QShowEvent>
 #include <QStringListModel>
 #include <QTimer>
 #include <QVBoxLayout>
+#include <QWheelEvent>
 #include <models/profile/serverprofile.h>
 #include <qembycore.h>
+#include <qcorotask.h>
 #include <services/manager/servermanager.h>
 #include <services/media/mediaservice.h>
 
@@ -314,7 +318,8 @@ QWidget *HomeView::createCategoryView(const QString &categoryId, const QString &
     view->setProperty("routeId", categoryId);
     view->setProperty("routeTitle", title);
 
-    view->loadCategory(categoryId, title);
+    QTimer::singleShot(0, view, [view, categoryId, title]()
+                       { QCoro::connect(view->loadCategory(categoryId, title), view, []() {}); });
 
     connect(view, &CategoryView::navigateToDetail, this,
             [this](const QString &id, const QString &name, const MediaItem &seed) { pushView(createDetailView(id, name, seed)); });
@@ -613,7 +618,7 @@ void HomeView::setupSidebar()
     }
 
     auto *layout = new QVBoxLayout(m_sidebar);
-    layout->setContentsMargins(16, 20, 16, 20);
+    layout->setContentsMargins(16, 20, 0, 20);
     layout->setSpacing(6);
 
     
@@ -647,7 +652,7 @@ void HomeView::setupSidebar()
     
     m_navArea = new QWidget(m_sidebar);
     auto *navLayout = new QVBoxLayout(m_navArea);
-    navLayout->setContentsMargins(0, 0, 0, 0);
+    navLayout->setContentsMargins(0, 0, 16, 0);
     navLayout->setSpacing(0);
 
     m_searchBox = new QLineEdit(m_navArea);
@@ -703,8 +708,13 @@ void HomeView::setupSidebar()
     m_libraryList->setObjectName("sidebar-list");
     m_libraryList->setFocusPolicy(Qt::NoFocus);
     m_libraryList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_libraryList->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     m_libraryList->setTextElideMode(Qt::ElideRight);
     m_libraryList->setWordWrap(false);
+    m_sidebarLibraryScrollController =
+        new SmoothScrollController(m_libraryList->verticalScrollBar(), this);
+    m_sidebarLibraryScrollController->setDuration(160);
+    m_libraryList->viewport()->installEventFilter(this);
     layout->addWidget(m_libraryList, 1);
 
     
@@ -745,9 +755,14 @@ void HomeView::setupSidebar()
     m_userInfoLayout->addWidget(m_btnDownloads, 0, Qt::AlignVCenter);
     layout->addWidget(userInfoWidget);
 
-    m_btnSettings = new QPushButton(tr("Settings"), m_sidebar);
-    m_btnManage = new QPushButton(tr("Manage"), m_sidebar);
-    m_btnLogout = new QPushButton(tr("Logout"), m_sidebar);
+    auto *footerActionsWidget = new QWidget(m_sidebar);
+    m_sidebarFooterActionsLayout = new QVBoxLayout(footerActionsWidget);
+    m_sidebarFooterActionsLayout->setContentsMargins(0, 0, 16, 0);
+    m_sidebarFooterActionsLayout->setSpacing(6);
+
+    m_btnSettings = new QPushButton(tr("Settings"), footerActionsWidget);
+    m_btnManage = new QPushButton(tr("Manage"), footerActionsWidget);
+    m_btnLogout = new QPushButton(tr("Logout"), footerActionsWidget);
 
     m_btnSettings->setObjectName("sidebar-btn");
 
@@ -755,9 +770,10 @@ void HomeView::setupSidebar()
 
     m_btnLogout->setObjectName("sidebar-btn-danger");
 
-    layout->addWidget(m_btnSettings);
-    layout->addWidget(m_btnManage);
-    layout->addWidget(m_btnLogout);
+    m_sidebarFooterActionsLayout->addWidget(m_btnSettings);
+    m_sidebarFooterActionsLayout->addWidget(m_btnManage);
+    m_sidebarFooterActionsLayout->addWidget(m_btnLogout);
+    layout->addWidget(footerActionsWidget);
 
     
     connect(m_btnLogout, &QPushButton::clicked, this,
@@ -1575,6 +1591,17 @@ void HomeView::resizeEvent(QResizeEvent *event)
 
 bool HomeView::eventFilter(QObject *watched, QEvent *event)
 {
+    if (m_libraryList && watched == m_libraryList->viewport() &&
+        event->type() == QEvent::Wheel)
+    {
+        auto *wheelEvent = static_cast<QWheelEvent *>(event);
+        if (m_sidebarLibraryScrollController &&
+            m_sidebarLibraryScrollController->scrollByWheelEvent(wheelEvent, Qt::Vertical))
+        {
+            return true;
+        }
+    }
+
     
     if (m_sidebarPinned)
     {
@@ -1707,24 +1734,37 @@ void HomeView::applySidebarMetrics(bool pinned)
     m_sidebar->setFixedWidth(sidebarWidthForMode(pinned));
 
     auto *layout = qobject_cast<QVBoxLayout *>(m_sidebar->layout());
+    const int horizontalInset = pinned ? 12 : 16;
     if (layout)
     {
         if (pinned)
         {
-            layout->setContentsMargins(12, 18, 12, 18);
+            layout->setContentsMargins(horizontalInset, 18, 0, 18);
             layout->setSpacing(4);
         }
         else
         {
-            layout->setContentsMargins(16, 20, 16, 20);
+            layout->setContentsMargins(horizontalInset, 20, 0, 20);
             layout->setSpacing(6);
         }
+    }
+
+    if (m_navArea && m_navArea->layout())
+    {
+        m_navArea->layout()->setContentsMargins(0, 0, horizontalInset, 0);
+    }
+
+    if (m_sidebarFooterActionsLayout)
+    {
+        m_sidebarFooterActionsLayout->setContentsMargins(0, 0, horizontalInset, 0);
+        m_sidebarFooterActionsLayout->setSpacing(pinned ? 4 : 6);
     }
 
     if (m_serverInfoLayout)
     {
         m_serverInfoLayout->setDirection(pinned ? QBoxLayout::TopToBottom : QBoxLayout::LeftToRight);
-        m_serverInfoLayout->setContentsMargins(pinned ? QMargins(4, 0, 4, 10) : QMargins(8, 0, 8, 10));
+        m_serverInfoLayout->setContentsMargins(pinned ? QMargins(4, 0, horizontalInset + 4, 10)
+                                                       : QMargins(8, 0, horizontalInset + 8, 10));
         m_serverInfoLayout->setSpacing(pinned ? 8 : 10);
         m_serverInfoLayout->setAlignment(m_serverIconLabel, pinned ? Qt::AlignHCenter : Qt::AlignVCenter);
         if (m_serverNameLayout)
@@ -1766,8 +1806,8 @@ void HomeView::applySidebarMetrics(bool pinned)
 
     if (m_userInfoLayout)
     {
-        m_userInfoLayout->setContentsMargins(pinned ? QMargins(4, 0, 4, 8)
-                                                    : QMargins(0, 0, 0, 10));
+        m_userInfoLayout->setContentsMargins(pinned ? QMargins(4, 0, horizontalInset + 4, 8)
+                                                    : QMargins(0, 0, horizontalInset, 10));
         m_userInfoLayout->setSpacing(pinned ? 4 : 8);
         m_userInfoLayout->setAlignment(Qt::AlignVCenter);
     }

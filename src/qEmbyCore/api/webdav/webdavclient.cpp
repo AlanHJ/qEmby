@@ -707,41 +707,65 @@ QCoro::Task<bool> WebdavClient::putFile(QString relPath, QByteArray bytes, QStri
              << "| size:" << bytes.size()
              << "| contentType:" << contentType;
 
-    QNetworkRequest req(url);
-    applyAuthHeader(req);
-    if (!contentType.trimmed().isEmpty())
+    bool retried = false;
+
+    for (;;)
     {
-        req.setHeader(QNetworkRequest::ContentTypeHeader, contentType.trimmed());
-    }
-    NetworkManager::applyRequestOptions(req, networkOptions());
+        QNetworkRequest req(url);
+        applyAuthHeader(req);
+        if (!contentType.trimmed().isEmpty())
+        {
+            req.setHeader(QNetworkRequest::ContentTypeHeader, contentType.trimmed());
+        }
+        NetworkManager::applyRequestOptions(req, networkOptions());
 
-    QNetworkReply *reply = m_nam->put(req, bytes);
-    NetworkManager::attachReplyHandlers(reply, networkOptions(),
-                                        QStringLiteral("WEBDAV_PUT"));
-    co_await reply;
+        QNetworkReply *reply = m_nam->put(req, bytes);
+        NetworkManager::attachReplyHandlers(reply, networkOptions(),
+                                            QStringLiteral("WEBDAV_PUT"));
+        co_await reply;
 
-    const int status = httpStatusOf(reply);
-    const auto qtErr = reply->error();
-    const QString errString = reply->errorString();
-    const QByteArray respBody = reply->readAll();
-    reply->deleteLater();
+        const int status = httpStatusOf(reply);
+        const auto qtErr = reply->error();
+        const QString errString = reply->errorString();
+        const QByteArray respBody = reply->readAll();
+        reply->deleteLater();
 
-    const bool ok = (qtErr == QNetworkReply::NoError) &&
-                    (status == 200 || status == 201 || status == 204);
+        const bool ok = (qtErr == QNetworkReply::NoError) &&
+                        (status == 200 || status == 201 || status == 204);
 
-    qDebug() << "[WebdavClient] putFile DONE"
-             << "| url:" << url.toString()
-             << "| status:" << status
-             << "| ok:" << ok;
+        if (ok)
+        {
+            qDebug() << "[WebdavClient] putFile DONE"
+                     << "| url:" << url.toString()
+                     << "| status:" << status
+                     << "| retried:" << retried;
+            co_return true;
+        }
 
-    if (!ok)
-    {
+        
+        if (!retried && (status == 404 || status == 409))
+        {
+            retried = true;
+            qDebug() << "[WebdavClient] putFile received" << status
+                     << ", forcing MKCOL on parent and retrying...";
+
+            const int lastSlash = cleanRel.lastIndexOf(QLatin1Char('/'));
+            if (lastSlash >= 0)
+            {
+                co_await mkcol(cleanRel.left(lastSlash));
+            }
+            else
+            {
+                co_await mkcol(QString());
+            }
+            continue;
+        }
+
         throw std::runtime_error(
             humanReadableHttpError(QStringLiteral("PUT"), status, qtErr, errString, respBody)
                 .toUtf8()
                 .toStdString());
     }
-    co_return true;
 }
 
 QCoro::Task<bool> WebdavClient::remove(QString relPath)

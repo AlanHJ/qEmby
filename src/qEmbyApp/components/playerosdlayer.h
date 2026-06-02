@@ -21,7 +21,7 @@ public:
     void showSeek(double position, double duration, const QString &timeText);
 
     
-    void showVolume(const QString &text);
+    void showVolume(int volumePercent, const QString &text, bool muted);
 
     
     void hide();
@@ -50,14 +50,26 @@ public:
 private:
     void fadeIn();
     bool canStartAnimation() const;
+    void updateSeekLayout();
+    void updateVolumeLayout();
 
     QWidget *m_container = nullptr;
     QProgressBar *m_seekLine = nullptr;
     QLabel *m_seekTimeLabel = nullptr;
+    QWidget *m_seekStem = nullptr;
+    QWidget *m_seekMarker = nullptr;
+    QWidget *m_volumePanel = nullptr;
+    QLabel *m_volumeIconLabel = nullptr;
+    QProgressBar *m_volumeBar = nullptr;
     QLabel *m_volumeLabel = nullptr;
     QGraphicsOpacityEffect *m_opacity = nullptr;
     QPropertyAnimation *m_fadeAnim = nullptr;
     QTimer *m_hideTimer = nullptr;
+    int m_parentWidth = 0;
+    int m_parentHeight = 0;
+    double m_seekPosition = 0.0;
+    double m_seekDuration = 0.0;
+    int m_volumePercent = 100;
 };
 
 #endif 

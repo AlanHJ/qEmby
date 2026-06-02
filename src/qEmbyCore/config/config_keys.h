@@ -66,6 +66,15 @@ constexpr const char* SearchAutocompleteEnabled = "appearance/search_autocomplet
 constexpr const char* ShowRecommended = "library/show_recommended";
 constexpr const char* ShowContinueWatching = "library/show_continue_watching";
 constexpr const char* ShowLatestAdded = "library/show_latest_added";
+constexpr const char* ShowCompletedWatching = "library/show_completed_watching";
+constexpr const char* ContinueWatchingRequestLimit =
+    "library/continue_watching_request_limit";
+constexpr const char* LatestMediaRequestLimit =
+    "library/latest_media_request_limit";
+constexpr const char* RecommendedRequestLimit =
+    "library/recommended_request_limit";
+constexpr const char* CompletedWatchingRequestLimit =
+    "library/completed_watching_request_limit";
 constexpr const char* ShowMediaLibraries = "library/show_media_libraries";
 constexpr const char* ShowEachLibrary = "library/show_each_library";
 constexpr const char* ShowFavoriteFolders = "library/show_favorite_folders";
@@ -102,6 +111,7 @@ constexpr const char* PlayerAudioLang = "player/audio_lang";
 constexpr const char* PlayerSubLang = "player/sub_lang";
 constexpr const char* PlayerPreferredVersion = "player/preferred_version";
 constexpr const char* PlayerVolNormal = "player/vol_normalization";
+constexpr const char* PlayerContinuousPlay = "player/continuous_play";
 constexpr const char* PlayerSeekStep = "player/seek_step";
 constexpr const char* PlayerLongPressSeek = "player/long_press_seek";
 constexpr const char* PlayerLongPressMode = "player/long_press_mode";

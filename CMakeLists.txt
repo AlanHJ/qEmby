@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.19)
 
-project(qEmby VERSION 0.0.4 LANGUAGES CXX)
+project(qEmby VERSION 0.0.5 LANGUAGES CXX)
+
+if(APPLE)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET 13.0)
+endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(GNUInstallDirs)

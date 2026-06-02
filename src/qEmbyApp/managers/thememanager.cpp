@@ -272,7 +272,10 @@ QString ThemeManager::scaleFontSizes(const QString &qss, const QString &sizeKey)
     while (it.hasNext()) {
         auto match = it.next();
         
-        result.append(qss.mid(lastEnd, match.capturedStart() - lastEnd));
+        qsizetype startPos = match.capturedStart();
+        if (startPos > lastEnd) {
+            result.append(qss.mid(lastEnd, startPos - lastEnd));
+        }
 
         
         int originalSize = match.captured(1).toInt();

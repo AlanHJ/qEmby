@@ -1,4 +1,5 @@
 #include "favoritesview.h"
+#include "../../utils/smoothscrollcontroller.h"
 #include <qembycore.h>
 #include <services/media/mediaservice.h>
 #include <config/configstore.h>
@@ -12,14 +13,13 @@
 #include <QListView>
 #include <QPushButton>
 #include <QScrollBar>
-#include <QPropertyAnimation>
 #include <QShowEvent>
 #include <QWheelEvent>
 #include <QDebug>
 #include <QPointer> 
 
 FavoritesView::FavoritesView(QEmbyCore* core, QWidget *parent)
-    : BaseView(core, parent), m_vScrollAnim(nullptr), m_vScrollTarget(0)
+    : BaseView(core, parent), m_vScrollController(nullptr)
 {
     setObjectName("favorites-view");
     
@@ -47,7 +47,7 @@ void FavoritesView::setupUi()
     
     bool isTile = (ConfigStore::instance()->get<QString>(ConfigKeys::DefaultLibraryView, "poster") == "tile");
     MediaCardDelegate::CardStyle defaultStyle = isTile ? MediaCardDelegate::LibraryTile : MediaCardDelegate::Poster;
-    int galleryHeight = isTile ? 210 : 300;
+    int galleryHeight = isTile ? 230 : 300;
 
     
     auto addGallerySection = [this, containerLayout, galleryHeight](QWidget* header, HorizontalListViewGallery** outGallery, MediaCardDelegate::CardStyle style) {
@@ -116,9 +116,9 @@ void FavoritesView::setupUi()
     m_mainScrollArea->setWidget(container);
     favLayout->addWidget(m_mainScrollArea);
 
-    m_vScrollAnim = new QPropertyAnimation(m_mainScrollArea->verticalScrollBar(), "value", this);
-    m_vScrollAnim->setEasingCurve(QEasingCurve::OutCubic);
-    m_vScrollAnim->setDuration(450);
+    m_vScrollController =
+        new SmoothScrollController(m_mainScrollArea->verticalScrollBar(), this);
+    m_vScrollController->setDuration(160);
 
     m_mainScrollArea->viewport()->installEventFilter(this);
 }
@@ -160,25 +160,8 @@ bool FavoritesView::eventFilter(QObject* obj, QEvent* event)
 
         if (isHorizontalViewport || isMainViewport) {
             QWheelEvent* we = static_cast<QWheelEvent*>(event);
-            QScrollBar* vBar = m_mainScrollArea->verticalScrollBar();
-
-            if (vBar) {
-                int currentVal = vBar->value();
-                if (m_vScrollAnim->state() == QAbstractAnimation::Running) {
-                    currentVal = m_vScrollTarget;
-                }
-
-                int step = we->angleDelta().y();
-                int newTarget = currentVal - step;
-                newTarget = qBound(vBar->minimum(), newTarget, vBar->maximum());
-
-                if (newTarget != vBar->value()) {
-                    m_vScrollTarget = newTarget;
-                    m_vScrollAnim->stop();
-                    m_vScrollAnim->setStartValue(vBar->value());
-                    m_vScrollAnim->setEndValue(m_vScrollTarget);
-                    m_vScrollAnim->start();
-                }
+            if (m_vScrollController) {
+                m_vScrollController->scrollByWheelEvent(we, Qt::Vertical);
             }
             return true;
         }
@@ -203,7 +186,7 @@ QCoro::Task<void> FavoritesView::loadFavoritesData()
     
     bool isTileFav = (ConfigStore::instance()->get<QString>(ConfigKeys::DefaultLibraryView, "poster") == "tile");
     MediaCardDelegate::CardStyle favStyle = isTileFav ? MediaCardDelegate::LibraryTile : MediaCardDelegate::Poster;
-    int favGalleryHeight = isTileFav ? 210 : 300;
+    int favGalleryHeight = isTileFav ? 230 : 300;
     auto applyStyle = [&](HorizontalListViewGallery* g) {
         if (g) { g->setCardStyle(favStyle); g->setFixedHeight(favGalleryHeight); }
     };

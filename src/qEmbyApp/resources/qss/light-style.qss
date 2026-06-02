@@ -1955,9 +1955,10 @@ QLabel#detail-series-title {
 }
 
 QLabel#detail-meta {
-    font-size: 14px;
-    font-weight: 600;
-    color: #4B5563;
+    font-size: 13px;
+    font-weight: 500;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    color: #374151;
 }
 
 QPushButton#detail-number-chip {
@@ -2039,6 +2040,17 @@ QPushButton#detail-fav-btn[isFavorite="true"] {
 }
 
 QPushButton#detail-fav-btn[isFavorite="true"]:hover {
+    background-color: #F3F4F6;
+    border-color: #D1D5DB;
+}
+
+QPushButton#detail-played-btn {
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    padding: 0px;
+}
+QPushButton#detail-played-btn:hover {
     background-color: #F3F4F6;
     border-color: #D1D5DB;
 }
@@ -2693,6 +2705,40 @@ QPushButton#immersive-stream-btn:pressed {
     background: rgba(0, 0, 0, 0.1);
 }
 
+QWidget#detail-episode-header-controls {
+    background: transparent;
+}
+
+QLineEdit#detail-episode-jump-edit {
+    background: transparent;
+    color: rgba(0, 0, 0, 0.65);
+    font-size: 12px;
+    font-weight: 500;
+    border: none;
+    padding: 4px 8px;
+    border-radius: 5px;
+    selection-background-color: rgba(59, 130, 246, 0.22);
+    selection-color: #1D4ED8;
+}
+
+QLineEdit#detail-episode-jump-edit:hover {
+    color: #000000;
+    background: rgba(0, 0, 0, 0.06);
+}
+
+QLineEdit#detail-episode-jump-edit:focus {
+    color: #000000;
+    background: rgba(0, 0, 0, 0.08);
+}
+
+QWidget#detail-episode-header-controls QLineEdit#detail-episode-jump-edit,
+QWidget#detail-episode-header-controls QLineEdit#detail-episode-jump-edit:hover,
+QWidget#detail-episode-header-controls QLineEdit#detail-episode-jump-edit:focus {
+    min-height: 0px;
+    border: none;
+    padding: 4px 8px;
+}
+
 /* ========== 浅色模式：现代化半透明悬浮菜单 ========== */
 
 QMenu#immersive-stream-menu {
@@ -2802,27 +2848,68 @@ QToolTip {
    Mini OSD 极简沉浸式反馈组件 (新增)
    ========================================================= */
 QProgressBar#osdSeekLine {
-    background-color: rgba(255, 255, 255, 0.15);
+    background-color: rgba(248, 250, 252, 38);
     border: none;
     border-radius: 0px;
 }
 
 QProgressBar#osdSeekLine::chunk {
-    background-color: #3B82F6;
-    /* Tailwind 主题蓝 */
+    background-color: #60A5FA;
     border-radius: 0px;
 }
 
-QLabel#osdSeekTimeLabel,
-QLabel#osdVolumeLabel {
-    background-color: rgba(20, 20, 20, 180);
+QLabel#osdSeekTimeLabel {
+    background-color: rgba(15, 23, 42, 168);
     color: #F8FAFC;
-    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
-    font-size: 14px;
-    font-weight: 700;
-    padding: 6px 16px;
-    border-radius: 8px;
+    font-family: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 28);
+}
+
+QWidget#osdSeekStem {
+    background-color: rgba(96, 165, 250, 180);
+    border-radius: 1px;
+}
+
+QWidget#osdSeekMarker {
+    background-color: rgba(248, 250, 252, 220);
+    border: 1px solid rgba(96, 165, 250, 230);
+    border-radius: 3px;
+}
+
+QWidget#osdVolumePanel {
+    background-color: rgba(15, 23, 42, 154);
     border: 1px solid rgba(255, 255, 255, 30);
+    border-radius: 10px;
+}
+
+QLabel#osdVolumeIconLabel {
+    background-color: transparent;
+    border: none;
+}
+
+QProgressBar#osdVolumeBar {
+    background-color: rgba(255, 255, 255, 42);
+    border: none;
+    border-radius: 2px;
+}
+
+QProgressBar#osdVolumeBar::chunk {
+    background-color: rgba(255, 255, 255, 232);
+    border-radius: 2px;
+}
+
+QLabel#osdVolumeLabel {
+    background-color: transparent;
+    color: #F8FAFC;
+    font-family: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 0px;
+    border: none;
 }
 
 QWidget#playerMouseEdgeIndicator {
@@ -3436,6 +3523,45 @@ QLabel#SubtitleOptionSliderHint {
     image: url(":/svg/light/chevron-down.svg");
     width: 14px;
     height: 14px;
+}
+
+/* Settings 内的数字输入框 */
+#SettingsCard QSpinBox#ModernNumberInput {
+    background-color: #FFFFFF;
+    border: 1px solid #CBD5E1;
+    border-radius: 8px;
+    color: #1E293B;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    padding: 5px 12px;
+    min-width: 94px;
+    selection-background-color: #BFDBFE;
+    selection-color: #1E3A8A;
+}
+
+#SettingsCard QSpinBox#ModernNumberInput:hover {
+    background-color: #F8FAFC;
+    border-color: #94A3B8;
+}
+
+#SettingsCard QSpinBox#ModernNumberInput:focus {
+    border-color: #3B82F6;
+    background-color: #EFF6FF;
+    outline: none;
+}
+
+#SettingsCard QSpinBox#ModernNumberInput::up-button,
+#SettingsCard QSpinBox#ModernNumberInput::down-button {
+    width: 0px;
+    border: none;
+    background: transparent;
+}
+
+#SettingsCard QSpinBox#ModernNumberInput::up-arrow,
+#SettingsCard QSpinBox#ModernNumberInput::down-arrow {
+    width: 0px;
+    height: 0px;
 }
 
 /* 弹出列表容器 */

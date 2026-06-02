@@ -1,5 +1,6 @@
 #include "detailactionwidget.h"
 #include "../managers/externalplayerdetector.h"
+#include "../managers/thememanager.h"
 #include "../utils/mediasourcepreferenceutils.h"
 #include "../utils/playerpreferenceutils.h"
 #include "modernmenubutton.h"
@@ -14,7 +15,6 @@
 #include <QVBoxLayout>
 #include <config/config_keys.h>
 #include <config/configstore.h>
-
 
 DetailActionWidget::DetailActionWidget(QWidget *parent) : QWidget(parent) {
   auto *mainLayout = new QVBoxLayout(this);
@@ -42,6 +42,12 @@ DetailActionWidget::DetailActionWidget(QWidget *parent) : QWidget(parent) {
   m_favBtn->setIconSize(QSize(20, 20));
   m_favBtn->setFixedSize(36, 36);
   m_favBtn->setCursor(Qt::PointingHandCursor);
+
+  m_playedBtn = new QPushButton(this);
+  m_playedBtn->setObjectName("detail-played-btn");
+  m_playedBtn->setIconSize(QSize(20, 20));
+  m_playedBtn->setFixedSize(36, 36);
+  m_playedBtn->setCursor(Qt::PointingHandCursor);
 
   m_progressWidget = new QWidget(this);
   m_progressWidget->setMaximumWidth(450);
@@ -74,6 +80,7 @@ DetailActionWidget::DetailActionWidget(QWidget *parent) : QWidget(parent) {
   actionsLayout->addWidget(m_playBtn);
   actionsLayout->addWidget(m_extPlayerBtn);
   actionsLayout->addWidget(m_favBtn);
+  actionsLayout->addWidget(m_playedBtn);
   actionsLayout->addWidget(m_progressWidget);
   actionsLayout->addStretch();
 
@@ -100,6 +107,8 @@ DetailActionWidget::DetailActionWidget(QWidget *parent) : QWidget(parent) {
           &DetailActionWidget::resumeRequested);
   connect(m_favBtn, &QPushButton::clicked, this,
           &DetailActionWidget::favoriteRequested);
+  connect(m_playedBtn, &QPushButton::clicked, this,
+          &DetailActionWidget::playedToggleRequested);
   connect(m_versionComboBox, &ModernMenuButton::currentIndexChanged, this,
           &DetailActionWidget::sourceVersionChanged);
 
@@ -192,6 +201,20 @@ void DetailActionWidget::setFavoriteState(bool isFavorite) {
                                      : ":/svg/light/heart-outline.svg"));
   m_favBtn->style()->unpolish(m_favBtn);
   m_favBtn->style()->polish(m_favBtn);
+}
+
+void DetailActionWidget::setPlayedState(bool played) {
+  m_playedBtn->setProperty("played", played);
+  const QString themeDir =
+      ThemeManager::instance()->isDarkMode() ? "dark" : "light";
+  if (played) {
+    m_playedBtn->setIcon(QIcon(":/svg/dark/played-check.svg"));
+  } else {
+    m_playedBtn->setIcon(
+        QIcon(QString(":/svg/%1/unplayed-check.svg").arg(themeDir)));
+  }
+  m_playedBtn->style()->unpolish(m_playedBtn);
+  m_playedBtn->style()->polish(m_playedBtn);
 }
 
 void DetailActionWidget::setSources(const QList<MediaSourceInfo> &sources,

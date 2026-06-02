@@ -17,11 +17,22 @@ struct RecommendCache {
     QDateTime fetchTime;
     QString userId;
     QString serverId;  
+    int requestLimit = 0; 
 
-    bool isValid(const QString& currentServerId, const QString& currentUserId, int hours = 24) const {
+    bool isValid(const QString& currentServerId, const QString& currentUserId,
+                 int hours = 24, int requiredLimit = -1) const {
+        bool limitSatisfied = requiredLimit < 0;
+        if (!limitSatisfied) {
+            limitSatisfied = requiredLimit == 0
+                                 ? requestLimit == 0
+                                 : (requestLimit == 0 ||
+                                    requestLimit >= requiredLimit);
+        }
+
         return !items.isEmpty()
             && serverId == currentServerId
             && userId == currentUserId
+            && limitSatisfied
             && fetchTime.secsTo(QDateTime::currentDateTime()) < hours * 3600;
     }
 
@@ -67,9 +78,11 @@ struct QEMBYCORE_EXPORT MediaQueryPage {
     int totalRecordCount = 0;
     int startIndex = 0;
     int limit = 0;
+    bool hasTotalRecordCount = false;
 
     bool hasMore() const {
-        return startIndex + items.size() < totalRecordCount;
+        return hasTotalRecordCount &&
+               startIndex + items.size() < totalRecordCount;
     }
 };
 
@@ -91,9 +104,14 @@ public:
     QCoro::Task<MediaQueryPage> getLibraryItemsPage(const QString& parentId, const QString& sortBy = "IsFolder,SortName", const QString& sortOrder = "Ascending", const QString& filters = "", const QString& includeItemTypes = "", int startIndex = 0, int limit = 50, bool recursive = false, bool includeChildCount = false);
     QCoro::Task<QList<MediaItem>> getLibraryItems(const QString& parentId, const QString& sortBy = "IsFolder,SortName", const QString& sortOrder = "Ascending", const QString& filters = "", const QString& includeItemTypes = "", int startIndex = 0, int limit = 50, bool recursive = false, bool includeChildCount = false);
     
-    QCoro::Task<QList<MediaItem>> getResumeItems(int limit = 12, const QString& sortBy = "", const QString& sortOrder = "");
-    QCoro::Task<QList<MediaItem>> getLatestItems(int limit = 20, const QString& sortBy = "DateCreated", const QString& sortOrder = "Descending");
-    QCoro::Task<QList<MediaItem>> getRecommendedMovies(int limit = 15, const QString& sortBy = "Random", const QString& sortOrder = "Ascending");
+    QCoro::Task<QList<MediaItem>> getResumeItems(int limit = 0, const QString& sortBy = "", const QString& sortOrder = "");
+    QCoro::Task<QList<MediaItem>> getLatestItems(int limit = 1000, const QString& sortBy = "DateCreated", const QString& sortOrder = "Descending");
+    QCoro::Task<QList<MediaItem>> getPlayedItems(int limit = 0, const QString& sortBy = "DatePlayed", const QString& sortOrder = "Descending");
+    QCoro::Task<QList<MediaItem>> getRecommendedMovies(int limit = 1000, const QString& sortBy = "Random", const QString& sortOrder = "Ascending");
+    QCoro::Task<MediaQueryPage> getResumeItemsPage(const QString& sortBy = "", const QString& sortOrder = "", int startIndex = 0, int limit = 50);
+    QCoro::Task<MediaQueryPage> getLatestItemsPage(const QString& sortBy = "DateCreated", const QString& sortOrder = "Descending", int startIndex = 0, int limit = 50);
+    QCoro::Task<MediaQueryPage> getPlayedItemsPage(const QString& sortBy = "DatePlayed", const QString& sortOrder = "Descending", int startIndex = 0, int limit = 50);
+    QCoro::Task<MediaQueryPage> getRecommendedMoviesPage(const QString& sortBy = "Random", const QString& sortOrder = "Ascending", int startIndex = 0, int limit = 50);
     
     QCoro::Task<QList<MediaItem>> searchMedia(const QString& searchTerm, const QString& includeItemTypes = "Movie,Series,BoxSet,Person", const QString& sortBy = "", const QString& sortOrder = "Ascending", int limit = 50);
 
@@ -171,6 +189,13 @@ private:
     
     
     void ensureValidProfile() const;
+    QCoro::Task<MediaQueryPage> fetchItemPage(QString basePath,
+                                              int startIndex, int limit,
+                                              QString context);
+    QCoro::Task<QList<MediaItem>> fetchPagedItemList(QString basePath,
+                                                     int requestedLimit,
+                                                     QString context,
+                                                     bool deduplicateItems = false);
     void updateUserViewsCache(QList<MediaItem> views, QString serverId,
                               QString userId, bool includesHidden);
     void updateUserViewsCache(MediaItem view, QString serverId,

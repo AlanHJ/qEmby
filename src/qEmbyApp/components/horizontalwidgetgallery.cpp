@@ -149,14 +149,24 @@ void HorizontalWidgetGallery::updateButtonPositions()
     m_btnRight->raise();
 }
 
+void HorizontalWidgetGallery::applyContentHeight()
+{
+    m_contentWidget->adjustSize();
+    const int contentHeight = m_contentWidget->sizeHint().height();
+    const int targetHeight = qMax(0, contentHeight + 16);
+    if (height() != targetHeight ||
+        minimumHeight() != targetHeight ||
+        maximumHeight() != targetHeight) {
+        setFixedHeight(targetHeight);
+    }
+    updateButtonPositions();
+    updateGeometry();
+}
+
 void HorizontalWidgetGallery::adjustHeightToContent()
 {
-    QTimer::singleShot(0, this, [this]() {
-        m_contentWidget->adjustSize();
-        int contentHeight = m_contentWidget->sizeHint().height();
-        this->setFixedHeight(contentHeight + 16);
-        updateButtonPositions();
-    });
+    applyContentHeight();
+    QTimer::singleShot(0, this, [this]() { applyContentHeight(); });
 }
 
 void HorizontalWidgetGallery::resizeEvent(QResizeEvent* event)

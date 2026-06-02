@@ -2,7 +2,6 @@
 #define DASHBOARDVIEW_H
 
 #include "../baseview.h"
-#include <QPropertyAnimation>
 #include <QStringList>
 #include <qcorotask.h>
 
@@ -15,6 +14,7 @@ class QVBoxLayout;
 class QScrollArea;
 class HorizontalListViewGallery;
 class MediaSectionWidget;
+class SmoothScrollController;
 
 class DashboardView : public BaseView
 {
@@ -24,6 +24,9 @@ public:
     
     
     QCoro::Task<void> loadDashboardData();
+
+public Q_SLOTS:
+    void scrollToTop() override;
 
 Q_SIGNALS:
     
@@ -51,8 +54,15 @@ private:
     void applyDashboardSectionOrder();
     QStringList dashboardSectionOrder() const;
     QString currentServerId() const;
+    QString currentDashboardContextKey() const;
     QWidget* sectionWidgetForId(const QString& sectionId) const;
     void clearLibraryGallerySections();
+    void clearDashboardState(bool resetScrollPositions);
+    void resetDashboardScrollPositions();
+    void clearDashboardGallery(HorizontalListViewGallery* gallery);
+    void resetDashboardGalleryScrollPosition(
+        HorizontalListViewGallery* gallery) const;
+    void resetListViewScrollPosition(QListView* listView) const;
     bool isManageableDashboardLibraryCard(const MediaItem& item) const;
     void openDashboardLibraryImageEditor(const MediaItem& item);
 
@@ -66,6 +76,7 @@ private:
     QCoro::Task<void> loadResumeSection(bool show, int generation);
     QCoro::Task<void> loadLatestSection(bool show, int generation);
     QCoro::Task<void> loadRecommendedSection(bool show, int generation);
+    QCoro::Task<void> loadCompletedSection(bool show, int generation);
     QCoro::Task<void> loadLibrarySections(bool showLibraries, bool showEachLibrary, int generation);
     QCoro::Task<void> executeDashboardLibraryRefresh(
         MediaItem item, bool replaceAllMetadata, bool replaceAllImages,
@@ -73,9 +84,7 @@ private:
 
     QScrollArea* m_mainScrollArea = nullptr; 
 
-    
-    QPropertyAnimation* m_vScrollAnim = nullptr;
-    int m_vScrollTarget = 0;
+    SmoothScrollController* m_vScrollController = nullptr;
 
     
     QWidget* m_resumeSection = nullptr;
@@ -91,6 +100,11 @@ private:
     QWidget* m_recommendSection = nullptr;
     QWidget* m_recommendHeader = nullptr;
     HorizontalListViewGallery* m_recommendGallery = nullptr;
+
+    
+    QWidget* m_completedSection = nullptr;
+    QWidget* m_completedHeader = nullptr;
+    HorizontalListViewGallery* m_completedGallery = nullptr;
 
     
     QWidget* m_libraryGridSection = nullptr;
@@ -109,6 +123,7 @@ private:
 
     
     int m_loadGeneration = 0;
+    QString m_dashboardContextKey;
 };
 
 #endif 

@@ -6,6 +6,7 @@
 #include <QVariant>
 #include <QPoint>
 #include <QPointer> 
+#include <optional>
 #include <qcorotask.h>
 #include "../components/cardcontextmenurequest.h"
 #include <models/media/mediaitem.h> 
@@ -87,7 +88,15 @@ protected:
     virtual void onMediaItemRemoved(const QString& itemId) {}
 
     
-    QCoro::Task<void> refreshAndBroadcastItem(const QString& itemId);
+    
+    
+    virtual void beginOptimisticPlayedUpdate() {}
+    virtual void endOptimisticPlayedUpdate() {}
+
+    
+    QCoro::Task<void> refreshAndBroadcastItem(
+        const QString& itemId,
+        std::optional<MediaUserDataInfo> playbackStateOverride = std::nullopt);
 
     QEmbyCore* m_core;
 

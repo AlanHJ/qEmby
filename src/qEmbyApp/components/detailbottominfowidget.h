@@ -9,7 +9,9 @@ class HorizontalWidgetGallery;
 class QLabel;
 class QVBoxLayout;
 class QGridLayout;
+class QEvent;
 class QResizeEvent;
+class QShowEvent;
 
 class DetailBottomInfoWidget : public QWidget {
     Q_OBJECT
@@ -23,15 +25,19 @@ signals:
     void filterClicked(const QString& filterType, const QString& filterValue);
 
 protected:
+    bool eventFilter(QObject* watched, QEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
+    void showEvent(QShowEvent* event) override;
 
 private:
     void clearLayout(QLayout* layout);
     QString formatSize(long long bytes);
     void addInfoRow(QGridLayout* layout, int& row, const QString& key, const QString& value);
     QWidget* wrapMaxWidth(QWidget* child, int maxW);
+    int resolveFlowLayoutWidth(QWidget* widget) const;
     void updateFlowLayoutHeight(QWidget* widget, FlowLayout* layout);
     void updateFlowLayoutHeights();
+    void scheduleFlowLayoutHeightUpdate();
 
     QLabel* m_tagsBottomTitle;
     QWidget* m_tagsBottomWidget;
@@ -54,6 +60,8 @@ private:
     QLabel* m_filePathLabel;
     QLabel* m_fileMetaLabel;
     HorizontalWidgetGallery* m_mediaInfoGallery;
+
+    bool m_flowLayoutHeightUpdatePending = false;
 };
 
 #endif 

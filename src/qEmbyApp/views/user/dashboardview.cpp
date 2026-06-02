@@ -5,7 +5,10 @@
 #include "../../components/mediaimageeditdialog.h"
 #include "../../components/moderntoast.h"
 #include "../../components/mediasectionwidget.h"
+#include "../../utils/dashboardrequestlimitutils.h"
 #include "../../utils/dashboardsectionorderutils.h"
+#include "../../utils/mediaitemutils.h"
+#include "../../utils/smoothscrollcontroller.h"
 #include "../../utils/textwraputils.h"
 #include "../media/mediacarddelegate.h"
 #include "../media/medialistmodel.h"
@@ -15,7 +18,6 @@
 #include <QLabel>
 #include <QListView>
 #include <QPointer>
-#include <QPropertyAnimation>
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QScrollArea>
@@ -54,7 +56,7 @@ MediaCardDelegate::CardStyle dashboardGalleryStyle()
 
 int dashboardGalleryHeight()
 {
-    return dashboardGalleryStyle() == MediaCardDelegate::LibraryTile ? 210 : 300;
+    return dashboardGalleryStyle() == MediaCardDelegate::LibraryTile ? 230 : 300;
 }
 
 } 
@@ -107,6 +109,16 @@ DashboardView::DashboardView(QEmbyCore* core, QWidget* parent)
                     key ==
                         ConfigKeys::forServer(sid, ConfigKeys::ShowRecommended) ||
                     key == ConfigKeys::forServer(
+                               sid, ConfigKeys::ShowCompletedWatching) ||
+                    key == ConfigKeys::forServer(
+                               sid, ConfigKeys::ContinueWatchingRequestLimit) ||
+                    key == ConfigKeys::forServer(
+                               sid, ConfigKeys::LatestMediaRequestLimit) ||
+                    key == ConfigKeys::forServer(
+                               sid, ConfigKeys::RecommendedRequestLimit) ||
+                    key == ConfigKeys::forServer(
+                               sid, ConfigKeys::CompletedWatchingRequestLimit) ||
+                    key == ConfigKeys::forServer(
                                sid, ConfigKeys::ShowMediaLibraries) ||
                     key ==
                         ConfigKeys::forServer(sid, ConfigKeys::ShowEachLibrary)) {
@@ -117,6 +129,32 @@ DashboardView::DashboardView(QEmbyCore* core, QWidget* parent)
             });
 
     applyDashboardSectionOrder();
+    m_dashboardContextKey = currentDashboardContextKey();
+
+    if (m_core && m_core->serverManager()) {
+        connect(m_core->serverManager(), &ServerManager::activeServerChanged,
+                this, [this](const ServerProfile&) {
+                    const QString nextContextKey = currentDashboardContextKey();
+                    if (nextContextKey == m_dashboardContextKey) {
+                        return;
+                    }
+
+                    qDebug() << "[DashboardView] Dashboard context changed, "
+                                "clearing stale home content"
+                             << "| hasActiveSession=" << !nextContextKey.isEmpty()
+                             << "| previousHadActiveSession="
+                             << !m_dashboardContextKey.isEmpty();
+
+                    m_dashboardContextKey = nextContextKey;
+                    ++m_loadGeneration;
+                    clearDashboardState(true);
+                    applyDashboardSectionOrder();
+
+                    if (!nextContextKey.isEmpty() && isVisible()) {
+                        launchDashboardTask(loadDashboardData());
+                    }
+                });
+    }
 }
 
 void DashboardView::launchDashboardTask(QCoro::Task<void>&& task)
@@ -194,7 +232,12 @@ void DashboardView::setupUi()
 
     m_recommendHeader = createSectionHeader(tr("Recommended"), "recommended");
     m_recommendSection = createGallerySection(m_recommendHeader,
-                                              &m_recommendGallery, galleryStyle);
+                                               &m_recommendGallery, galleryStyle);
+
+    m_completedHeader =
+        createSectionHeader(tr("Completed Watching"), "played");
+    m_completedSection = createGallerySection(m_completedHeader,
+                                              &m_completedGallery, galleryStyle);
 
     m_libraryGridSection = new QWidget(container);
     auto* libraryGridLayout = new QVBoxLayout(m_libraryGridSection);
@@ -216,6 +259,7 @@ void DashboardView::setupUi()
     m_containerLayout->addWidget(m_resumeSection);
     m_containerLayout->addWidget(m_latestSection);
     m_containerLayout->addWidget(m_recommendSection);
+    m_containerLayout->addWidget(m_completedSection);
     m_containerLayout->addWidget(m_libraryGridSection);
     m_containerLayout->addWidget(m_librarySectionsContainer);
     m_containerLayout->addStretch();
@@ -223,16 +267,16 @@ void DashboardView::setupUi()
     m_resumeSection->hide();
     m_latestSection->hide();
     m_recommendSection->hide();
+    m_completedSection->hide();
     m_libraryGridSection->hide();
     m_librarySectionsContainer->hide();
 
     m_mainScrollArea->setWidget(container);
     dashLayout->addWidget(m_mainScrollArea);
 
-    m_vScrollAnim = new QPropertyAnimation(m_mainScrollArea->verticalScrollBar(),
-                                           "value", this);
-    m_vScrollAnim->setEasingCurve(QEasingCurve::OutCubic);
-    m_vScrollAnim->setDuration(450);
+    m_vScrollController =
+        new SmoothScrollController(m_mainScrollArea->verticalScrollBar(), this);
+    m_vScrollController->setDuration(160);
 
     m_mainScrollArea->viewport()->installEventFilter(this);
 }
@@ -300,7 +344,22 @@ QString DashboardView::currentServerId() const
         return {};
     }
 
-    return m_core->serverManager()->activeProfile().id;
+    const ServerProfile profile = m_core->serverManager()->activeProfile();
+    return profile.isValid() ? profile.id : QString();
+}
+
+QString DashboardView::currentDashboardContextKey() const
+{
+    if (!m_core || !m_core->serverManager()) {
+        return {};
+    }
+
+    const ServerProfile profile = m_core->serverManager()->activeProfile();
+    if (!profile.isValid() || profile.id.trimmed().isEmpty()) {
+        return {};
+    }
+
+    return profile.id + QLatin1Char('|') + profile.userId;
 }
 
 QWidget* DashboardView::sectionWidgetForId(const QString& sectionId) const
@@ -316,6 +375,10 @@ QWidget* DashboardView::sectionWidgetForId(const QString& sectionId) const
     if (sectionId ==
         QLatin1String(DashboardSectionOrderUtils::RecommendedSectionId)) {
         return m_recommendSection;
+    }
+    if (sectionId == QLatin1String(
+                         DashboardSectionOrderUtils::CompletedWatchingSectionId)) {
+        return m_completedSection;
     }
     if (sectionId ==
         QLatin1String(DashboardSectionOrderUtils::AllLibrariesSectionId)) {
@@ -346,6 +409,110 @@ void DashboardView::clearLibraryGallerySections()
     }
 
     m_libraryGalleries.clear();
+}
+
+void DashboardView::clearDashboardState(bool resetScrollPositions)
+{
+    clearDashboardGallery(m_resumeGallery);
+    clearDashboardGallery(m_latestGallery);
+    clearDashboardGallery(m_recommendGallery);
+    clearDashboardGallery(m_completedGallery);
+
+    if (m_resumeSection) {
+        m_resumeSection->setVisible(false);
+    }
+    if (m_latestSection) {
+        m_latestSection->setVisible(false);
+    }
+    if (m_recommendSection) {
+        m_recommendSection->setVisible(false);
+    }
+    if (m_completedSection) {
+        m_completedSection->setVisible(false);
+    }
+
+    if (m_libraryModel) {
+        m_libraryModel->setItems(QList<MediaItem> {});
+        m_libraryModel->clearImageCache();
+    }
+    resetListViewScrollPosition(m_libraryListView);
+    if (m_libraryGridSection) {
+        m_libraryGridSection->setVisible(false);
+    }
+
+    clearLibraryGallerySections();
+    if (m_librarySectionsContainer) {
+        m_librarySectionsContainer->setVisible(false);
+    }
+
+    adjustLibraryGridHeight();
+
+    if (resetScrollPositions) {
+        resetDashboardScrollPositions();
+    }
+}
+
+void DashboardView::resetDashboardScrollPositions()
+{
+    if (m_vScrollController) {
+        m_vScrollController->scrollTo(0, false);
+    } else if (m_mainScrollArea && m_mainScrollArea->verticalScrollBar()) {
+        m_mainScrollArea->verticalScrollBar()->setValue(
+            m_mainScrollArea->verticalScrollBar()->minimum());
+    }
+
+    resetDashboardGalleryScrollPosition(m_resumeGallery);
+    resetDashboardGalleryScrollPosition(m_latestGallery);
+    resetDashboardGalleryScrollPosition(m_recommendGallery);
+    resetDashboardGalleryScrollPosition(m_completedGallery);
+    resetListViewScrollPosition(m_libraryListView);
+
+    for (MediaSectionWidget* section : std::as_const(m_libraryGalleries)) {
+        if (section && section->gallery()) {
+            resetDashboardGalleryScrollPosition(section->gallery());
+        }
+    }
+}
+
+void DashboardView::clearDashboardGallery(HorizontalListViewGallery* gallery)
+{
+    if (!gallery) {
+        return;
+    }
+
+    gallery->setLoading(false);
+    gallery->setItems(QList<MediaItem> {});
+    gallery->clearImageCache();
+    resetListViewScrollPosition(gallery->listView());
+}
+
+void DashboardView::resetDashboardGalleryScrollPosition(
+    HorizontalListViewGallery* gallery) const
+{
+    if (!gallery) {
+        return;
+    }
+
+    resetListViewScrollPosition(gallery->listView());
+}
+
+void DashboardView::resetListViewScrollPosition(QListView* listView) const
+{
+    if (!listView) {
+        return;
+    }
+
+    if (QScrollBar* horizontalBar = listView->horizontalScrollBar()) {
+        horizontalBar->setValue(horizontalBar->minimum());
+    }
+    if (QScrollBar* verticalBar = listView->verticalScrollBar()) {
+        verticalBar->setValue(verticalBar->minimum());
+    }
+}
+
+void DashboardView::scrollToTop()
+{
+    resetDashboardScrollPositions();
 }
 
 QWidget* DashboardView::createSectionHeader(const QString& title,
@@ -414,26 +581,8 @@ bool DashboardView::eventFilter(QObject* obj, QEvent* event)
 
         if (isHorizontalViewport || isMainViewport) {
             auto* we = static_cast<QWheelEvent*>(event);
-            QScrollBar* vBar = m_mainScrollArea->verticalScrollBar();
-
-            if (vBar) {
-                int currentVal = vBar->value();
-
-                if (m_vScrollAnim->state() == QAbstractAnimation::Running) {
-                    currentVal = m_vScrollTarget;
-                }
-
-                const int step = we->angleDelta().y();
-                int newTarget = currentVal - step;
-                newTarget = qBound(vBar->minimum(), newTarget, vBar->maximum());
-
-                if (newTarget != vBar->value()) {
-                    m_vScrollTarget = newTarget;
-                    m_vScrollAnim->stop();
-                    m_vScrollAnim->setStartValue(vBar->value());
-                    m_vScrollAnim->setEndValue(m_vScrollTarget);
-                    m_vScrollAnim->start();
-                }
+            if (m_vScrollController) {
+                m_vScrollController->scrollByWheelEvent(we, Qt::Vertical);
             }
             return true;
         }
@@ -656,6 +805,22 @@ void DashboardView::openDashboardLibraryImageEditor(const MediaItem& item)
 QCoro::Task<void> DashboardView::loadDashboardData()
 {
     const int generation = ++m_loadGeneration;
+    const QString contextKey = currentDashboardContextKey();
+
+    if (contextKey != m_dashboardContextKey) {
+        qDebug() << "[DashboardView] Dashboard context changed before reload, "
+                    "resetting stale state"
+                 << "| hasActiveSession=" << !contextKey.isEmpty()
+                 << "| previousHadActiveSession="
+                 << !m_dashboardContextKey.isEmpty();
+        m_dashboardContextKey = contextKey;
+        clearDashboardState(true);
+    }
+
+    if (contextKey.isEmpty() || !m_core || !m_core->mediaService()) {
+        clearDashboardState(true);
+        co_return;
+    }
 
     auto* store = ConfigStore::instance();
     const QString sid = currentServerId();
@@ -665,6 +830,8 @@ QCoro::Task<void> DashboardView::loadDashboardData()
         ConfigKeys::forServer(sid, ConfigKeys::ShowLatestAdded), true);
     const bool showRecommended = store->get<bool>(
         ConfigKeys::forServer(sid, ConfigKeys::ShowRecommended), true);
+    const bool showCompleted = store->get<bool>(
+        ConfigKeys::forServer(sid, ConfigKeys::ShowCompletedWatching), false);
     const bool showLibraries = store->get<bool>(
         ConfigKeys::forServer(sid, ConfigKeys::ShowMediaLibraries), true);
     const bool showEachLibrary = store->get<bool>(
@@ -673,10 +840,11 @@ QCoro::Task<void> DashboardView::loadDashboardData()
     qDebug() << "[DashboardView] loadDashboardData"
              << "| generation=" << generation << "| serverId=" << sid
              << "| showResume=" << showResume
-             << "| showLatest=" << showLatest
-             << "| showRecommended=" << showRecommended
-             << "| showLibraries=" << showLibraries
-             << "| showEachLibrary=" << showEachLibrary;
+              << "| showLatest=" << showLatest
+              << "| showRecommended=" << showRecommended
+              << "| showCompleted=" << showCompleted
+              << "| showLibraries=" << showLibraries
+              << "| showEachLibrary=" << showEachLibrary;
 
     applyDashboardSectionOrder();
 
@@ -694,6 +862,10 @@ QCoro::Task<void> DashboardView::loadDashboardData()
     if (m_recommendGallery) {
         m_recommendGallery->setCardStyle(style);
         m_recommendGallery->setFixedHeight(galleryHeight);
+    }
+    if (m_completedGallery) {
+        m_completedGallery->setCardStyle(style);
+        m_completedGallery->setFixedHeight(galleryHeight);
     }
 
     
@@ -722,6 +894,12 @@ QCoro::Task<void> DashboardView::loadDashboardData()
             m_recommendGallery->setLoading(true);
         }
     }
+    if (m_completedSection) {
+        m_completedSection->setVisible(showCompleted);
+        if (showCompleted && shimmerEnabled && m_completedGallery) {
+            m_completedGallery->setLoading(true);
+        }
+    }
     if (m_libraryGridSection) {
         m_libraryGridSection->setVisible(showLibraries);
     }
@@ -732,6 +910,7 @@ QCoro::Task<void> DashboardView::loadDashboardData()
     loadResumeSection(showResume, generation);
     loadLatestSection(showLatest, generation);
     loadRecommendedSection(showRecommended, generation);
+    loadCompletedSection(showCompleted, generation);
     loadLibrarySections(showLibraries, showEachLibrary, generation);
     co_return;
 }
@@ -840,10 +1019,13 @@ QCoro::Task<void> DashboardView::loadResumeSection(bool show, int generation)
 
     QPointer<DashboardView> guard(this);
     auto* mediaService = m_core->mediaService();
+    const int requestLimit =
+        DashboardRequestLimitUtils::homeSectionRequestLimit(
+            currentServerId(), ConfigKeys::ContinueWatchingRequestLimit, 0);
 
     try {
         QList<MediaItem> rawResumeItems =
-            co_await mediaService->getResumeItems(50);
+            co_await mediaService->getResumeItems(requestLimit);
         if (!guard || m_loadGeneration != generation) {
             co_return;
         }
@@ -852,6 +1034,7 @@ QCoro::Task<void> DashboardView::loadResumeSection(bool show, int generation)
         QSet<QString> seenSeriesIds;
         QStringList seriesIdsToFetch;
         QList<int> insertIndices;
+        QList<MediaItem> resumeContextItems;
 
         for (const MediaItem& item : rawResumeItems) {
             if (item.type == "Episode" && !item.seriesId.isEmpty()) {
@@ -862,9 +1045,10 @@ QCoro::Task<void> DashboardView::loadResumeSection(bool show, int generation)
                 seenSeriesIds.insert(item.seriesId);
                 seriesIdsToFetch.append(item.seriesId);
                 insertIndices.append(resumeItems.size());
+                resumeContextItems.append(item);
                 resumeItems.append(MediaItem {});
             } else {
-                resumeItems.append(item);
+                resumeItems.append(MediaItemUtils::withResumeContext(item, item));
             }
         }
 
@@ -881,7 +1065,9 @@ QCoro::Task<void> DashboardView::loadResumeSection(bool show, int generation)
                     co_return;
                 }
 
-                resumeItems[insertIndices[i]] = seriesItem;
+                resumeItems[insertIndices[i]] =
+                    MediaItemUtils::withResumeContext(seriesItem,
+                                                      resumeContextItems[i]);
             } catch (...) {
                 if (!guard || m_loadGeneration != generation) {
                     co_return;
@@ -900,7 +1086,7 @@ QCoro::Task<void> DashboardView::loadResumeSection(bool show, int generation)
             m_resumeSection->setVisible(!resumeItems.isEmpty());
         }
     } catch (const std::exception& e) {
-        if (!guard) {
+        if (!guard || m_loadGeneration != generation) {
             co_return;
         }
 
@@ -925,9 +1111,13 @@ QCoro::Task<void> DashboardView::loadLatestSection(bool show, int generation)
 
     QPointer<DashboardView> guard(this);
     auto* mediaService = m_core->mediaService();
+    const int requestLimit =
+        DashboardRequestLimitUtils::homeSectionRequestLimit(
+            currentServerId(), ConfigKeys::LatestMediaRequestLimit, 1000);
 
     try {
-        QList<MediaItem> latestItems = co_await mediaService->getLatestItems(50);
+        QList<MediaItem> latestItems =
+            co_await mediaService->getLatestItems(requestLimit);
         if (!guard || m_loadGeneration != generation) {
             co_return;
         }
@@ -937,7 +1127,7 @@ QCoro::Task<void> DashboardView::loadLatestSection(bool show, int generation)
             m_latestSection->setVisible(!latestItems.isEmpty());
         }
     } catch (const std::exception& e) {
-        if (!guard) {
+        if (!guard || m_loadGeneration != generation) {
             co_return;
         }
 
@@ -963,10 +1153,13 @@ QCoro::Task<void> DashboardView::loadRecommendedSection(bool show,
 
     QPointer<DashboardView> guard(this);
     auto* mediaService = m_core->mediaService();
+    const int requestLimit =
+        DashboardRequestLimitUtils::homeSectionRequestLimit(
+            currentServerId(), ConfigKeys::RecommendedRequestLimit, 1000);
 
     try {
         QList<MediaItem> recommendedItems =
-            co_await mediaService->getRecommendedMovies(50);
+            co_await mediaService->getRecommendedMovies(requestLimit);
         if (!guard || m_loadGeneration != generation) {
             co_return;
         }
@@ -976,7 +1169,7 @@ QCoro::Task<void> DashboardView::loadRecommendedSection(bool show,
             m_recommendSection->setVisible(!recommendedItems.isEmpty());
         }
     } catch (const std::exception& e) {
-        if (!guard) {
+        if (!guard || m_loadGeneration != generation) {
             co_return;
         }
 
@@ -986,6 +1179,48 @@ QCoro::Task<void> DashboardView::loadRecommendedSection(bool show,
         }
         if (m_recommendSection) {
             m_recommendSection->setVisible(false);
+        }
+    }
+}
+
+QCoro::Task<void> DashboardView::loadCompletedSection(bool show,
+                                                       int generation)
+{
+    if (!show) {
+        if (m_completedSection) {
+            m_completedSection->setVisible(false);
+        }
+        co_return;
+    }
+
+    QPointer<DashboardView> guard(this);
+    auto* mediaService = m_core->mediaService();
+    const int requestLimit =
+        DashboardRequestLimitUtils::homeSectionRequestLimit(
+            currentServerId(), ConfigKeys::CompletedWatchingRequestLimit, 0);
+
+    try {
+        QList<MediaItem> completedItems =
+            co_await mediaService->getPlayedItems(requestLimit);
+        if (!guard || m_loadGeneration != generation) {
+            co_return;
+        }
+
+        m_completedGallery->setItems(completedItems);
+        if (m_completedSection) {
+            m_completedSection->setVisible(!completedItems.isEmpty());
+        }
+    } catch (const std::exception& e) {
+        if (!guard || m_loadGeneration != generation) {
+            co_return;
+        }
+
+        qDebug() << "Dashboard failed to fetch completed items:" << e.what();
+        if (m_completedGallery) {
+            m_completedGallery->setLoading(false);
+        }
+        if (m_completedSection) {
+            m_completedSection->setVisible(false);
         }
     }
 }
@@ -1192,7 +1427,7 @@ QCoro::Task<void> DashboardView::loadLibrarySections(bool showLibraries,
             m_librarySectionsContainer->setVisible(true);
         }
     } catch (const std::exception& e) {
-        if (!guard) {
+        if (!guard || m_loadGeneration != generation) {
             co_return;
         }
 
@@ -1219,11 +1454,10 @@ QCoro::Task<void> DashboardView::loadLibrarySections(bool showLibraries,
 void DashboardView::onMediaItemUpdated(const MediaItem& item)
 {
     if (m_resumeGallery) {
-        const bool hasProgress = (item.userData.playbackPositionTicks > 0) ||
-                                 (item.userData.playedPercentage > 0.0 &&
-                                  item.userData.playedPercentage < 100.0);
+        const bool canRemoveFromResume =
+            MediaItemUtils::canRemoveFromResume(item);
 
-        if (item.userData.played || !hasProgress) {
+        if (item.hasResumeContext && !canRemoveFromResume) {
             m_resumeGallery->removeItem(item.id);
         } else {
             m_resumeGallery->updateItem(item);
@@ -1235,6 +1469,25 @@ void DashboardView::onMediaItemUpdated(const MediaItem& item)
     }
     if (m_recommendGallery) {
         m_recommendGallery->updateItem(item);
+    }
+    if (m_completedGallery) {
+        const QString sid = currentServerId();
+        const bool showCompleted =
+            !sid.isEmpty() &&
+            ConfigStore::instance()->get<bool>(
+                ConfigKeys::forServer(sid, ConfigKeys::ShowCompletedWatching),
+                false);
+        if (showCompleted && MediaItemUtils::isCompletedWatchingItem(item)) {
+            const int completedMaxItems =
+                DashboardRequestLimitUtils::homeSectionRequestLimit(
+                    sid, ConfigKeys::CompletedWatchingRequestLimit, 0);
+            m_completedGallery->prependOrUpdateItem(item, completedMaxItems);
+            if (m_completedSection) {
+                m_completedSection->setVisible(true);
+            }
+        } else {
+            m_completedGallery->removeItem(item.id);
+        }
     }
     if (m_libraryModel) {
         m_libraryModel->updateItem(item);
@@ -1258,6 +1511,9 @@ void DashboardView::onMediaItemRemoved(const QString& itemId)
     if (m_recommendGallery) {
         m_recommendGallery->removeItem(itemId);
     }
+    if (m_completedGallery) {
+        m_completedGallery->removeItem(itemId);
+    }
     if (m_libraryModel) {
         m_libraryModel->removeItem(itemId);
     }
@@ -1270,5 +1526,8 @@ void DashboardView::onMediaItemRemoved(const QString& itemId)
 
     if (m_recommendSection && m_recommendGallery) {
         m_recommendSection->setVisible(m_recommendGallery->itemCount() > 0);
+    }
+    if (m_completedSection && m_completedGallery) {
+        m_completedSection->setVisible(m_completedGallery->itemCount() > 0);
     }
 }

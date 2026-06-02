@@ -2,6 +2,7 @@
 #define MEDIAACTIONMENU_H
 
 #include "cardcontextmenurequest.h"
+#include <QList>
 #include <QMenu>
 #include <models/media/mediaitem.h>
 
@@ -17,7 +18,9 @@ class MediaActionMenu : public QMenu
     Q_OBJECT
 public:
     
-    explicit MediaActionMenu(const MediaItem& item, QEmbyCore* core, QWidget *parent = nullptr);
+    explicit MediaActionMenu(const MediaItem& item, QEmbyCore* core,
+                             QWidget *parent = nullptr,
+                             const QList<CardContextMenuAction> &allowedActions = {});
     CardContextMenuRequest execRequest(const QPoint& globalPos);
 
 private:
@@ -29,6 +32,7 @@ private:
 
     MediaItem m_item;
     QEmbyCore* m_core; 
+    QList<CardContextMenuAction> m_allowedActions;
 };
 
 #endif 

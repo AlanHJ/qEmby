@@ -1267,6 +1267,26 @@ Sélectionnez un fichier, collez URL d'une image ou faites-en glisser une.</tran
         <translation>Épisodes</translation>
     </message>
     <message>
+        <source>Ep #</source>
+        <translation>Ép. n°</translation>
+    </message>
+    <message>
+        <source>1-%1</source>
+        <translation>1-%1</translation>
+    </message>
+    <message>
+        <source>Jump to episode number</source>
+        <translation>Saisissez un numéro d'épisode puis validez</translation>
+    </message>
+    <message>
+        <source>Jump to episode number (1-%1)</source>
+        <translation>Saisissez un numéro d'épisode puis validez (1-%1)</translation>
+    </message>
+    <message>
+        <source>Episode %1 not found</source>
+        <translation>Épisode %1 introuvable</translation>
+    </message>
+    <message>
         <source>... &lt;a href='more' style='color:#3B82F6; text-decoration:none; font-weight:bold;'&gt;More&lt;/a&gt;</source>
         <translation>... &lt;a href=“more” style=“color:#3B82F6; text-decoration:none; font-weight:bold;”&gt;En savoir plus&lt;/a&gt;</translation>
     </message>

@@ -3,10 +3,13 @@
 #include "flowlayout.h"
 #include "horizontalwidgetgallery.h"
 #include <QDesktopServices> 
+#include <QEvent>
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QMargins>
 #include <QPushButton>
+#include <QShowEvent>
 #include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -76,6 +79,16 @@ DetailBottomInfoWidget::DetailBottomInfoWidget(QWidget *parent)
   mainLayout->addWidget(m_fileInfoWidget);
   mainLayout->addWidget(m_mediaInfoGallery);
 
+  auto watchFlowGeometry = [this](QWidget *widget, QWidget *wrapper) {
+    if (widget)
+      widget->installEventFilter(this);
+    if (wrapper)
+      wrapper->installEventFilter(this);
+  };
+  watchFlowGeometry(m_tagsBottomWidget, m_tagsBottomWrapper);
+  watchFlowGeometry(m_studiosWidget, m_studiosWrapper);
+  watchFlowGeometry(m_externalLinksWidget, m_externalLinksWrapper);
+
   clear();
 }
 
@@ -84,8 +97,6 @@ QWidget *DetailBottomInfoWidget::wrapMaxWidth(QWidget *child, int maxW) {
   child->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
   QWidget *wrapper = new QWidget(this);
   wrapper->setObjectName("detail-maxWidth-wrapper");
-  wrapper->setStyleSheet(
-      "QWidget#detail-maxWidth-wrapper { background:transparent; }");
   wrapper->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
   auto *hl = new QHBoxLayout(wrapper);
   hl->setContentsMargins(0, 0, 0, 0);
@@ -115,7 +126,95 @@ void DetailBottomInfoWidget::clear() {
 
 void DetailBottomInfoWidget::resizeEvent(QResizeEvent *event) {
   QWidget::resizeEvent(event);
-  updateFlowLayoutHeights();
+  scheduleFlowLayoutHeightUpdate();
+}
+
+void DetailBottomInfoWidget::showEvent(QShowEvent *event) {
+  QWidget::showEvent(event);
+  scheduleFlowLayoutHeightUpdate();
+}
+
+bool DetailBottomInfoWidget::eventFilter(QObject *watched, QEvent *event) {
+  const bool watchesFlowGeometry =
+      watched == m_tagsBottomWidget || watched == m_tagsBottomWrapper ||
+      watched == m_studiosWidget || watched == m_studiosWrapper ||
+      watched == m_externalLinksWidget ||
+      watched == m_externalLinksWrapper;
+
+  if (watchesFlowGeometry) {
+    switch (event->type()) {
+    case QEvent::LayoutRequest:
+    case QEvent::Resize:
+    case QEvent::Show:
+      scheduleFlowLayoutHeightUpdate();
+      break;
+    default:
+      break;
+    }
+  }
+
+  return QWidget::eventFilter(watched, event);
+}
+
+void DetailBottomInfoWidget::scheduleFlowLayoutHeightUpdate() {
+  if (m_flowLayoutHeightUpdatePending)
+    return;
+
+  m_flowLayoutHeightUpdatePending = true;
+  QTimer::singleShot(0, this, [this]() {
+    m_flowLayoutHeightUpdatePending = false;
+    updateFlowLayoutHeights();
+  });
+}
+
+int DetailBottomInfoWidget::resolveFlowLayoutWidth(QWidget *widget) const {
+  if (!widget)
+    return 0;
+
+  const int maxWidth =
+      widget->maximumWidth() < QWIDGETSIZE_MAX ? widget->maximumWidth() : 0;
+  auto clampWidth = [maxWidth](int width) {
+    if (maxWidth > 0)
+      width = qMin(width, maxWidth);
+    return qMax(0, width);
+  };
+  auto horizontalMargins = [this]() {
+    if (QLayout *mainLayout = this->layout()) {
+      const QMargins margins = mainLayout->contentsMargins();
+      return margins.left() + margins.right();
+    }
+    return 0;
+  };
+  auto contentWidthFrom = [&horizontalMargins](const QWidget *source) {
+    if (!source)
+      return 0;
+    return qMax(0, source->contentsRect().width() - horizontalMargins());
+  };
+
+  QWidget *wrapper = widget->parentWidget();
+  const int wrapperWidth = wrapper ? wrapper->contentsRect().width() : 0;
+  if (isVisible() && wrapper && wrapper->isVisible() && wrapperWidth > 0)
+    return clampWidth(wrapperWidth);
+
+  
+  
+  
+  if (!isVisible() && maxWidth > 0) {
+    const int parentContentWidth = contentWidthFrom(parentWidget());
+    if (parentContentWidth > 160)
+      return clampWidth(parentContentWidth);
+    return maxWidth;
+  }
+
+  int targetWidth = contentWidthFrom(this);
+  if (targetWidth <= 0 && parentWidget())
+    targetWidth = contentWidthFrom(parentWidget());
+  if (targetWidth <= 0)
+    targetWidth = widget->width();
+  if (targetWidth <= 0 && maxWidth > 0)
+    targetWidth = maxWidth;
+
+  return clampWidth(targetWidth);
 }
 
 void DetailBottomInfoWidget::updateFlowLayoutHeight(QWidget *widget,
@@ -125,13 +224,7 @@ void DetailBottomInfoWidget::updateFlowLayoutHeight(QWidget *widget,
 
   int targetHeight = 0;
   if (layout->count() > 0) {
-    int targetWidth = widget->width();
-    if (targetWidth <= 0 && widget->parentWidget()) {
-      targetWidth = widget->parentWidget()->contentsRect().width();
-    }
-    if (widget->maximumWidth() < QWIDGETSIZE_MAX) {
-      targetWidth = qMin(targetWidth, widget->maximumWidth());
-    }
+    const int targetWidth = resolveFlowLayoutWidth(widget);
 
     if (targetWidth > 0) {
       layout->invalidate();
@@ -142,9 +235,18 @@ void DetailBottomInfoWidget::updateFlowLayoutHeight(QWidget *widget,
   if (widget->minimumHeight() != targetHeight) {
     widget->setMinimumHeight(targetHeight);
   }
+  if (widget->maximumHeight() != targetHeight) {
+    widget->setMaximumHeight(targetHeight);
+  }
   widget->updateGeometry();
 
   if (QWidget *wrapper = widget->parentWidget()) {
+    if (wrapper->minimumHeight() != targetHeight) {
+      wrapper->setMinimumHeight(targetHeight);
+    }
+    if (wrapper->maximumHeight() != targetHeight) {
+      wrapper->setMaximumHeight(targetHeight);
+    }
     wrapper->updateGeometry();
   }
 }
@@ -237,7 +339,7 @@ void DetailBottomInfoWidget::setInfo(const MediaItem &item,
   }
 
   updateFlowLayoutHeights();
-  QTimer::singleShot(0, this, [this]() { updateFlowLayoutHeights(); });
+  scheduleFlowLayoutHeightUpdate();
 
   if (sources.isEmpty())
     return;

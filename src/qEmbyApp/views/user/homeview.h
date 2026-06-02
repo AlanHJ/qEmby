@@ -26,6 +26,7 @@ class QVBoxLayout;
 class DashboardView;
 class FavoritesView;
 class SettingsView;
+class SmoothScrollController;
 class SeasonView; 
 class PlaybackManager; 
 class PlayerView;      
@@ -147,6 +148,7 @@ private:
     QLabel* m_serverIconLabel = nullptr;
     QBoxLayout* m_serverInfoLayout = nullptr;
     QVBoxLayout* m_serverNameLayout = nullptr;
+    QVBoxLayout* m_sidebarFooterActionsLayout = nullptr;
     ElidedLabel* m_serverNameLabel = nullptr;
     ElidedLabel* m_serverAddressLabel = nullptr;
     QLineEdit* m_searchBox = nullptr;
@@ -159,6 +161,7 @@ private:
     QWidget* m_navArea = nullptr;
     QWidget* m_searchSpacer = nullptr;
     QListWidget* m_libraryList = nullptr;
+    SmoothScrollController* m_sidebarLibraryScrollController = nullptr;
 
     QLabel* m_userAvatarLabel = nullptr;
     QHBoxLayout* m_userInfoLayout = nullptr;

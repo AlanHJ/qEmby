@@ -217,6 +217,15 @@ public:
     
     MediaImageInfo images;
     MediaUserDataInfo userData;
+
+    
+    
+    
+    
+    QString resumeItemId;
+    MediaUserDataInfo resumeUserData;
+    bool hasResumeContext = false;
+
     QList<MediaPersonInfo> people;
     QList<MediaStudioInfo> studios; 
     QList<MediaExternalUrlInfo> externalUrls; 

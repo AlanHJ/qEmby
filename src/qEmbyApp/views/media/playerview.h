@@ -114,10 +114,17 @@ private:
     bool shouldShowDanmakuHudControls() const;
     bool useHudMediaSwitcher() const;
     QString formatMediaSwitcherPlaybackTitle(const MediaItem &item) const;
+    bool findNextResumeMediaFromCache(QString &mediaId,
+                                      QString &title,
+                                      long long &startPositionTicks,
+                                      bool skipCurrentSeries) const;
     void populateRightSidebarFromCache();
     void showHudMediaSwitcher();
     void hideHudMediaSwitcher();
     void syncHudMediaSwitcherContent();
+    bool findAdjacentMediaFromCache(int direction, QString &mediaId,
+                                    QString &title,
+                                    long long &startPositionTicks) const;
     
     
     void setupRightSidebar();
@@ -125,6 +132,7 @@ private:
     
     QCoro::Task<void> showRightSidebar();
     QCoro::Task<void> ensureMediaSwitcherDataLoaded();
+    QCoro::Task<void> autoPlayNextMediaIfEnabled();
     QCoro::Task<void> switchFromMediaSwitcher(QString mediaId,
                                               QString title,
                                               long long startPositionTicks);
@@ -142,6 +150,7 @@ private:
     QPushButton* createHudButton(const QString& iconPath, const QSize& size = QSize(24, 24));
     QString formatTime(double seconds, double totalSeconds) const;
     void applySubtitleStyleSettings();
+    void resumePlaybackAfterFinishedSeek();
 
     
     QString externalSubtitleConfigKey() const;
@@ -218,9 +227,11 @@ private:
     QLabel *m_totalTimeLabel;
 
     
+    QPushButton *m_prevMediaBtn;
     QPushButton *m_playPauseBtn;
     QPushButton *m_rewindBtn;
     QPushButton *m_forwardBtn;
+    QPushButton *m_nextMediaBtn;
     
     
     QPushButton *m_volumeBtn;
@@ -270,6 +281,7 @@ private:
     double m_currentPosition;
     double m_totalDuration = 0.0; 
     double m_pendingSeekSeconds = 0.0;
+    double m_osdSeekPreviewPosition = -1.0;
     
     double m_currentSpeed = 1.0;
     int m_videoScaleMode = 1;
@@ -284,6 +296,8 @@ private:
     qint64 m_effectiveNetworkSpeed = 0;
     bool m_hasSetVideoSize = false; 
     bool m_hasReportedStop = false; 
+    bool m_isPlaybackFinished = false;
+    bool m_autoPlayAdvanceInProgress = false;
     bool m_isViewTearingDown = false;
     bool m_powerInhibitionHeld = false;
     bool m_isRightSidebarVisible = false; 

@@ -136,6 +136,13 @@ PagePlayer::PagePlayer(QEmbyCore *core, QWidget *parent)
       versionInput, ConfigKeys::PlayerPreferredVersion, this));
 
   
+  m_mainLayout->addWidget(new SettingsCard(
+      ":/svg/dark/player-continuous-play.svg", tr("Continuous Playback"),
+      tr("Automatically play the next episode or media when playback ends"),
+      new ModernSwitch(this), ConfigKeys::PlayerContinuousPlay, this,
+      QVariant(true)));
+
+  
   auto *longPressSwitch = new ModernSwitch(this);
   m_mainLayout->addWidget(new SettingsCard(
       ":/svg/dark/player-long-press.svg", tr("Long Press Left/Right"),

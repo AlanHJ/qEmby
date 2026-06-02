@@ -8,6 +8,7 @@
 #include <QLineEdit>
 #include <QSlider>
 #include <QPushButton>
+#include <QSpinBox>
 
 #include "../../qEmbyCore/config/configstore.h"
 
@@ -87,6 +88,8 @@ void SettingsCard::setupUi(const QString &title, const QString &description) {
       lineEdit->setMinimumWidth(200);
       lineEdit->setFixedHeight(32);
       lineEdit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    } else if (auto *spinBox = qobject_cast<QSpinBox *>(m_controlWidget)) {
+      spinBox->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     } else if (qobject_cast<ModernTagInput *>(m_controlWidget)) {
       
       m_controlWidget->setMinimumWidth(220);
@@ -154,6 +157,15 @@ void SettingsCard::setupDataBinding() {
   
   
   
+  else if (auto *spinBox = qobject_cast<QSpinBox *>(m_controlWidget)) {
+    spinBox->setValue(store->get<int>(m_configKey, m_defaultValue.toInt()));
+
+    connect(spinBox, QOverload<int>::of(&QSpinBox::valueChanged), this,
+            [this, store](int value) { store->set(m_configKey, value); });
+  }
+  
+  
+  
   else if (auto *tagInput = qobject_cast<ModernTagInput *>(m_controlWidget)) {
     
     tagInput->setValue(store->get<QString>(m_configKey, m_defaultValue.toString()));
@@ -187,6 +199,8 @@ void SettingsCard::onConfigValueChanged(const QString &key,
     }
   } else if (auto *lineEdit = qobject_cast<QLineEdit *>(m_controlWidget)) {
     lineEdit->setText(newValue.toString());
+  } else if (auto *spinBox = qobject_cast<QSpinBox *>(m_controlWidget)) {
+    spinBox->setValue(newValue.toInt());
   } else if (auto *tagInput = qobject_cast<ModernTagInput *>(m_controlWidget)) {
     tagInput->setValue(newValue.toString());
   }

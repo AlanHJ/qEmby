@@ -1,5 +1,6 @@
 #include "pagelibrary.h"
 #include "../../components/dashboardsectionorderwidget.h"
+#include "../../components/modernnumberinput.h"
 #include "../../components/moderntoast.h"
 #include "../../components/moderncombobox.h"
 #include "../../components/modernswitch.h"
@@ -23,6 +24,13 @@ const QString kHomeSectionOrderIconPath =
     QStringLiteral(":/svg/dark/home-section-order.svg");
 const QString kHomeSectionOrderDragIconPath =
     QStringLiteral(":/svg/dark/home-section-drag.svg");
+
+ModernNumberInput *createRequestLimitInput(const QString &zeroText,
+                                           QWidget *parent) {
+  auto *input = new ModernNumberInput(parent);
+  input->setSpecialValueText(zeroText);
+  return input;
+}
 }
 
 PageLibrary::PageLibrary(QEmbyCore *core, QWidget *parent)
@@ -63,6 +71,45 @@ PageLibrary::PageLibrary(QEmbyCore *core, QWidget *parent)
       new ModernSwitch(this),
       ConfigKeys::forServer(sid, ConfigKeys::ShowEachLibrary), this,
       QVariant(true)));
+
+  m_mainLayout->addWidget(new SettingsCard(
+      ":/svg/dark/completed-watching.svg", tr("Show Completed Watching"),
+      tr("Display completed media on the home screen"),
+      new ModernSwitch(this),
+      ConfigKeys::forServer(sid, ConfigKeys::ShowCompletedWatching), this,
+      QVariant(false)));
+
+  m_mainLayout->addWidget(new SettingsCard(
+      ":/svg/dark/play-history-request-limit.svg",
+      tr("Continue Watching Request Limit"),
+      tr("Full list request count. 0 means unlimited; home sections use the same value up to 50."),
+      createRequestLimitInput(tr("Unlimited"), this),
+      ConfigKeys::forServer(sid, ConfigKeys::ContinueWatchingRequestLimit),
+      this, QVariant(0)));
+
+  m_mainLayout->addWidget(new SettingsCard(
+      ":/svg/dark/latest-added-request-limit.svg",
+      tr("Latest Media Request Limit"),
+      tr("Full list request count. 0 means unlimited; home sections use the same value up to 50."),
+      createRequestLimitInput(tr("Unlimited"), this),
+      ConfigKeys::forServer(sid, ConfigKeys::LatestMediaRequestLimit), this,
+      QVariant(1000)));
+
+  m_mainLayout->addWidget(new SettingsCard(
+      ":/svg/dark/recommended-request-limit.svg",
+      tr("Recommended Request Limit"),
+      tr("Full list request count. 0 means unlimited; home sections use the same value up to 50."),
+      createRequestLimitInput(tr("Unlimited"), this),
+      ConfigKeys::forServer(sid, ConfigKeys::RecommendedRequestLimit), this,
+      QVariant(1000)));
+
+  m_mainLayout->addWidget(new SettingsCard(
+      ":/svg/dark/completed-watching-request-limit.svg",
+      tr("Completed Watching Request Limit"),
+      tr("Full list request count. 0 means unlimited; home sections use the same value up to 50."),
+      createRequestLimitInput(tr("Unlimited"), this),
+      ConfigKeys::forServer(sid, ConfigKeys::CompletedWatchingRequestLimit),
+      this, QVariant(0)));
 
   m_mainLayout->addWidget(new SettingsCard(
       ":/svg/dark/adaptive-image.svg", tr("Adaptive Images"),

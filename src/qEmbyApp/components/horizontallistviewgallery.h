@@ -30,6 +30,7 @@ public:
     
     void setItems(const QList<MediaItem>& items);
     void updateItem(const MediaItem& item);
+    void prependOrUpdateItem(const MediaItem& item, int maxItems = 0);
     
     
     void removeItem(const QString& itemId);
@@ -71,6 +72,7 @@ protected:
 private:
     void updateButtonsVisibility();
     void updateButtonPositions();
+    void updateVisibleImagePriority();
 
     QEmbyCore* m_core;
     QListView* m_listView;

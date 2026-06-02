@@ -15,6 +15,13 @@ public:
     static QString playbackTitle(
         const MediaItem &item,
         const QString &fallbackSeriesName = QString());
+    static MediaItem withResumeContext(
+        MediaItem displayItem,
+        const MediaItem &resumeItem);
+    static bool isCompletedWatchingItem(const MediaItem &item);
+    static bool hasResumeProgress(const MediaItem &item);
+    static bool canRemoveFromResume(const MediaItem &item);
+    static QString resumeActionItemId(const MediaItem &item);
 };
 
 #endif 

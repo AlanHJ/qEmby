@@ -1307,6 +1307,26 @@ Choose a file, paste an image URL, or drag one onto the preview.</source>
         <translation>剧集</translation>
     </message>
     <message>
+        <source>Ep #</source>
+        <translation>集数</translation>
+    </message>
+    <message>
+        <source>1-%1</source>
+        <translation>1-%1</translation>
+    </message>
+    <message>
+        <source>Jump to episode number</source>
+        <translation>输入集号后回车跳转</translation>
+    </message>
+    <message>
+        <source>Jump to episode number (1-%1)</source>
+        <translation>输入集号后回车跳转（1-%1）</translation>
+    </message>
+    <message>
+        <source>Episode %1 not found</source>
+        <translation>未找到第 %1 集</translation>
+    </message>
+    <message>
         <source>... &lt;a href='more' style='color:#3B82F6; text-decoration:none; font-weight:bold;'&gt;More&lt;/a&gt;</source>
         <translation>... &lt;a href='more' style='color:#3B82F6; text-decoration:none; font-weight:bold;'&gt;更多&lt;/a&gt;</translation>
     </message>
@@ -1371,6 +1391,10 @@ Choose a file, paste an image URL, or drag one onto the preview.</source>
         <translation>为你推荐</translation>
     </message>
     <message>
+        <source>Completed Watching</source>
+        <translation>完成观看</translation>
+    </message>
+    <message>
         <source>Recommended Movies</source>
         <translation>推荐电影</translation>
     </message>
@@ -1417,6 +1441,10 @@ Choose a file, paste an image URL, or drag one onto the preview.</source>
     <message>
         <source>Recommended</source>
         <translation>为你推荐</translation>
+    </message>
+    <message>
+        <source>Completed Watching</source>
+        <translation>完成观看</translation>
     </message>
     <message>
         <source>All Libraries</source>
@@ -1857,6 +1885,10 @@ Choose a file, paste an image URL, or drag one onto the preview.</source>
     <message>
         <source>Volume: %1%</source>
         <translation>音量: %1%</translation>
+    </message>
+    <message>
+        <source>%1%</source>
+        <translation>%1%</translation>
     </message>
     <message>
         <source>Back</source>
@@ -2337,6 +2369,38 @@ This will remove the current log and rotated backups. This action cannot be undo
     <message>
         <source>Display each library section individually on the home screen</source>
         <translation>在主页为每个媒体库独立显示内容区域</translation>
+    </message>
+    <message>
+        <source>Show Completed Watching</source>
+        <translation>显示完成观看</translation>
+    </message>
+    <message>
+        <source>Display completed media on the home screen</source>
+        <translation>在主页显示已完成观看的媒体内容</translation>
+    </message>
+    <message>
+        <source>Continue Watching Request Limit</source>
+        <translation>继续观看请求数量</translation>
+    </message>
+    <message>
+        <source>Latest Media Request Limit</source>
+        <translation>最近更新请求数量</translation>
+    </message>
+    <message>
+        <source>Recommended Request Limit</source>
+        <translation>为你推荐请求数量</translation>
+    </message>
+    <message>
+        <source>Completed Watching Request Limit</source>
+        <translation>完成观看请求数量</translation>
+    </message>
+    <message>
+        <source>Full list request count. 0 means unlimited; home sections use the same value up to 50.</source>
+        <translation>全部列表请求数量。0 表示不限制；主页区域使用同一数值但最多 50 个。</translation>
+    </message>
+    <message>
+        <source>Unlimited</source>
+        <translation>不限制</translation>
     </message>
     <message>
         <source>Adaptive Images</source>
@@ -2941,6 +3005,14 @@ This action cannot be undone.</source>
     <message>
         <source>Choose keyword or sort rules in order; type custom keywords and press Enter</source>
         <translation>按顺序选择关键词或排序规则；输入自定义关键词后按回车</translation>
+    </message>
+    <message>
+        <source>Continuous Playback</source>
+        <translation>连续播放</translation>
+    </message>
+    <message>
+        <source>Automatically play the next episode or media when playback ends</source>
+        <translation>播放结束后自动播放下一集或下一个媒体</translation>
     </message>
     <message>
         <source>3 Seconds</source>
@@ -8615,6 +8687,30 @@ Address: %2</source>
     <message>
         <source>%1 - %2</source>
         <translation>%1 - %2</translation>
+    </message>
+    <message>
+        <source>Previous</source>
+        <translation>上一个</translation>
+    </message>
+    <message>
+        <source>Next</source>
+        <translation>下一个</translation>
+    </message>
+    <message>
+        <source>No previous episode</source>
+        <translation>没有上一集</translation>
+    </message>
+    <message>
+        <source>No next episode</source>
+        <translation>没有下一集</translation>
+    </message>
+    <message>
+        <source>No previous media</source>
+        <translation>没有上一个媒体</translation>
+    </message>
+    <message>
+        <source>No next media</source>
+        <translation>没有下一个媒体</translation>
     </message>
 </context>
 

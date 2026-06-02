@@ -163,6 +163,10 @@
         <file>svg/dark/danmaku-cache-duration.svg</file>
         <file>svg/dark/danmaku-cache-clear.svg</file>
         <file>svg/dark/play-history.svg</file>
+        <file>svg/dark/play-history-request-limit.svg</file>
+        <file>svg/dark/completed-watching.svg</file>
+        <file>svg/dark/completed-watching-request-limit.svg</file>
+        <file>svg/dark/player-continuous-play.svg</file>
         <file>svg/dark/player-long-press.svg</file>
         <file>svg/dark/player-long-press-trigger.svg</file>
         <file>svg/dark/player-long-press-mode.svg</file>
@@ -176,6 +180,8 @@
         <file>svg/dark/skip-intro.svg</file>
         <file>svg/dark/skip-outro.svg</file>
         <file>svg/dark/latest-added.svg</file>
+        <file>svg/dark/latest-added-request-limit.svg</file>
+        <file>svg/dark/recommended-request-limit.svg</file>
         <file>svg/dark/image-quality.svg</file>
         <file>svg/dark/adaptive-image.svg</file>
         <file>svg/dark/cache-data.svg</file>
@@ -210,6 +216,10 @@
         <file>svg/light/danmaku-cache-duration.svg</file>
         <file>svg/light/danmaku-cache-clear.svg</file>
         <file>svg/light/play-history.svg</file>
+        <file>svg/light/play-history-request-limit.svg</file>
+        <file>svg/light/completed-watching.svg</file>
+        <file>svg/light/completed-watching-request-limit.svg</file>
+        <file>svg/light/player-continuous-play.svg</file>
         <file>svg/light/player-long-press.svg</file>
         <file>svg/light/player-long-press-trigger.svg</file>
         <file>svg/light/player-long-press-mode.svg</file>
@@ -223,6 +233,8 @@
         <file>svg/light/skip-intro.svg</file>
         <file>svg/light/skip-outro.svg</file>
         <file>svg/light/latest-added.svg</file>
+        <file>svg/light/latest-added-request-limit.svg</file>
+        <file>svg/light/recommended-request-limit.svg</file>
         <file>svg/light/appearance-theme.svg</file>
         <file>svg/light/appearance-animations.svg</file>
         <file>svg/light/appearance-library-view.svg</file>
@@ -301,6 +313,10 @@
         <file>svg/light/spinbox-down.svg</file>
         <file>svg/dark/check.svg</file>
         <file>svg/light/check.svg</file>
+        <file>svg/dark/played-check.svg</file>
+        <file>svg/light/played-check.svg</file>
+        <file>svg/dark/unplayed-check.svg</file>
+        <file>svg/light/unplayed-check.svg</file>
         <file>svg/dark/task-run.svg</file>
         <file>svg/dark/task-stop.svg</file>
         <file>svg/light/task-run.svg</file>

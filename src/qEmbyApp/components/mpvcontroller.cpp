@@ -122,6 +122,8 @@ bool MpvController::init() {
     
     mpv_set_option_string(m_mpv, "vo", "libmpv");
     
+    mpv_set_option_string(m_mpv, "keep-open", "yes");
+    
     
     
     
@@ -232,6 +234,7 @@ bool MpvController::init() {
     observeProperty("time-pos", MPV_FORMAT_DOUBLE);
     observeProperty("duration", MPV_FORMAT_DOUBLE);
     observeProperty("pause", MPV_FORMAT_FLAG);
+    observeProperty("eof-reached", MPV_FORMAT_FLAG);
     
     observeProperty("cache-speed", MPV_FORMAT_INT64);
     observeProperty("volume", MPV_FORMAT_DOUBLE);
