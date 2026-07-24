@@ -22,15 +22,19 @@ public:
     };
 
     explicit MediaListModel(int imageMaxWidth, QEmbyCore* core, QObject *parent = nullptr);
+    ~MediaListModel() override;
 
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
 
     void setItems(const QList<MediaItem>& items);
     MediaItem getItem(const QModelIndex& index) const;
+    QList<MediaItem> items() const { return m_items; }
 
     
-    void setPreferThumb(bool prefer) { m_preferThumb = prefer; }
+    void setPreferThumb(bool prefer);
+    void setImageMaxWidth(int maxWidth);
+    void setForceNetworkImages(bool forceNetwork);
 
     
     
@@ -42,53 +46,66 @@ public:
     
     void removeItem(const QString& itemId);
     void setPriorityRows(const QList<int>& rows);
+    void suspendImageRequests();
+    void resumeImageRequests();
 
     
-    void clearImageCache()
-    {
-        ++m_imageRequestGeneration;
-        m_imageCache.clear();
-        m_loadingImages.clear();
-        m_pendingImageRequests.clear();
-        m_pendingImageOrder.clear();
-        m_priorityImageIds.clear();
-        m_pendingImageNotifyIds.clear();
-        m_activeImageFetches = 0;
-        if (m_imageNotifyTimer) {
-            m_imageNotifyTimer->stop();
-        }
-    }
+    void clearImageCache();
+
+    
+    
+    
+    
+    
+    void clearFailedImageItems();
 
 private:
-    struct PendingImageRequest {
+    struct ImageCandidate {
         QString targetImageId;
         QString imageType;
         QString imageTag;
         int maxWidth = 0;
     };
 
+    struct PendingImageRequest {
+        QList<ImageCandidate> candidates;
+        int candidateIndex = 0;
+        int transientRetryCount = 0;
+        bool highPriority = false;
+        QString imageIdentity;
+    };
+
     QString buildTooltipText(const MediaItem &item) const;
-    void ensureImageRequested(const MediaItem& item);
+    void ensureImageRequested(const MediaItem& item,
+                              bool highPriority = false);
     void enqueueImageFetch(const QString& itemId,
+                           const PendingImageRequest& request);
+    void enqueueImageRetry(const QString& itemId,
                            const PendingImageRequest& request);
     void scheduleImageFetches();
     QString takeNextPendingImageId();
     void queueImageDataChanged(const QString& itemId);
     void flushPendingImageDataChanges();
+    void retryNextImageCandidate(const QString& itemId,
+                                 PendingImageRequest request, int generation);
+    bool isImageRequestCurrent(const QString& itemId,
+                               const PendingImageRequest& request) const;
+    void invalidateItemImageRequest(const QString& itemId);
 
     
     static QCoro::Task<void> executeImageFetch(
         QPointer<MediaListModel> safeThis, QString itemId,
-        QString targetImageId, QString imgType, QString imgTag, int maxWidth,
-        int generation, QEmbyCore* core);
+        PendingImageRequest request, int generation, QEmbyCore* core);
 
     bool m_preferThumb = false;
+    bool m_forceNetworkImages = false;
     int m_imageMaxWidth;
     QEmbyCore* m_core;
     QList<MediaItem> m_items;
 
     mutable QHash<QString, QPixmap> m_imageCache;
     mutable QSet<QString> m_loadingImages;
+    mutable QSet<QString> m_failedImageItems;
     QHash<QString, PendingImageRequest> m_pendingImageRequests;
     QStringList m_pendingImageOrder;
     QStringList m_priorityImageIds;
@@ -96,6 +113,8 @@ private:
     QTimer* m_imageNotifyTimer = nullptr;
     int m_activeImageFetches = 0;
     int m_imageRequestGeneration = 0;
+    QObject* m_imageRequestContext = nullptr;
+    bool m_imageRequestsSuspended = false;
 };
 
 #endif 

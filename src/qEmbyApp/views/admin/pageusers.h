@@ -15,6 +15,7 @@ class PageUsers : public ManagePageBase {
     Q_OBJECT
 public:
     explicit PageUsers(QEmbyCore* core, QWidget* parent = nullptr);
+    QScrollArea* scrollArea() const { return m_scrollArea; }
 
 protected:
     void showEvent(QShowEvent* event) override;

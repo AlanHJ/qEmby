@@ -14,6 +14,7 @@ class QLabel;
 class QPushButton;
 class QEvent;
 class QShowEvent;
+class ModernComboBox;
 
 class DanmakuServerDialog : public ModernDialogBase
 {
@@ -49,8 +50,10 @@ private:
     void updateCurrentServerName(const QString &name);
     void updateCurrentServerUrl(const QString &baseUrl);
     void updateCurrentServerDescription(const QString &description);
+    void updateCurrentServerProvider(int comboIndex);
     void updateCurrentServerAppId(const QString &appId);
     void updateCurrentServerAppSecret(const QString &appSecret);
+    void updateCurrentServerAccessToken(const QString &accessToken);
     void updateActionState();
 
     static QString createServerId();
@@ -63,6 +66,8 @@ private:
 
     QListWidget *m_serverList = nullptr;
     QLineEdit *m_nameEdit = nullptr;
+    QLabel *m_providerTypeLabel = nullptr;
+    ModernComboBox *m_providerTypeCombo = nullptr;
     QLineEdit *m_baseUrlEdit = nullptr;
     QLabel *m_descriptionLabel = nullptr;
     QLineEdit *m_descriptionEdit = nullptr;
@@ -70,6 +75,8 @@ private:
     QLineEdit *m_appIdEdit = nullptr;
     QLabel *m_appSecretLabel = nullptr;
     QLineEdit *m_appSecretEdit = nullptr;
+    QLabel *m_accessTokenLabel = nullptr;
+    QLineEdit *m_accessTokenEdit = nullptr;
     QPushButton *m_addButton = nullptr;
 };
 

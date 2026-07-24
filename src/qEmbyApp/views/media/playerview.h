@@ -7,6 +7,7 @@
 #include "../../components/loadingoverlay.h" 
 #include "../../components/playerdanmakucontroller.h"
 #include <models/media/mediaitem.h>
+#include <models/media/playbackinfo.h>
 #include <services/introdb/introdbservice.h>
 
 #include <QVariant>
@@ -49,6 +50,7 @@ public:
     bool isMediaPlaying() const;
     void pausePlayback();
     void resumePlayback();
+    void restoreAfterWindowShow(bool shouldResumePlaying);
     void stopAndReport(); 
 
 signals:
@@ -183,6 +185,12 @@ private:
 
     
     static QCoro::Task<void> executeFetchLogo(QPointer<PlayerView> safeThis, QEmbyCore* core, QString mediaId);
+    static QCoro::Task<void> resolveDanmakuPlaybackContext(
+        QPointer<PlayerView> safeThis,
+        QPointer<QEmbyCore> core,
+        QString mediaId,
+        QString fallbackTitle,
+        MediaSourceInfo sourceInfo);
 
     MpvWidget *m_mpvWidget;
     NativeDanmakuOverlay *m_nativeDanmakuOverlay = nullptr;
@@ -281,6 +289,8 @@ private:
     double m_currentPosition;
     double m_totalDuration = 0.0; 
     double m_pendingSeekSeconds = 0.0;
+    bool m_windowRestorePending = false;
+    bool m_windowRestoreShouldPlay = false;
     double m_osdSeekPreviewPosition = -1.0;
     
     double m_currentSpeed = 1.0;

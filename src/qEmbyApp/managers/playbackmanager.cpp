@@ -385,6 +385,20 @@ void PlaybackManager::launchExternalPlayer(const QString& mediaId, const QString
                                                   "auto"));
     }
 
+    if (hasSourceInfo && m_core->serverManager()) {
+        const PlayerPreferenceUtils::RememberedStreamSelection remembered =
+            PlayerPreferenceUtils::validatedRememberedStreamSelection(
+                m_core->serverManager()->activeProfile().id, mediaId,
+                sourceInfo);
+        if (remembered.audioIndex.has_value()) {
+            selectedAudioIdx = *remembered.audioIndex;
+        }
+        if (remembered.subtitleIndex.has_value()) {
+            selectedSubIdx = *remembered.subtitleIndex;
+            subtitleDisabled = *remembered.subtitleIndex < 0;
+        }
+    }
+
     
     QStringList args;
     

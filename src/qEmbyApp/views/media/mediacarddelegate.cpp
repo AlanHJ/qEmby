@@ -185,6 +185,29 @@ QPixmap scaledCardPixmap(const MediaItem &item, const QPixmap &source, const QSi
     return scaled;
 }
 
+void drawPlayedBadge(QPainter *painter, const QRect &targetImgRect, bool alignLeft)
+{
+    const int checkSize = 16;
+    const int checkMargin = 4;
+    const int checkX = alignLeft ? targetImgRect.left() + checkMargin
+                                 : targetImgRect.right() - checkSize - checkMargin;
+    const QRect checkRect(checkX, targetImgRect.top() + checkMargin, checkSize, checkSize);
+
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing, true);
+    painter->setPen(Qt::NoPen);
+    painter->setBrush(QColor(16, 185, 129, 140));
+    painter->drawRoundedRect(checkRect, checkSize / 2, checkSize / 2);
+
+    QIcon checkIcon(":/svg/dark/check.svg");
+    if (!checkIcon.isNull())
+    {
+        checkIcon.paint(painter, checkRect.adjusted(3, 3, -3, -3), Qt::AlignCenter);
+    }
+
+    painter->restore();
+}
+
 } 
 
 
@@ -447,6 +470,11 @@ void MediaCardDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opt
             }
         }
 
+        if (item.userData.played)
+        {
+            drawPlayedBadge(painter, baseImgRect, false);
+        }
+
         
         int textX = baseImgRect.right() + 20;
         int favBtnSize = 24;
@@ -652,30 +680,7 @@ void MediaCardDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opt
     
     if ((item.type == "Episode" || item.type == "Season") && item.userData.played)
     {
-        int checkSize = 16;
-        int checkMargin = 4;
-        int checkX = item.type == "Season"
-                         ? targetImgRect.left() + checkMargin
-                         : targetImgRect.right() - checkSize - checkMargin;
-        QRect checkRect(checkX, targetImgRect.top() + checkMargin, checkSize,
-                        checkSize);
-
-        painter->save();
-        painter->setRenderHint(QPainter::Antialiasing, true);
-
-        
-        painter->setPen(Qt::NoPen);
-        painter->setBrush(QColor(16, 185, 129, 140));
-        painter->drawRoundedRect(checkRect, checkSize / 2, checkSize / 2);
-
-        
-        QIcon checkIcon(":/svg/dark/check.svg");
-        if (!checkIcon.isNull()) {
-            checkIcon.paint(painter, checkRect.adjusted(3, 3, -3, -3),
-                           Qt::AlignCenter);
-        }
-
-        painter->restore();
+        drawPlayedBadge(painter, targetImgRect, item.type == "Season");
     }
 
     

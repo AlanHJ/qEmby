@@ -9,6 +9,9 @@ class DandanplayProvider
 public:
     explicit DandanplayProvider(NetworkManager *networkManager);
 
+    QCoro::Task<DanmakuMediaContext> enrichMediaFingerprint(
+        DanmakuMediaContext context) const;
+
     QCoro::Task<QList<DanmakuMatchCandidate>> searchCandidates(
         DanmakuMediaContext context,
         DanmakuProviderConfig config,

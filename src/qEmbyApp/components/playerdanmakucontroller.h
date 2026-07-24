@@ -24,6 +24,7 @@ public:
 
     void setPlaybackContext(const PlayerLaunchContext &context);
     void clearPlaybackContext();
+    void prepareForMediaReload();
 
     bool isDanmakuEnabled() const;
     bool isDanmakuVisible() const;

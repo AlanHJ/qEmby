@@ -110,7 +110,19 @@ DetailActionWidget::DetailActionWidget(QWidget *parent) : QWidget(parent) {
   connect(m_playedBtn, &QPushButton::clicked, this,
           &DetailActionWidget::playedToggleRequested);
   connect(m_versionComboBox, &ModernMenuButton::currentIndexChanged, this,
-          &DetailActionWidget::sourceVersionChanged);
+          [this](int visualIndex) {
+            if (visualIndex >= 0 && visualIndex < m_sourceIndexes.size())
+              Q_EMIT sourceVersionChanged(m_sourceIndexes[visualIndex]);
+          });
+  connect(m_audioComboBox, &ModernMenuButton::currentIndexChanged, this,
+          [this](int) {
+            Q_EMIT audioStreamChanged(m_audioComboBox->currentData().toInt());
+          });
+  connect(m_subtitleComboBox, &ModernMenuButton::currentIndexChanged, this,
+          [this](int) {
+            Q_EMIT subtitleStreamChanged(
+                m_subtitleComboBox->currentData().toInt());
+          });
 
   clear();
 }
@@ -122,6 +134,7 @@ void DetailActionWidget::clear() {
 
   m_versionComboBox->blockSignals(true);
   m_versionComboBox->clear();
+  m_sourceIndexes.clear();
   m_versionComboBox->hide();
   m_versionComboBox->blockSignals(false);
 
@@ -221,12 +234,21 @@ void DetailActionWidget::setSources(const QList<MediaSourceInfo> &sources,
                                     int currentIndex) {
   m_versionComboBox->blockSignals(true);
   m_versionComboBox->clear();
+  m_sourceIndexes.clear();
 
   if (!sources.isEmpty()) {
-    for (int i = 0; i < sources.size(); ++i) {
+    const QString preferredRules =
+        ConfigStore::instance()
+            ->get<QString>(ConfigKeys::PlayerPreferredVersion)
+            .trimmed();
+    m_sourceIndexes = MediaSourcePreferenceUtils::preferredMediaSourceOrder(
+        sources, preferredRules);
+    for (int visualIndex = 0; visualIndex < m_sourceIndexes.size();
+         ++visualIndex) {
+      const int i = m_sourceIndexes[visualIndex];
       const auto &src = sources[i];
       QString versionName =
-          src.name.isEmpty() ? tr("Version %1").arg(i + 1) : src.name;
+          src.name.isEmpty() ? tr("Version %1").arg(visualIndex + 1) : src.name;
       QString videoInfo = tr("Unknown Video");
       for (const auto &stream : src.mediaStreams) {
         if (stream.type == "Video") {
@@ -249,16 +271,13 @@ void DetailActionWidget::setSources(const QList<MediaSourceInfo> &sources,
                                  src.id);
     }
 
-    int bestIndex = currentIndex;
-    if (sources.size() > 1) {
-      bestIndex = MediaSourcePreferenceUtils::resolvePreferredMediaSourceIndex(
-          sources,
-          ConfigStore::instance()
-              ->get<QString>(ConfigKeys::PlayerPreferredVersion)
-              .trimmed());
-    }
-
-    m_versionComboBox->setCurrentIndex(bestIndex);
+    const int selectedSourceIndex =
+        currentIndex >= 0 && currentIndex < sources.size()
+            ? currentIndex
+            : MediaSourcePreferenceUtils::resolvePreferredMediaSourceIndex(
+                  sources, preferredRules);
+    const int selectedVisualIndex = m_sourceIndexes.indexOf(selectedSourceIndex);
+    m_versionComboBox->setCurrentIndex(qMax(0, selectedVisualIndex));
     m_versionComboBox->show();
   } else {
     m_versionComboBox->hide();
@@ -266,7 +285,9 @@ void DetailActionWidget::setSources(const QList<MediaSourceInfo> &sources,
   m_versionComboBox->blockSignals(false);
 }
 
-void DetailActionWidget::setStreams(const MediaSourceInfo &source) {
+void DetailActionWidget::setStreams(
+    const MediaSourceInfo &source, std::optional<int> rememberedAudioIndex,
+    std::optional<int> rememberedSubtitleIndex) {
   m_audioComboBox->blockSignals(true);
   m_subtitleComboBox->blockSignals(true);
   m_audioComboBox->clear();
@@ -293,8 +314,18 @@ void DetailActionWidget::setStreams(const MediaSourceInfo &source) {
   int defaultSubIdx = 0; 
   bool subMatchedByPref = false;
   bool subMatchedByDefault = false; 
+  int rememberedAudioComboIndex = -1;
+  int rememberedSubtitleComboIndex = -1;
 
-  for (const auto &stream : source.mediaStreams) {
+  QList<int> orderedStreamPositions =
+      PlayerPreferenceUtils::preferredStreamOrder(source.mediaStreams,
+                                                   "Audio", prefAudioLang);
+  orderedStreamPositions.append(
+      PlayerPreferenceUtils::preferredStreamOrder(source.mediaStreams,
+                                                   "Subtitle", prefSubLang));
+
+  for (const int streamPosition : orderedStreamPositions) {
+    const auto &stream = source.mediaStreams[streamPosition];
     if (stream.type == "Audio") {
       QString title =
           stream.displayTitle.isEmpty() ? stream.language : stream.displayTitle;
@@ -320,6 +351,10 @@ void DetailActionWidget::setStreams(const MediaSourceInfo &source) {
                                secondLineParts.join("  ·  "), stream.index);
 
       int curIdx = m_audioComboBox->count() - 1;
+      if (rememberedAudioIndex.has_value() &&
+          stream.index == *rememberedAudioIndex) {
+        rememberedAudioComboIndex = curIdx;
+      }
       if (preferredAudioStreamIndex >= 0 &&
           stream.index == preferredAudioStreamIndex) {
         defaultAudioIdx = curIdx;
@@ -351,6 +386,10 @@ void DetailActionWidget::setStreams(const MediaSourceInfo &source) {
                                   secondLineParts.join("  ·  "), stream.index);
 
       int curIdx = m_subtitleComboBox->count() - 1;
+      if (rememberedSubtitleIndex.has_value() &&
+          stream.index == *rememberedSubtitleIndex) {
+        rememberedSubtitleComboIndex = curIdx;
+      }
       if (preferredSubtitleStreamIndex >= 0 &&
           stream.index == preferredSubtitleStreamIndex) {
         defaultSubIdx = curIdx;
@@ -363,8 +402,17 @@ void DetailActionWidget::setStreams(const MediaSourceInfo &source) {
     }
   }
 
+  if (rememberedAudioComboIndex >= 0) {
+    defaultAudioIdx = rememberedAudioComboIndex;
+  }
+
   
-  if (subtitleDisabled) {
+  if (rememberedSubtitleIndex.has_value() &&
+      *rememberedSubtitleIndex == -1) {
+    defaultSubIdx = 0;
+  } else if (rememberedSubtitleComboIndex >= 0) {
+    defaultSubIdx = rememberedSubtitleComboIndex;
+  } else if (subtitleDisabled) {
     defaultSubIdx = 0; 
   } else if (!subMatchedByPref && !subMatchedByDefault &&
              m_subtitleComboBox->count() > 1) {
@@ -392,7 +440,10 @@ void DetailActionWidget::setStreams(const MediaSourceInfo &source) {
 }
 
 int DetailActionWidget::currentSourceIndex() const {
-  return qMax(0, m_versionComboBox->currentIndex());
+  const int visualIndex = m_versionComboBox->currentIndex();
+  return visualIndex >= 0 && visualIndex < m_sourceIndexes.size()
+             ? m_sourceIndexes[visualIndex]
+             : 0;
 }
 int DetailActionWidget::currentAudioIndex() const {
   return m_audioComboBox->isVisible() ? m_audioComboBox->currentData().toInt()

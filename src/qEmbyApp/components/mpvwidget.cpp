@@ -41,6 +41,14 @@ MpvWidget::~MpvWidget() {
     
     
     
+    if (QOpenGLContext *ctx = context()) {
+        disconnect(ctx, &QOpenGLContext::aboutToBeDestroyed,
+                   this, &MpvWidget::cleanupGL);
+    }
+
+    
+    
+    
     shutdown();
     if (m_controller) {
         m_controller->deleteLater();
@@ -74,17 +82,21 @@ void MpvWidget::shutdown() {
 
 void MpvWidget::cleanupGL() {
     if (m_mpv_gl) {
+        mpv_render_context_set_update_callback(m_mpv_gl, nullptr, nullptr);
+
+        
         
         
         if (isValid()) {
             makeCurrent();
-            mpv_render_context_set_update_callback(m_mpv_gl, nullptr, nullptr);
             mpv_render_context_free(m_mpv_gl);
             doneCurrent();
         } else {
-            qWarning() << "[MpvWidget] OpenGL context is not valid. Bypassing render context free.";
+            qWarning() << "[MpvWidget] OpenGL surface is invalid; freeing MPV render context without makeCurrent";
+            mpv_render_context_free(m_mpv_gl);
         }
         m_mpv_gl = nullptr;
+        qInfo() << "[MpvWidget] MPV render context released with OpenGL context";
     }
 }
 
@@ -116,6 +128,14 @@ void MpvWidget::initializeGL() {
 
     
     
+    
+    if (ctx) {
+        connect(ctx, &QOpenGLContext::aboutToBeDestroyed,
+                this, &MpvWidget::cleanupGL, Qt::DirectConnection);
+    }
+
+    
+    
     if (m_mpv_gl) {
         mpv_render_context_set_update_callback(m_mpv_gl, nullptr, nullptr);
         mpv_render_context_free(m_mpv_gl);
@@ -133,18 +153,31 @@ void MpvWidget::initializeGL() {
         {MPV_RENDER_PARAM_INVALID, nullptr}
     };
 
-    if (mpv_render_context_create(&m_mpv_gl, m_controller->mpv(), params) < 0) {
+    const int createError = mpv_render_context_create(&m_mpv_gl, m_controller->mpv(), params);
+    if (createError < 0) {
+        qCritical() << "[MpvWidget] MPV render context creation failed"
+                    << "| error:" << mpv_error_string(createError);
         emit errorOccurred(tr("OpenGL rendering initialization failed."));
         return;
     }
 
     mpv_render_context_set_update_callback(m_mpv_gl, onMpvRenderUpdate, this);
 
+    qInfo() << "[MpvWidget] MPV render context initialized"
+            << "| resumePending:" << m_resumeWhenRenderReady;
+
     if (!m_pendingUrl.isEmpty()) {
         loadMediaNow(m_pendingUrl, m_pendingServerId, true);
         m_pendingUrl.clear();
         m_pendingServerId.clear();
     }
+
+    if (m_resumeWhenRenderReady) {
+        m_resumeWhenRenderReady = false;
+        m_controller->setProperty("pause", false);
+    }
+
+    update();
 }
 
 void MpvWidget::paintGL() {
@@ -281,6 +314,19 @@ void MpvWidget::loadMedia(const QString &url, const QString &serverId) {
 
 void MpvWidget::play() {
     m_controller->setProperty("pause", false);
+}
+
+void MpvWidget::resumeAfterContextRestore() {
+    if (!m_mpv_gl || !context() || !context()->isValid()) {
+        m_resumeWhenRenderReady = true;
+        qInfo() << "[MpvWidget] Resume deferred until OpenGL context is ready";
+        update();
+        return;
+    }
+
+    m_resumeWhenRenderReady = false;
+    m_controller->setProperty("pause", false);
+    update();
 }
 
 void MpvWidget::pause() {

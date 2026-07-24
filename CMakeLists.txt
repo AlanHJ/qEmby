@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.19)
 
-project(qEmby VERSION 0.0.5 LANGUAGES CXX)
+project(qEmby VERSION 0.0.6 LANGUAGES CXX)
 
 if(APPLE)
     set(CMAKE_OSX_DEPLOYMENT_TARGET 13.0)
@@ -44,7 +44,7 @@ if(UNIX AND NOT APPLE)
 endif()
 
 # ==========================================
-# 【关键修复】: 为第三方子模块 (qwindowkit/qmsetup) 注入所需的 Qt 版本环境变量
+# 为第三方子模块 (qwindowkit/qmsetup) 注入所需的 Qt 版本环境变量
 # ==========================================
 set(QT_VERSION_MAJOR ${Qt6_VERSION_MAJOR})
 set(QT_VERSION_MINOR ${Qt6_VERSION_MINOR})

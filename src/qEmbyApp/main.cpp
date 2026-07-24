@@ -10,6 +10,9 @@
 #include "components/mpvcontroller.h"
 #include "managers/languagemanager.h"
 #include "managers/logmanager.h"
+#include "managers/singleapplicationmanager.h"
+#include "config/config_keys.h"
+#include "config/configstore.h"
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -40,13 +43,22 @@ int main(int argc, char *argv[]) {
   a.setApplicationVersion(APP_VERSION);
   a.setOrganizationName("AlanHJ");
   a.setOrganizationDomain("github.com/AlanHJ/qEmby");
+
+  LogManager::instance()->init();
+
+  SingleApplicationManager singleApplication;
+  const auto singleApplicationResult = singleApplication.start(
+      ConfigStore::instance()->get<bool>(ConfigKeys::SingleApplication, false));
+  if (singleApplicationResult ==
+      SingleApplicationManager::StartResult::SecondaryInstance) {
+    return 0;
+  }
 #if !defined(Q_OS_MACOS) && !defined(Q_OS_MAC)
   QGuiApplication::setDesktopFileName(QStringLiteral("qemby"));
   const QIcon appIcon(QStringLiteral(":/svg/qemby_logo.svg"));
   a.setWindowIcon(appIcon);
 #endif
 
-  LogManager::instance()->init();
   LanguageManager::instance()->init();
 
   
@@ -54,6 +66,15 @@ int main(int argc, char *argv[]) {
   ProxyManager::installApplicationFactory();
 
   MainWindow w;
+  QObject::connect(&singleApplication,
+                   &SingleApplicationManager::activationRequested, &w, [&w]() {
+                     if (w.isMinimized()) {
+                       w.setWindowState(w.windowState() & ~Qt::WindowMinimized);
+                     }
+                     w.show();
+                     w.raise();
+                     w.activateWindow();
+                   });
 #if !defined(Q_OS_MACOS) && !defined(Q_OS_MAC)
   w.setWindowIcon(appIcon);
 #endif

@@ -30,6 +30,8 @@ private slots:
 private:
   void setupUi();
   void updateFavBtnState();
+  void updatePlayedBtnState();
+  void syncSeasonPlayedStateFromEpisodes();
   void refreshExtPlayerButton();
   QCoro::Task<void> loadImages(const QString &fallbackSeriesBackdropTag);
   QCoro::Task<void> updatePlayButtonFromNextUp();
@@ -53,6 +55,7 @@ private:
 
   QPushButton *m_playBtn = nullptr;
   QPushButton *m_favBtn = nullptr;
+  QPushButton *m_playedBtn = nullptr;
   ModernSortButton *m_sortButton = nullptr;
   QLabel *m_statsLabel = nullptr;
   MediaGridWidget *m_mediaGrid = nullptr;

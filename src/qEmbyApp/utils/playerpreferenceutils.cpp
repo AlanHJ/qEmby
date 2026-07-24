@@ -1,8 +1,12 @@
 #include "playerpreferenceutils.h"
 
+#include <config/config_keys.h>
+#include <config/configstore.h>
 #include <QDebug>
 #include <QHash>
 #include <QRegularExpression>
+#include <algorithm>
+#include <limits>
 
 namespace {
 
@@ -228,6 +232,88 @@ bool streamMatchesSingleRule(const MediaStreamInfo &stream,
                       QStringList{normalizedRule});
 }
 
+bool containsAnyText(const QString &text, const QStringList &values) {
+    for (const QString &value : values) {
+        if (text.contains(value)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+int streamMatchRank(const MediaStreamInfo &stream,
+                    const QString &normalizedRule) {
+    if (!streamMatchesSingleRule(stream, normalizedRule)) {
+        return -1;
+    }
+
+    
+    
+    
+    
+    if (normalizedRule == QStringLiteral("chi")) {
+        const QString searchText = streamSearchText(stream);
+        if (containsAnyText(
+                searchText,
+                {QStringLiteral("cantonese"), QStringLiteral("粤语"),
+                 QStringLiteral("廣東話"), QStringLiteral("hong kong"),
+                 QStringLiteral("香港"), QStringLiteral("macau"),
+                 QStringLiteral("macao"), QStringLiteral("澳门"),
+                 QStringLiteral("澳門"), QStringLiteral("taiwan"),
+                 QStringLiteral("台湾"), QStringLiteral("台灣"),
+                 QStringLiteral("traditional"), QStringLiteral("繁体"),
+                 QStringLiteral("繁體"), QStringLiteral("繁中")})) {
+            return 2;
+        }
+        if (containsAnyText(
+                searchText,
+                {QStringLiteral("mandarin"), QStringLiteral("普通话"),
+                 QStringLiteral("国语"), QStringLiteral("simplified"),
+                 QStringLiteral("简体"), QStringLiteral("简中"),
+                 QStringLiteral("zh-cn"), QStringLiteral("zh-hans"),
+                 QStringLiteral("chs"), QStringLiteral("cmn")})) {
+            return 0;
+        }
+        return 1;
+    }
+
+    return 0;
+}
+
+std::optional<int> readRememberedStreamIndex(const QString &key) {
+    if (key.isEmpty()) {
+        return std::nullopt;
+    }
+    const QString stored = ConfigStore::instance()->get<QString>(key).trimmed();
+    if (stored.isEmpty()) {
+        return std::nullopt;
+    }
+    bool ok = false;
+    const int index = stored.toInt(&ok);
+    return ok ? std::optional<int>(index) : std::nullopt;
+}
+
+QString streamSelectionKey(const QString &serverId, const QString &mediaId,
+                           const QString &mediaSourceId,
+                           const char *baseKey) {
+    if (serverId.trimmed().isEmpty() || mediaId.trimmed().isEmpty() ||
+        mediaSourceId.trimmed().isEmpty()) {
+        return {};
+    }
+    return ConfigKeys::forServerMediaSource(serverId, mediaId, mediaSourceId,
+                                            baseKey);
+}
+
+bool containsStreamIndex(const MediaSourceInfo &source, const QString &type,
+                         int streamIndex) {
+    for (const MediaStreamInfo &stream : source.mediaStreams) {
+        if (stream.type == type && stream.index == streamIndex) {
+            return true;
+        }
+    }
+    return false;
+}
+
 } 
 
 namespace PlayerPreferenceUtils {
@@ -285,23 +371,87 @@ int findPreferredStreamIndex(const QList<MediaStreamInfo> &mediaStreams,
     }
 
     for (const QString &rule : rules) {
-        for (const MediaStreamInfo &stream : mediaStreams) {
-            if (stream.type != streamType) {
+        int bestPosition = -1;
+        int bestRank = std::numeric_limits<int>::max();
+        for (int i = 0; i < mediaStreams.size(); ++i) {
+            if (mediaStreams[i].type != streamType) {
                 continue;
             }
-
-            if (streamMatchesSingleRule(stream, rule)) {
-                return stream.index;
+            const int rank = streamMatchRank(mediaStreams[i], rule);
+            if (rank >= 0 && rank < bestRank) {
+                bestPosition = i;
+                bestRank = rank;
             }
+        }
+        if (bestPosition >= 0) {
+            return mediaStreams[bestPosition].index;
         }
     }
 
     return -1;
 }
 
+QList<int> preferredStreamOrder(const QList<MediaStreamInfo> &mediaStreams,
+                                const QString &streamType,
+                                const QString &rawRules) {
+    QList<int> remaining;
+    for (int i = 0; i < mediaStreams.size(); ++i) {
+        if (mediaStreams[i].type == streamType) {
+            remaining.append(i);
+        }
+    }
+
+    const QStringList rules = splitLanguageRules(rawRules);
+    if (remaining.size() <= 1 || rules.isEmpty() ||
+        rules.contains(QStringLiteral("auto")) ||
+        (streamType == QStringLiteral("Subtitle") &&
+         rules.contains(QStringLiteral("none")))) {
+        return remaining;
+    }
+
+    QList<int> ordered;
+    ordered.reserve(remaining.size());
+    for (const QString &rule : rules) {
+        QList<int> matches;
+        for (const int position : remaining) {
+            if (streamMatchRank(mediaStreams[position], rule) >= 0) {
+                matches.append(position);
+            }
+        }
+
+        std::stable_sort(
+            matches.begin(), matches.end(),
+            [&mediaStreams, &rule](int left, int right) {
+                return streamMatchRank(mediaStreams[left], rule) <
+                       streamMatchRank(mediaStreams[right], rule);
+            });
+        for (const int position : matches) {
+            ordered.append(position);
+            remaining.removeOne(position);
+        }
+    }
+
+    ordered.append(remaining);
+    qDebug().noquote()
+        << QStringLiteral("[PlayerPreferenceUtils] Ordered media streams")
+               + QStringLiteral(" | type=%1").arg(streamType)
+               + QStringLiteral(" | rules=%1").arg(rawRules)
+               + QStringLiteral(" | streamIndexes=%1")
+                     .arg([&mediaStreams, &ordered]() {
+                         QStringList indexes;
+                         for (const int position : ordered) {
+                             indexes.append(
+                                 QString::number(mediaStreams[position].index));
+                         }
+                         return indexes.join(QLatin1Char(','));
+                     }());
+    return ordered;
+}
+
 void applyPreferredStreamRules(MediaSourceInfo &selectedSource,
                                const QString &audioRules,
-                               const QString &subtitleRules) {
+                               const QString &subtitleRules,
+                               const RememberedStreamSelection &remembered) {
     const int bestAudioIdx = findPreferredStreamIndex(
         selectedSource.mediaStreams, QStringLiteral("Audio"), audioRules);
     const int bestSubIdx = findPreferredStreamIndex(
@@ -324,7 +474,23 @@ void applyPreferredStreamRules(MediaSourceInfo &selectedSource,
         }
     }
 
-    if (bestAudioIdx >= 0) {
+    const bool rememberedAudioAvailable =
+        remembered.audioIndex.has_value() &&
+        containsStreamIndex(selectedSource, QStringLiteral("Audio"),
+                            *remembered.audioIndex);
+    const bool rememberedSubtitleAvailable =
+        remembered.subtitleIndex.has_value() &&
+        (*remembered.subtitleIndex < 0 ||
+         containsStreamIndex(selectedSource, QStringLiteral("Subtitle"),
+                             *remembered.subtitleIndex));
+
+    if (rememberedAudioAvailable) {
+        for (MediaStreamInfo &stream : selectedSource.mediaStreams) {
+            if (stream.type == QStringLiteral("Audio")) {
+                stream.isDefault = (stream.index == *remembered.audioIndex);
+            }
+        }
+    } else if (bestAudioIdx >= 0) {
         for (MediaStreamInfo &stream : selectedSource.mediaStreams) {
             if (stream.type == QStringLiteral("Audio")) {
                 stream.isDefault = (stream.index == bestAudioIdx);
@@ -333,7 +499,18 @@ void applyPreferredStreamRules(MediaSourceInfo &selectedSource,
     }
 
     QString subtitleDecision = QStringLiteral("keep-server-default");
-    if (subtitleDisabled) {
+    if (rememberedSubtitleAvailable) {
+        subtitleDecision = *remembered.subtitleIndex < 0
+                               ? QStringLiteral("disabled-by-remembered-selection")
+                               : QStringLiteral("remembered-selection");
+        for (MediaStreamInfo &stream : selectedSource.mediaStreams) {
+            if (stream.type == QStringLiteral("Subtitle")) {
+                stream.isDefault =
+                    *remembered.subtitleIndex >= 0 &&
+                    stream.index == *remembered.subtitleIndex;
+            }
+        }
+    } else if (subtitleDisabled) {
         subtitleDecision = QStringLiteral("disabled-by-rule");
         for (MediaStreamInfo &stream : selectedSource.mediaStreams) {
             if (stream.type == QStringLiteral("Subtitle")) {
@@ -360,10 +537,93 @@ void applyPreferredStreamRules(MediaSourceInfo &selectedSource,
         << QStringLiteral("[PlayerPreferenceUtils] Applied stream rules")
                + QStringLiteral(" | sourceId=%1").arg(selectedSource.id)
                + QStringLiteral(" | audioRules=%1").arg(audioRules)
-               + QStringLiteral(" | selectedAudioIndex=%1").arg(bestAudioIdx)
+               + QStringLiteral(" | selectedAudioIndex=%1")
+                     .arg(rememberedAudioAvailable ? *remembered.audioIndex
+                                                   : bestAudioIdx)
                + QStringLiteral(" | subtitleRules=%1").arg(subtitleRules)
-               + QStringLiteral(" | selectedSubtitleIndex=%1").arg(bestSubIdx)
+               + QStringLiteral(" | selectedSubtitleIndex=%1")
+                     .arg(rememberedSubtitleAvailable
+                              ? *remembered.subtitleIndex
+                              : bestSubIdx)
                + QStringLiteral(" | subtitleDecision=%1").arg(subtitleDecision);
+}
+
+static RememberedStreamSelection loadRememberedStreamSelection(
+    const QString &serverId, const QString &mediaId,
+    const QString &mediaSourceId) {
+    RememberedStreamSelection result;
+    result.audioIndex = readRememberedStreamIndex(streamSelectionKey(
+        serverId, mediaId, mediaSourceId, ConfigKeys::PlayerSelectedAudioStream));
+    result.subtitleIndex = readRememberedStreamIndex(streamSelectionKey(
+        serverId, mediaId, mediaSourceId,
+        ConfigKeys::PlayerSelectedSubtitleStream));
+    return result;
+}
+
+RememberedStreamSelection validatedRememberedStreamSelection(
+    const QString &serverId, const QString &mediaId,
+    const MediaSourceInfo &mediaSource) {
+    RememberedStreamSelection result =
+        loadRememberedStreamSelection(serverId, mediaId, mediaSource.id);
+
+    if (result.audioIndex.has_value() &&
+        !containsStreamIndex(mediaSource, QStringLiteral("Audio"),
+                             *result.audioIndex)) {
+        qWarning() << "[PlayerPreferenceUtils] Ignoring unavailable remembered audio stream"
+                   << "mediaId=" << mediaId << "sourceId=" << mediaSource.id
+                   << "streamIndex=" << *result.audioIndex;
+        result.audioIndex.reset();
+    }
+
+    if (result.subtitleIndex.has_value() && *result.subtitleIndex >= 0 &&
+        !containsStreamIndex(mediaSource, QStringLiteral("Subtitle"),
+                             *result.subtitleIndex)) {
+        qWarning() << "[PlayerPreferenceUtils] Ignoring unavailable remembered subtitle stream"
+                   << "mediaId=" << mediaId << "sourceId=" << mediaSource.id
+                   << "streamIndex=" << *result.subtitleIndex;
+        result.subtitleIndex.reset();
+    }
+
+    return result;
+}
+
+void rememberAudioStreamIndex(const QString &serverId, const QString &mediaId,
+                              const QString &mediaSourceId, int streamIndex) {
+    const QString key = streamSelectionKey(
+        serverId, mediaId, mediaSourceId, ConfigKeys::PlayerSelectedAudioStream);
+    if (key.isEmpty() || streamIndex < 0) {
+        return;
+    }
+    ConfigStore::instance()->set(key, QString::number(streamIndex));
+    qDebug() << "[PlayerPreferenceUtils] Remembered manual audio stream"
+             << "mediaId=" << mediaId << "sourceId=" << mediaSourceId
+             << "streamIndex=" << streamIndex;
+}
+
+void rememberSubtitleStreamIndex(const QString &serverId,
+                                 const QString &mediaId,
+                                 const QString &mediaSourceId,
+                                 int streamIndex) {
+    const QString key = streamSelectionKey(
+        serverId, mediaId, mediaSourceId,
+        ConfigKeys::PlayerSelectedSubtitleStream);
+    if (key.isEmpty() || streamIndex < -1) {
+        return;
+    }
+    ConfigStore::instance()->set(key, QString::number(streamIndex));
+    qDebug() << "[PlayerPreferenceUtils] Remembered manual subtitle stream"
+             << "mediaId=" << mediaId << "sourceId=" << mediaSourceId
+             << "streamIndex=" << streamIndex;
+}
+
+void applyRememberedOrPreferredStreamRules(
+    MediaSourceInfo &selectedSource, const QString &serverId,
+    const QString &mediaId, const QString &audioRules,
+    const QString &subtitleRules) {
+    applyPreferredStreamRules(
+        selectedSource, audioRules, subtitleRules,
+        validatedRememberedStreamSelection(serverId, mediaId,
+                                            selectedSource));
 }
 
 QStringList mpvLanguageCodesForRules(const QString &rawRules) {

@@ -40,6 +40,10 @@ QString providerDisplayName(const QString &provider)
         return QCoreApplication::translate("PlayerDanmakuIdentifyDialog",
                                            "DandanPlay");
     }
+    if (provider == QLatin1String("danmu_api")) {
+        return QCoreApplication::translate("PlayerDanmakuIdentifyDialog",
+                                           "LogVar / danmu_api");
+    }
     return provider.trimmed().isEmpty() ? QCoreApplication::translate(
                                               "PlayerDanmakuIdentifyDialog",
                                               "Unknown Source")

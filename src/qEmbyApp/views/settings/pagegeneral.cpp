@@ -45,6 +45,17 @@ PageGeneral::PageGeneral(QEmbyCore *core, QWidget *parent)
       tr("Minimize to system tray instead of exiting the application"),
       new ModernSwitch(this), ConfigKeys::CloseToTray, this));
 
+  m_mainLayout->addWidget(new SettingsCard(
+      ":/svg/dark/appearance-window-state.svg", tr("Single Application Mode"),
+      tr("Allow only one qEmby instance and activate it when launched again "
+         "(requires restart)"),
+      new ModernSwitch(this), ConfigKeys::SingleApplication, this, false));
+
+  m_mainLayout->addWidget(new SettingsCard(
+      ":/svg/dark/refresh.svg", tr("Check for Updates"),
+      tr("Automatically check GitHub for a new qEmby version on startup"),
+      new ModernSwitch(this), ConfigKeys::CheckForUpdates, this, true));
+
   
   
   

@@ -13,9 +13,13 @@ public:
     explicit PageAbout(QEmbyCore* core, QWidget *parent = nullptr);
     ~PageAbout() override = default;
 
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
+
 private slots:
     
     void showLicensesDialog();
+    void checkForUpdates();
 
 private:
     QWidget *createAcknowledgementsPanel();

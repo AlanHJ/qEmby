@@ -7,6 +7,7 @@
 #include <config/config_keys.h>
 #include <config/configstore.h>
 #include <models/media/playerlaunchcontext.h>
+#include <models/media/playbackinfo.h>
 #include "../components/addtoplaylistdialog.h"
 #include "../components/librarymetadataeditdialog.h"
 #include "../components/mediaidentifydialog.h"
@@ -33,13 +34,16 @@
 
 namespace {
 
-int resolvePreferredMediaSourceIndex(const QList<MediaSourceInfo>& mediaSources)
+int resolvePreferredMediaSourceIndex(const QList<MediaSourceInfo>& mediaSources,
+                                     const QString& serverId,
+                                     const QString& mediaId)
 {
     return MediaSourcePreferenceUtils::resolvePreferredMediaSourceIndex(
         mediaSources,
         ConfigStore::instance()
             ->get<QString>(ConfigKeys::PlayerPreferredVersion)
-            .trimmed());
+            .trimmed(),
+        MediaSourcePreferenceUtils::rememberedMediaSourceId(serverId, mediaId));
 }
 
 } 
@@ -119,6 +123,20 @@ QCoro::Task<MediaItem> BaseView::resolvePlaybackItem(MediaItem item)
         }
     }
 
+    
+    
+    
+    if (detail.mediaSources.size() > 1) {
+        PlaybackInfo playbackInfo =
+            co_await m_core->mediaService()->getPlaybackInfo(detail.id);
+        if (!safeThis) {
+            co_return {};
+        }
+        if (!playbackInfo.mediaSources.isEmpty()) {
+            detail.mediaSources = playbackInfo.mediaSources;
+        }
+    }
+
     co_return detail;
 }
 
@@ -169,11 +187,15 @@ QCoro::Task<void> BaseView::executePlay(MediaItem item)
         QString streamUrl;
 
         if (!detail.mediaSources.isEmpty()) {
+            const QString serverId =
+                m_core->serverManager() ? m_core->serverManager()->activeProfile().id
+                                        : QString();
             const int bestSourceIdx =
-                resolvePreferredMediaSourceIndex(detail.mediaSources);
+                resolvePreferredMediaSourceIndex(detail.mediaSources, serverId,
+                                                 detail.id);
             MediaSourceInfo selectedSource = detail.mediaSources[bestSourceIdx];
-            PlayerPreferenceUtils::applyPreferredStreamRules(
-                selectedSource,
+            PlayerPreferenceUtils::applyRememberedOrPreferredStreamRules(
+                selectedSource, serverId, detail.id,
                 ConfigStore::instance()->get<QString>(
                     ConfigKeys::PlayerAudioLang, "auto"),
                 ConfigStore::instance()->get<QString>(
@@ -214,11 +236,14 @@ QCoro::Task<void> BaseView::executeExternalPlay(MediaItem item,
             co_return;
         }
 
-        const int bestSourceIdx =
-            resolvePreferredMediaSourceIndex(detail.mediaSources);
+        const QString serverId =
+            m_core->serverManager() ? m_core->serverManager()->activeProfile().id
+                                    : QString();
+        const int bestSourceIdx = resolvePreferredMediaSourceIndex(
+            detail.mediaSources, serverId, detail.id);
         MediaSourceInfo selectedSource = detail.mediaSources[bestSourceIdx];
-        PlayerPreferenceUtils::applyPreferredStreamRules(
-            selectedSource,
+        PlayerPreferenceUtils::applyRememberedOrPreferredStreamRules(
+            selectedSource, serverId, detail.id,
             ConfigStore::instance()->get<QString>(
                 ConfigKeys::PlayerAudioLang, "auto"),
             ConfigStore::instance()->get<QString>(

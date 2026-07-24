@@ -9,6 +9,7 @@
 #include <QNetworkReply>
 #include <QJsonObject>
 #include <QJsonDocument>
+#include <QList>
 #include <QMap>
 #include <QSslError>
 #include <QUrlQuery>
@@ -16,6 +17,20 @@
 
 struct NetworkRequestOptions {
     bool ignoreSslErrors = false;
+    int timeoutMs = 0;
+};
+
+struct NetworkJsonGetRequest {
+    QString url;
+    QMap<QString, QString> headers;
+    NetworkRequestOptions options;
+};
+
+struct NetworkJsonResult {
+    QJsonObject object;
+    QString errorMessage;
+
+    bool succeeded() const { return errorMessage.isEmpty(); }
 };
 
 class QEMBYCORE_EXPORT NetworkManager : public QObject
@@ -37,6 +52,8 @@ public:
     QCoro::Task<QJsonObject> get(const QString& url,
                                  const QMap<QString, QString>& headers,
                                  const NetworkRequestOptions& options = {});
+    QCoro::Task<QList<NetworkJsonResult>> getBatch(
+        QList<NetworkJsonGetRequest> requests);
 
     
     QCoro::Task<QString> getText(const QString& url,
@@ -47,6 +64,11 @@ public:
     QCoro::Task<QByteArray> getBytes(const QString& url,
                                      const QMap<QString, QString>& headers,
                                      const NetworkRequestOptions& options = {});
+    QCoro::Task<QByteArray> getBytesLimited(
+        QString url,
+        QMap<QString, QString> headers,
+        qint64 maximumBytes,
+        NetworkRequestOptions options = {});
 
     
     QCoro::Task<QJsonObject> post(const QString& url,

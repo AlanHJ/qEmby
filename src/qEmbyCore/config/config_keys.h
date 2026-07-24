@@ -26,11 +26,21 @@ inline QString forServerMedia(const QString& serverId, const QString& mediaId, c
 }
 
 
+inline QString forServerMediaSource(const QString& serverId, const QString& mediaId,
+                                    const QString& sourceId, const char* baseKey) {
+    return QStringLiteral("%1/%2/%3/%4")
+        .arg(QString::fromLatin1(baseKey), serverId, mediaId, sourceId);
+}
+
+
 
 constexpr const char* Language = "general/language";
 constexpr const char* RememberServer = "general/remember_server";
 constexpr const char* LastSelectedServerId = "general/last_selected_server_id";
 constexpr const char* CloseToTray = "general/close_to_tray";
+constexpr const char* SingleApplication = "general/single_application";
+constexpr const char* CheckForUpdates = "general/check_for_updates";
+constexpr const char* IgnoredUpdateVersion = "general/ignored_update_version";
 constexpr const char* LogEnable = "general/log_enable";
 constexpr const char* ApiTimeout = "general/api_timeout";
 constexpr const char* ImageCacheLimit = "general/image_cache_limit";
@@ -110,6 +120,11 @@ constexpr const char* PlayerDefaultScale = "player/default_scale";
 constexpr const char* PlayerAudioLang = "player/audio_lang";
 constexpr const char* PlayerSubLang = "player/sub_lang";
 constexpr const char* PlayerPreferredVersion = "player/preferred_version";
+
+constexpr const char* PlayerSelectedMediaSource = "player/selected_media_source";
+
+constexpr const char* PlayerSelectedAudioStream = "player/selected_audio_stream";
+constexpr const char* PlayerSelectedSubtitleStream = "player/selected_subtitle_stream";
 constexpr const char* PlayerVolNormal = "player/vol_normalization";
 constexpr const char* PlayerContinuousPlay = "player/continuous_play";
 constexpr const char* PlayerSeekStep = "player/seek_step";

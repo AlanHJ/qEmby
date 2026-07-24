@@ -8,16 +8,115 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QMap>
+#include <QRegularExpression>
+#include <QSet>
+#include <QFile>
 #include <QFileInfo>
 #include <QUrl>
 #include <QUrlQuery>
 #include <algorithm>
 #include <cstdlib>
 #include <exception>
+#include <limits>
 #include <stdexcept>
 #include <utility>
+#include <QtConcurrent/QtConcurrent>
+#include <qcorofuture.h>
 
 namespace {
+
+constexpr qint64 kDandanplayHashSampleBytes = 16LL * 1024 * 1024;
+constexpr int kDanmakuRequestTimeoutMs = 10000;
+
+struct MediaFingerprint {
+    QString hash;
+    qint64 fileSize = 0;
+
+    bool isValid() const
+    {
+        return hash.size() == 32 && fileSize > 0;
+    }
+};
+
+NetworkRequestOptions danmakuRequestOptions()
+{
+    NetworkRequestOptions options;
+    options.timeoutMs = kDanmakuRequestTimeoutMs;
+    return options;
+}
+
+QCoro::Task<MediaFingerprint> resolveMediaFingerprint(
+    NetworkManager *networkManager,
+    DanmakuMediaContext context)
+{
+    MediaFingerprint fingerprint;
+    const QString providedHash = context.fileHash.trimmed().toLower();
+    if (providedHash.size() == 32 && context.fileSize > 0) {
+        fingerprint.hash = providedHash;
+        fingerprint.fileSize = context.fileSize;
+        co_return fingerprint;
+    }
+
+    const QString localPath = context.path.trimmed();
+    const QFileInfo localInfo(localPath);
+    if (!localPath.isEmpty() && localInfo.exists() && localInfo.isFile()) {
+        auto hashFuture = QtConcurrent::run(
+            [localPath]() -> MediaFingerprint {
+                MediaFingerprint result;
+                QFile file(localPath);
+                if (!file.open(QIODevice::ReadOnly)) {
+                    return result;
+                }
+                result.fileSize = file.size();
+                const QByteArray sample = file.read(kDandanplayHashSampleBytes);
+                const qint64 expectedBytes =
+                    qMin(result.fileSize, kDandanplayHashSampleBytes);
+                if (result.fileSize <= 0 || sample.size() != expectedBytes) {
+                    return {};
+                }
+                result.hash = QString::fromLatin1(
+                    QCryptographicHash::hash(sample, QCryptographicHash::Md5)
+                        .toHex());
+                return result;
+            });
+        fingerprint = co_await hashFuture;
+        co_return fingerprint;
+    }
+
+    if (!networkManager || context.mediaUrl.trimmed().isEmpty() ||
+        context.fileSize <= 0) {
+        co_return fingerprint;
+    }
+    if (context.durationMs >= 10 * 60 * 1000 &&
+        context.fileSize < kDandanplayHashSampleBytes) {
+        qWarning().noquote()
+            << "[Danmaku][DandanPlay] Ignoring implausible remote media size"
+            << "| mediaId:" << context.mediaId
+            << "| fileSize:" << context.fileSize
+            << "| durationMs:" << context.durationMs;
+        co_return fingerprint;
+    }
+
+    const qint64 expectedBytes =
+        qMin(context.fileSize, kDandanplayHashSampleBytes);
+    try {
+        const QByteArray sample = co_await networkManager->getBytesLimited(
+            context.mediaUrl, {}, expectedBytes, danmakuRequestOptions());
+        if (sample.size() != expectedBytes) {
+            co_return fingerprint;
+        }
+        fingerprint.fileSize = context.fileSize;
+        fingerprint.hash = QString::fromLatin1(
+            QCryptographicHash::hash(sample, QCryptographicHash::Md5).toHex());
+    } catch (const std::exception &e) {
+        qWarning().noquote()
+            << "[Danmaku][DandanPlay] Media fingerprint unavailable"
+            << "| mediaId:" << context.mediaId
+            << "| expectedBytes:" << expectedBytes
+            << "| error:" << e.what();
+    }
+    co_return fingerprint;
+}
 
 QString firstNonEmpty(std::initializer_list<QString> values)
 {
@@ -102,6 +201,27 @@ QString providerIdValue(const QVariantMap &providerIds,
     return {};
 }
 
+bool isExplicitlyNonAnime(const DanmakuMediaContext &context,
+                          const DanmakuProviderConfig &config)
+{
+    if (config.contentScope.compare(QStringLiteral("anime"),
+                                    Qt::CaseInsensitive) != 0 ||
+        context.genres.isEmpty()) {
+        return false;
+    }
+    for (const QString &genre : context.genres) {
+        const QString normalized = genre.trimmed().toLower();
+        if (normalized == QLatin1String("animation") ||
+            normalized == QLatin1String("anime") ||
+            normalized.contains(QStringLiteral("动画")) ||
+            normalized.contains(QStringLiteral("動漫")) ||
+            normalized.contains(QStringLiteral("アニメ"))) {
+            return false;
+        }
+    }
+    return true;
+}
+
 QString normalizedHost(const QString &baseUrl)
 {
     const QUrl url = QUrl::fromUserInput(baseUrl.trimmed());
@@ -111,6 +231,21 @@ QString normalizedHost(const QString &baseUrl)
 bool isOfficialDandanplayEndpoint(const DanmakuProviderConfig &config)
 {
     return normalizedHost(config.baseUrl) == QStringLiteral("api.dandanplay.net");
+}
+
+bool supportsV2SearchEngine(const QString &apiPath)
+{
+    QString normalizedPath = apiPath.trimmed().toLower();
+    if (!normalizedPath.startsWith('/')) {
+        normalizedPath.prepend('/');
+    }
+    while (normalizedPath.endsWith('/') && normalizedPath.size() > 1) {
+        normalizedPath.chop(1);
+    }
+
+    return normalizedPath == QStringLiteral("/api/v2/search/anime") ||
+           normalizedPath == QStringLiteral("/api/v2/search/episodes") ||
+           normalizedPath == QStringLiteral("/api/v2/search/adv");
 }
 
 QString missingCredentialsMessage()
@@ -189,7 +324,16 @@ QString buildUrl(const DanmakuProviderConfig &config,
     url.setPath(path);
 
     QUrlQuery query;
+    
+    
+    
+    if (supportsV2SearchEngine(apiPath)) {
+        query.addQueryItem(QStringLiteral("v2"), QStringLiteral("true"));
+    }
     for (const auto &item : queryItems) {
+        if (item.first.compare(QStringLiteral("v2"), Qt::CaseInsensitive) == 0) {
+            continue;
+        }
         if (!item.second.trimmed().isEmpty()) {
             query.addQueryItem(item.first, item.second.trimmed());
         }
@@ -287,18 +431,36 @@ double titleScore(const QString &lhs, const QString &rhs)
         return 0.45;
     }
 
-    int overlap = 0;
-    for (const QChar ch : cleanLhs.isEmpty() ? rawLhs : cleanLhs) {
-        const QString &target = cleanRhs.isEmpty() ? rawRhs : cleanRhs;
-        if (!ch.isSpace() && target.contains(ch)) {
-            ++overlap;
+    auto comparable = [](QString value) {
+        value.remove(QRegularExpression(QStringLiteral(R"([^\p{L}\p{N}]+)")));
+        return value;
+    };
+    const QString comparableLhs = comparable(
+        cleanLhs.isEmpty() ? rawLhs : cleanLhs);
+    const QString comparableRhs = comparable(
+        cleanRhs.isEmpty() ? rawRhs : cleanRhs);
+    if (comparableLhs.size() < 2 || comparableRhs.size() < 2) {
+        return comparableLhs == comparableRhs ? 1.0 : 0.0;
+    }
+
+    auto bigrams = [](const QString &value) {
+        QSet<QString> result;
+        for (int i = 0; i + 1 < value.size(); ++i) {
+            result.insert(value.mid(i, 2));
+        }
+        return result;
+    };
+    const QSet<QString> lhsBigrams = bigrams(comparableLhs);
+    const QSet<QString> rhsBigrams = bigrams(comparableRhs);
+    int common = 0;
+    for (const QString &gram : lhsBigrams) {
+        if (rhsBigrams.contains(gram)) {
+            ++common;
         }
     }
-    const int base = cleanLhs.isEmpty() ? rawLhs.size()
-                                        : cleanLhs.size();
-    return base == 0
-               ? 0.0
-               : qBound(0.0, overlap / static_cast<double>(base), 0.35);
+    const double dice =
+        (2.0 * common) / (lhsBigrams.size() + rhsBigrams.size());
+    return qBound(0.0, dice * 0.55, 0.55);
 }
 
 int extractYear(const QString &title)
@@ -416,6 +578,17 @@ int extractSeasonNumber(const QString &title)
         }
     }
 
+    static const QRegularExpression ordinalSeasonPattern(
+        QStringLiteral(R"((?:^|[^A-Za-z0-9])0*(\d{1,2})(?:st|nd|rd|th)?\s*(?:Season|期)(?:[^A-Za-z0-9]|$))"),
+        QRegularExpression::CaseInsensitiveOption);
+    match = ordinalSeasonPattern.match(trimmed);
+    if (match.hasMatch()) {
+        const int parsed = match.captured(1).toInt();
+        if (parsed > 0) {
+            return parsed;
+        }
+    }
+
     static const QRegularExpression romanPattern(
         QStringLiteral(R"((?:^|\s)(VIII|VII|VI|IV|IX|III|II|V|X)\s*$)"));
     match = romanPattern.match(trimmed);
@@ -436,6 +609,89 @@ int extractSeasonNumber(const QString &title)
     return 0;
 }
 
+int extractEpisodeNumber(const QString &title)
+{
+    const QString trimmed = title.trimmed();
+    if (trimmed.isEmpty()) {
+        return 0;
+    }
+
+    static const QRegularExpression seasonEpisodePattern(
+        QStringLiteral(R"((?:^|[^A-Za-z0-9])S\s*0*\d{1,2}\s*E\s*0*(\d{1,4})(?:[^A-Za-z0-9]|$))"),
+        QRegularExpression::CaseInsensitiveOption);
+    QRegularExpressionMatch match = seasonEpisodePattern.match(trimmed);
+    if (match.hasMatch()) {
+        return match.captured(1).toInt();
+    }
+
+    static const QRegularExpression chineseEpisodePattern(
+        QStringLiteral(R"(第\s*0*(\d{1,4})\s*[话話集期])"));
+    match = chineseEpisodePattern.match(trimmed);
+    if (match.hasMatch()) {
+        return match.captured(1).toInt();
+    }
+
+    static const QRegularExpression englishEpisodePattern(
+        QStringLiteral(R"((?:^|[^A-Za-z0-9])(?:EP?|Episode)\s*[._-]?\s*0*(\d{1,4})(?:[^A-Za-z0-9]|$))"),
+        QRegularExpression::CaseInsensitiveOption);
+    match = englishEpisodePattern.match(trimmed);
+    if (match.hasMatch()) {
+        return match.captured(1).toInt();
+    }
+
+    static const QRegularExpression numberOnlyPattern(
+        QStringLiteral(R"(^\s*0*(\d{1,4})(?:\s|$|[._-])?)"));
+    match = numberOnlyPattern.match(trimmed);
+    return match.hasMatch() ? match.captured(1).toInt() : 0;
+}
+
+struct ManualSearchHint {
+    QString keyword;
+    int seasonNumber = -1;
+    int episodeNumber = -1;
+    bool hasExplicitEpisode = false;
+};
+
+ManualSearchHint parseManualSearchHint(const QString &input)
+{
+    ManualSearchHint hint;
+    hint.keyword = input.trimmed();
+
+    static const QRegularExpression seasonEpisodePattern(
+        QStringLiteral(R"((?:^|[\s._-])S\s*0*(\d{1,2})\s*E\s*0*(\d{1,4})(?=$|[\s._-]))"),
+        QRegularExpression::CaseInsensitiveOption);
+    QRegularExpressionMatch match = seasonEpisodePattern.match(hint.keyword);
+    if (match.hasMatch()) {
+        hint.seasonNumber = match.captured(1).toInt();
+        hint.episodeNumber = match.captured(2).toInt();
+        hint.hasExplicitEpisode = hint.episodeNumber > 0;
+        hint.keyword.remove(match.capturedStart(), match.capturedLength());
+    } else {
+        static const QRegularExpression chineseSeasonEpisodePattern(
+            QStringLiteral(R"(第\s*0*(\d{1,2})\s*季\s*第?\s*0*(\d{1,4})\s*[话話集期])"));
+        match = chineseSeasonEpisodePattern.match(hint.keyword);
+        if (match.hasMatch()) {
+            hint.seasonNumber = match.captured(1).toInt();
+            hint.episodeNumber = match.captured(2).toInt();
+            hint.hasExplicitEpisode = hint.episodeNumber > 0;
+            hint.keyword.remove(match.capturedStart(), match.capturedLength());
+        }
+    }
+
+    hint.keyword.replace(QRegularExpression(QStringLiteral(R"([\s._-]{2,})")),
+                         QStringLiteral(" "));
+    hint.keyword = hint.keyword.trimmed();
+    return hint;
+}
+
+bool isClearlyEpisodicAnimeType(const QString &type)
+{
+    const QString normalized = type.trimmed().toLower();
+    return normalized == QLatin1String("tvseries") ||
+           normalized == QLatin1String("jpdrama") ||
+           normalized == QLatin1String("tmdbtv");
+}
+
 double computeScore(const DanmakuMediaContext &context,
                     const DanmakuMatchCandidate &candidate,
                     const QString &queryKeyword)
@@ -449,7 +705,7 @@ double computeScore(const DanmakuMediaContext &context,
     score += titleScore(subjectTitle, candidateSubject) * 55.0;
     score += titleScore(context.originalTitle, candidateSubject) * 18.0;
     score += titleScore(context.title, candidate.title) * 18.0;
-    score += titleScore(queryKeyword, candidate.displayText()) * 12.0;
+    score += titleScore(queryKeyword, candidate.displayText()) * 6.0;
 
     if (context.isEpisode() && context.episodeNumber > 0 &&
         candidate.episodeNumber > 0 &&
@@ -483,11 +739,14 @@ double computeScore(const DanmakuMediaContext &context,
             score += 12.0;
         } else if (diff <= 90 * 1000) {
             score += 6.0;
+        } else if (diff > std::max<qint64>(5 * 60 * 1000,
+                                           context.durationMs * 18 / 100)) {
+            score -= 22.0;
         }
     }
 
     if (candidate.commentCount > 0) {
-        score += std::min(10.0, candidate.commentCount / 80.0);
+        score += std::min(4.0, candidate.commentCount / 200.0);
     }
 
     if (context.productionYear > 0) {
@@ -500,6 +759,8 @@ double computeScore(const DanmakuMediaContext &context,
                 score += 8.0;
             } else if (yearDiff <= 3) {
                 score += 3.0;
+            } else {
+                score -= 20.0;
             }
         }
     }
@@ -507,14 +768,39 @@ double computeScore(const DanmakuMediaContext &context,
     return score;
 }
 
-QList<DanmakuMatchCandidate> parseSearchResponse(const QJsonObject &response,
-                                                 const DanmakuMediaContext &context,
-                                                 const QString &queryKeyword)
+qint64 normalizeCandidateDurationMs(qint64 value, qint64 expectedDurationMs)
+{
+    if (value <= 0) {
+        return 0;
+    }
+    if (value <= 24 * 60 * 60) {
+        const qint64 secondsValue = value * 1000;
+        if (expectedDurationMs <= 0 ||
+            std::llabs(secondsValue - expectedDurationMs) <
+                std::llabs(value - expectedDurationMs)) {
+            return secondsValue;
+        }
+    }
+    return value;
+}
+
+QList<DanmakuMatchCandidate> parseSearchResponse(
+    const QJsonObject &response,
+    const DanmakuMediaContext &context,
+    const QString &queryKeyword,
+    int requestedEpisodeNumber,
+    bool excludeClearlyEpisodicWorks)
 {
     QList<DanmakuMatchCandidate> candidates;
     auto parseArray = [&](const QJsonArray &animeArray) {
         for (const QJsonValue &animeValue : animeArray) {
             const QJsonObject animeObj = animeValue.toObject();
+            const QString animeType =
+                stringField(animeObj, {"type", "animeType"});
+            if (excludeClearlyEpisodicWorks &&
+                isClearlyEpisodicAnimeType(animeType)) {
+                continue;
+            }
             const QString animeTitle = firstNonEmpty(
                 {stringField(animeObj, {"animeTitle", "title", "name"}),
                  stringField(animeObj, {"animeTitleCN", "animeTitleJP"})});
@@ -523,23 +809,6 @@ QList<DanmakuMatchCandidate> parseSearchResponse(const QJsonObject &response,
             if (episodes.isEmpty() &&
                 !animeObj.value(QStringLiteral("episodeId")).isUndefined()) {
                 episodes.append(animeObj);
-            }
-            if (episodes.isEmpty() &&
-                (!animeObj.value(QStringLiteral("animeId")).isUndefined() ||
-                 !animeObj.value(QStringLiteral("bangumiId")).isUndefined())) {
-                QJsonObject fallbackEpisodeObj = animeObj;
-                const QString animeIdStr = stringField(
-                    animeObj, {"animeId", "bangumiId"});
-                if (!animeIdStr.isEmpty()) {
-                    fallbackEpisodeObj.insert(
-                        QStringLiteral("episodeId"), animeIdStr);
-                }
-                if (fallbackEpisodeObj.value(
-                        QStringLiteral("episodeTitle")).isUndefined()) {
-                    fallbackEpisodeObj.insert(
-                        QStringLiteral("episodeTitle"), animeTitle);
-                }
-                episodes.append(fallbackEpisodeObj);
             }
 
             for (const QJsonValue &episodeValue : episodes) {
@@ -551,13 +820,24 @@ QList<DanmakuMatchCandidate> parseSearchResponse(const QJsonObject &response,
                 candidate.title = stringField(
                     episodeObj, {"episodeTitle", "title", "name", "episodeName"});
                 candidate.subtitle = animeTitle;
-                candidate.episodeNumber =
-                    intField(episodeObj, {"episodeNumber", "episode", "sort"}, -1);
+                candidate.seasonNumber = extractSeasonNumber(animeTitle);
+                candidate.episodeNumber = intField(
+                    episodeObj, {"episodeNumber", "episode", "sort"}, -1);
+                if (candidate.episodeNumber <= 0) {
+                    candidate.episodeNumber =
+                        extractEpisodeNumber(candidate.title);
+                }
+                if (candidate.episodeNumber <= 0 &&
+                    requestedEpisodeNumber > 0) {
+                    
+                    
+                    
+                    candidate.episodeNumber = requestedEpisodeNumber;
+                }
                 candidate.durationMs = longField(
                     episodeObj, {"durationMs", "duration", "videoDuration"}, 0);
-                if (candidate.durationMs > 0 && candidate.durationMs < 1000) {
-                    candidate.durationMs *= 1000;
-                }
+                candidate.durationMs = normalizeCandidateDurationMs(
+                    candidate.durationMs, context.durationMs);
                 candidate.commentCount = intField(
                     episodeObj, {"commentCount", "comments", "danmakuCount"}, 0);
                 candidate.score = computeScore(context, candidate, queryKeyword);
@@ -671,7 +951,8 @@ QList<DanmakuMatchCandidate> deduplicateCandidates(
 QList<DanmakuMatchCandidate> parseMatchResponse(
     const QJsonObject &response,
     const DanmakuMediaContext &context,
-    const QString &fileName)
+    const QString &fileName,
+    bool hashMatchRequest)
 {
     QList<DanmakuMatchCandidate> candidates;
     const bool isMatched = response.value(QStringLiteral("isMatched")).toBool();
@@ -693,32 +974,35 @@ QList<DanmakuMatchCandidate> parseMatchResponse(
             matchObj, {"episodeTitle", "title", "name", "episodeName"});
         candidate.subtitle = stringField(
             matchObj, {"animeTitle", "animeTitleCN", "animeName"});
+        candidate.seasonNumber = extractSeasonNumber(candidate.subtitle);
         candidate.episodeNumber =
             intField(matchObj, {"episodeNumber", "episode", "sort"}, -1);
+        if (candidate.episodeNumber <= 0) {
+            candidate.episodeNumber = extractEpisodeNumber(candidate.title);
+        }
         candidate.durationMs = longField(
             matchObj, {"durationMs", "duration", "videoDuration"}, 0);
-        if (candidate.durationMs > 0 && candidate.durationMs < 1000) {
-            candidate.durationMs *= 1000;
-        }
+        candidate.durationMs = normalizeCandidateDurationMs(
+            candidate.durationMs, context.durationMs);
         candidate.commentCount = intField(
             matchObj, {"commentCount", "comments", "danmakuCount"}, 0);
 
-        if (candidate.targetId.isEmpty()) {
-            const QString animeIdStr =
-                stringField(matchObj, {"animeId", "bangumiId"});
-            if (!animeIdStr.isEmpty()) {
-                candidate.targetId = animeIdStr;
-            }
-        }
         if (candidate.title.isEmpty()) {
             candidate.title = candidate.subtitle;
         }
 
         candidate.score = computeScore(context, candidate, fileName);
-        if (isMatched) {
-            candidate.score += 30.0;
+        if (isMatched && hashMatchRequest) {
+            candidate.score = qMax(candidate.score, 200.0);
+            candidate.matchReason = QStringLiteral("hash");
+        } else if (isMatched) {
+            
+            
+            candidate.score += 8.0;
+            candidate.matchReason = QStringLiteral("filename");
+        } else {
+            candidate.matchReason = QStringLiteral("match-candidate");
         }
-        candidate.matchReason = QStringLiteral("match");
         if (candidate.isValid()) {
             candidates.append(candidate);
         }
@@ -739,6 +1023,21 @@ DandanplayProvider::DandanplayProvider(NetworkManager *networkManager)
 {
 }
 
+QCoro::Task<DanmakuMediaContext> DandanplayProvider::enrichMediaFingerprint(
+    DanmakuMediaContext context) const
+{
+    if (!context.fileHash.trimmed().isEmpty() && context.fileSize > 0) {
+        co_return context;
+    }
+    const MediaFingerprint fingerprint =
+        co_await resolveMediaFingerprint(m_networkManager, context);
+    if (fingerprint.isValid()) {
+        context.fileHash = fingerprint.hash;
+        context.fileSize = fingerprint.fileSize;
+    }
+    co_return context;
+}
+
 QCoro::Task<QList<DanmakuMatchCandidate>> DandanplayProvider::searchCandidates(
     DanmakuMediaContext context,
     DanmakuProviderConfig config,
@@ -751,6 +1050,15 @@ QCoro::Task<QList<DanmakuMatchCandidate>> DandanplayProvider::searchCandidates(
 
     bool hadSuccessfulSearchResponse = false;
     QString lastSearchError;
+    const bool isManualSearch = !manualKeyword.trimmed().isEmpty();
+    const ManualSearchHint manualHint =
+        isManualSearch ? parseManualSearchHint(manualKeyword)
+                       : ManualSearchHint{};
+    DanmakuMediaContext searchContext = context;
+    if (isManualSearch && manualHint.hasExplicitEpisode) {
+        searchContext.seasonNumber = manualHint.seasonNumber;
+        searchContext.episodeNumber = manualHint.episodeNumber;
+    }
 
     
     
@@ -760,8 +1068,31 @@ QCoro::Task<QList<DanmakuMatchCandidate>> DandanplayProvider::searchCandidates(
     
     
     QStringList keywords;
-    if (!manualKeyword.trimmed().isEmpty()) {
-        keywords << manualKeyword.trimmed();
+    QString manualSubject;
+    if (isManualSearch) {
+        manualSubject = firstNonEmpty(
+            {manualHint.keyword,
+             searchContext.isEpisode() ? searchContext.seriesName
+                                       : searchContext.title});
+        
+        
+        
+        if (searchContext.isEpisode()) {
+            searchContext.seriesName = manualSubject;
+        } else {
+            searchContext.title = manualSubject;
+        }
+        searchContext.originalTitle.clear();
+        if (searchContext.isEpisode() && searchContext.seasonNumber > 1 &&
+            extractSeasonNumber(manualSubject) <= 0) {
+            const QString ordinal =
+                chineseOrdinalString(searchContext.seasonNumber);
+            if (!ordinal.isEmpty()) {
+                keywords << QStringLiteral("%1 第%2季")
+                                .arg(manualSubject, ordinal);
+            }
+        }
+        keywords << manualSubject;
     } else if (context.isEpisode()) {
         const QString trimmedSeries = context.seriesName.trimmed();
         const QString trimmedOriginal = context.originalTitle.trimmed();
@@ -797,13 +1128,40 @@ QCoro::Task<QList<DanmakuMatchCandidate>> DandanplayProvider::searchCandidates(
     keywords = normalizedKeywords;
     keywords.removeDuplicates();
 
-    const QString tmdbId = providerIdValue(
-        context.providerIds, {"Tmdb", "tmdb", "TMDb", "tmdbid"});
+    const QString currentSubject =
+        context.isEpisode() ? context.seriesName.trimmed()
+                            : context.title.trimmed();
+    const bool manualTargetsCurrentMedia =
+        isManualSearch && !manualSubject.isEmpty() &&
+        titleScore(manualSubject, currentSubject) >= 0.92;
+    
+    
+    
+    const QString tmdbId =
+        (!isManualSearch || manualTargetsCurrentMedia)
+            ? providerIdValue(context.providerIds,
+                              {"Tmdb", "tmdb", "TMDb", "tmdbid"})
+            : QString();
+    const bool strongLookupOnly =
+        manualKeyword.trimmed().isEmpty() &&
+        isExplicitlyNonAnime(context, config);
 
     const QString filePath = context.path.trimmed();
-    const QString fileName =
-        filePath.isEmpty() ? QString()
-                           : QFileInfo(filePath).fileName().trimmed();
+    QString normalizedFilePath = filePath;
+    const QUrl filePathUrl = QUrl::fromUserInput(normalizedFilePath);
+    if (filePathUrl.scheme().compare(QStringLiteral("http"),
+                                     Qt::CaseInsensitive) == 0 ||
+        filePathUrl.scheme().compare(QStringLiteral("https"),
+                                     Qt::CaseInsensitive) == 0) {
+        normalizedFilePath = filePathUrl.path();
+    }
+    normalizedFilePath.replace(QLatin1Char('\\'), QLatin1Char('/'));
+    const QString fileName = firstNonEmpty(
+        {context.fileName, filePath.isEmpty()
+                               ? QString()
+                               : QFileInfo(normalizedFilePath)
+                                     .completeBaseName()
+                                     .trimmed()});
 
     qDebug().noquote()
         << "[Danmaku][DandanPlay] Search start"
@@ -813,30 +1171,56 @@ QCoro::Task<QList<DanmakuMatchCandidate>> DandanplayProvider::searchCandidates(
         << "| seriesName:" << context.seriesName.trimmed()
         << "| seasonNumber:" << context.seasonNumber
         << "| episodeNumber:" << context.episodeNumber
+        << "| requestedSeason:" << searchContext.seasonNumber
+        << "| requestedEpisode:" << searchContext.episodeNumber
+        << "| explicitManualEpisode:" << manualHint.hasExplicitEpisode
+        << "| manualTargetsCurrentMedia:" << manualTargetsCurrentMedia
+        << "| tmdbConstraint:" << !tmdbId.isEmpty()
         << "| contentScope:" << config.contentScope
         << "| fileName:" << fileName
         << "| keywords:" << keywords.join(QStringLiteral(" | "));
 
-    if (!fileName.isEmpty() && manualKeyword.trimmed().isEmpty()) {
+    MediaFingerprint fingerprint;
+    if (manualKeyword.trimmed().isEmpty()) {
+        fingerprint = co_await resolveMediaFingerprint(m_networkManager, context);
+    }
+    if (manualKeyword.trimmed().isEmpty() &&
+        (!fileName.isEmpty() || fingerprint.isValid())) {
         try {
+            const bool useHashMatch = fingerprint.isValid();
             const QString matchPath = QStringLiteral("/api/v2/match");
             ensureOfficialAuthentication(config, matchPath);
             QJsonObject payload;
             payload.insert(QStringLiteral("fileName"), fileName);
-            payload.insert(QStringLiteral("fileHash"), QString());
-            payload.insert(QStringLiteral("fileSize"), 0);
+            payload.insert(QStringLiteral("fileHash"), fingerprint.hash);
+            payload.insert(QStringLiteral("fileSize"), fingerprint.fileSize);
+            payload.insert(
+                QStringLiteral("videoDuration"),
+                context.durationMs > 0
+                    ? static_cast<int>(qMin<qint64>(
+                          context.durationMs / 1000,
+                          std::numeric_limits<int>::max()))
+                    : 0);
             payload.insert(QStringLiteral("matchMode"),
-                           QStringLiteral("fileNameOnly"));
+                           useHashMatch
+                               ? (fileName.isEmpty()
+                                      ? QStringLiteral("hashOnly")
+                                      : QStringLiteral("hashAndFileName"))
+                               : QStringLiteral("fileNameOnly"));
             const QString matchUrl = buildUrl(config, matchPath, {});
             qDebug().noquote()
                 << "[Danmaku][DandanPlay] Match request"
                 << "| fileName:" << fileName
+                << "| hashAvailable:" << useHashMatch
+                << "| fileSize:" << fingerprint.fileSize
                 << "| url:" << matchUrl;
             const QJsonObject matchResponse = co_await m_networkManager->post(
-                matchUrl, buildHeaders(config, matchPath), payload);
+                matchUrl, buildHeaders(config, matchPath), payload,
+                danmakuRequestOptions());
             hadSuccessfulSearchResponse = true;
             const QList<DanmakuMatchCandidate> matchCandidates =
-                parseMatchResponse(matchResponse, context, fileName);
+                parseMatchResponse(matchResponse, context, fileName,
+                                   useHashMatch);
             qDebug().noquote()
                 << "[Danmaku][DandanPlay] Match result"
                 << "| fileName:" << fileName
@@ -844,7 +1228,18 @@ QCoro::Task<QList<DanmakuMatchCandidate>> DandanplayProvider::searchCandidates(
                 << matchResponse.value(QStringLiteral("isMatched")).toBool()
                 << "| count:" << matchCandidates.size();
             if (!matchCandidates.isEmpty()) {
-                allCandidates.append(matchCandidates);
+                if (matchCandidates.first().isHashMatch()) {
+                    allCandidates.append(matchCandidates);
+                    qDebug().noquote()
+                        << "[Danmaku][DandanPlay] Verified hash match found,"
+                           " skipping title searches"
+                        << "| mediaId:" << context.mediaId
+                        << "| targetId:" << matchCandidates.first().targetId;
+                    co_return deduplicateCandidates(allCandidates);
+                }
+                if (!strongLookupOnly) {
+                    allCandidates.append(matchCandidates);
+                }
             }
         } catch (const std::exception &e) {
             const QString errorMessage =
@@ -860,122 +1255,116 @@ QCoro::Task<QList<DanmakuMatchCandidate>> DandanplayProvider::searchCandidates(
         }
     }
 
-    for (const QString &keyword : std::as_const(keywords)) {
-        QList<DanmakuMatchCandidate> keywordCandidates;
-        try {
-            const QString apiPath = QStringLiteral("/api/v2/search/episodes");
-            ensureOfficialAuthentication(config, apiPath);
-            QList<QPair<QString, QString>> queryItems;
-            queryItems.append({QStringLiteral("anime"), keyword});
-            if (context.isEpisode()) {
-                if (context.episodeNumber > 0) {
-                    queryItems.append({QStringLiteral("episode"),
-                                       QString::number(context.episodeNumber)});
-                }
-                if (!tmdbId.isEmpty()) {
-                    queryItems.append({QStringLiteral("tmdbId"), tmdbId});
-                }
-            }
+    if (strongLookupOnly && tmdbId.isEmpty()) {
+        qDebug().noquote()
+            << "[Danmaku][DandanPlay] Skipping fuzzy title search for non-anime media"
+            << "| mediaId:" << context.mediaId;
+        co_return deduplicateCandidates(allCandidates);
+    }
 
-            const QString url = buildUrl(config, apiPath, queryItems);
-            qDebug().noquote()
-                << "[Danmaku][DandanPlay] Search request"
-                << "| path:" << apiPath
-                << "| keyword:" << keyword
-                << "| url:" << url;
-            const QJsonObject response =
-                co_await m_networkManager->get(url, buildHeaders(config, apiPath));
-            hadSuccessfulSearchResponse = true;
-            keywordCandidates =
-                parseSearchResponse(response, context, keyword);
-            if (!keywordCandidates.isEmpty()) {
-                qDebug().noquote()
-                    << "[Danmaku][DandanPlay] Search hit"
-                    << "| path:" << apiPath
+    QString requestedEpisodeParameter;
+    int requestedEpisodeNumber = -1;
+    if (searchContext.isEpisode() && searchContext.episodeNumber > 0) {
+        requestedEpisodeNumber = searchContext.episodeNumber;
+        requestedEpisodeParameter =
+            searchContext.seasonNumber == 0
+                ? QStringLiteral("S%1").arg(searchContext.episodeNumber)
+                : QString::number(searchContext.episodeNumber);
+    } else if (!searchContext.isEpisode()) {
+        requestedEpisodeNumber = 1;
+        requestedEpisodeParameter = QStringLiteral("1");
+    }
+
+    if (!keywords.isEmpty()) {
+        const QString apiPath = QStringLiteral("/api/v2/search/episodes");
+        ensureOfficialAuthentication(config, apiPath);
+        QList<NetworkJsonGetRequest> requests;
+        requests.reserve(keywords.size());
+        for (const QString &keyword : std::as_const(keywords)) {
+            QList<QPair<QString, QString>> queryItems = {
+                {QStringLiteral("anime"), keyword},
+                {QStringLiteral("v2"), QStringLiteral("true")}};
+            if (!requestedEpisodeParameter.isEmpty()) {
+                queryItems.append({QStringLiteral("episode"),
+                                   requestedEpisodeParameter});
+            }
+            if (!tmdbId.isEmpty()) {
+                queryItems.append({QStringLiteral("tmdbId"), tmdbId});
+                queryItems.append(
+                    {QStringLiteral("tmdbIdType"),
+                     context.isEpisode() ? QStringLiteral("0")
+                                         : QStringLiteral("1")});
+            }
+            requests.append({buildUrl(config, apiPath, queryItems),
+                             buildHeaders(config, apiPath),
+                             danmakuRequestOptions()});
+        }
+
+        qDebug().noquote()
+            << "[Danmaku][DandanPlay] Parallel episode search"
+            << "| requestCount:" << requests.size()
+            << "| episodeParameter:" << requestedEpisodeParameter
+            << "| keywords:" << keywords.join(QStringLiteral(" | "));
+        const QList<NetworkJsonResult> responses =
+            co_await m_networkManager->getBatch(requests);
+        for (int i = 0; i < responses.size(); ++i) {
+            const QString keyword = keywords.value(i);
+            const NetworkJsonResult &response = responses.at(i);
+            if (!response.succeeded()) {
+                lastSearchError = response.errorMessage;
+                qWarning().noquote()
+                    << "[Danmaku][DandanPlay] Episode search failed"
                     << "| keyword:" << keyword
-                    << "| count:" << keywordCandidates.size();
-                allCandidates.append(keywordCandidates);
+                    << "| error:" << response.errorMessage;
+                continue;
             }
-        } catch (const std::exception &e) {
-            const QString errorMessage = QString::fromUtf8(e.what()).trimmed();
-            if (isMissingCredentialsErrorMessage(errorMessage)) {
-                throw;
-            }
-            lastSearchError = errorMessage;
-            qWarning().noquote()
-                << "[Danmaku][DandanPlay] Search request failed"
-                << "| keyword:" << keyword
-                << "| path: /api/v2/search/episodes"
-                << "| error:" << errorMessage;
-        }
-
-        if (!keywordCandidates.isEmpty()) {
-            
-            
-            
-            if (context.isEpisode() && context.seasonNumber > 0 &&
-                context.episodeNumber > 0) {
-                bool hasConfidentMatch = false;
-                for (const DanmakuMatchCandidate &c : keywordCandidates) {
-                    const QString candidateSubject =
-                        c.subtitle.isEmpty() ? c.title : c.subtitle;
-                    const int candidateSeason =
-                        extractSeasonNumber(candidateSubject);
-                    const bool seasonHit =
-                        candidateSeason == context.seasonNumber ||
-                        (candidateSeason == 0 && context.seasonNumber == 1);
-                    const bool episodeHit =
-                        c.episodeNumber == context.episodeNumber;
-                    if (seasonHit && episodeHit && c.score >= 60.0) {
-                        hasConfidentMatch = true;
-                        break;
-                    }
-                }
-                if (hasConfidentMatch) {
-                    qDebug().noquote()
-                        << "[Danmaku][DandanPlay] Confident match found,"
-                           " skipping remaining keywords"
-                        << "| keyword:" << keyword
-                        << "| seasonNumber:" << context.seasonNumber
-                        << "| episodeNumber:" << context.episodeNumber;
-                    break;
-                }
-            }
-            continue;
-        }
-
-        const QString fallbackPath = QStringLiteral("/api/v2/search/anime");
-        const QString fallbackUrl = buildUrl(
-            config, fallbackPath, {{QStringLiteral("keyword"), keyword}});
-        try {
-            ensureOfficialAuthentication(config, fallbackPath);
-            qDebug().noquote()
-                << "[Danmaku][DandanPlay] Search fallback request"
-                << "| path:" << fallbackPath
-                << "| keyword:" << keyword
-                << "| url:" << fallbackUrl;
-            const QJsonObject fallbackResponse =
-                co_await m_networkManager->get(
-                    fallbackUrl, buildHeaders(config, fallbackPath));
             hadSuccessfulSearchResponse = true;
-            const QList<DanmakuMatchCandidate> fallbackCandidates =
-                parseSearchResponse(fallbackResponse, context, keyword);
-            qDebug().noquote()
-                << "[Danmaku][DandanPlay] Search fallback result"
-                << "| keyword:" << keyword
-                << "| count:" << fallbackCandidates.size();
-            allCandidates.append(fallbackCandidates);
-        } catch (const std::exception &e) {
-            const QString errorMessage = QString::fromUtf8(e.what()).trimmed();
-            if (isMissingCredentialsErrorMessage(errorMessage)) {
-                throw;
+            QList<DanmakuMatchCandidate> candidates =
+                parseSearchResponse(
+                    response.object, searchContext, keyword,
+                    requestedEpisodeNumber,
+                    !searchContext.isEpisode());
+            if (searchContext.isEpisode()) {
+                candidates.erase(
+                    std::remove_if(
+                        candidates.begin(), candidates.end(),
+                        [&searchContext](const DanmakuMatchCandidate &candidate) {
+                            if (searchContext.episodeNumber > 0 &&
+                                candidate.episodeNumber > 0 &&
+                                candidate.episodeNumber !=
+                                    searchContext.episodeNumber) {
+                                return true;
+                            }
+                            if (searchContext.seasonNumber > 0 &&
+                                candidate.seasonNumber > 0 &&
+                                candidate.seasonNumber !=
+                                    searchContext.seasonNumber) {
+                                return true;
+                            }
+                            return searchContext.seasonNumber > 1 &&
+                                   candidate.seasonNumber <= 0;
+                        }),
+                    candidates.end());
             }
-            lastSearchError = errorMessage;
-            qWarning().noquote()
-                << "[Danmaku][DandanPlay] Search fallback failed"
-                << "| keyword:" << keyword
-                << "| path:" << fallbackPath
-                << "| error:" << errorMessage;
+            if (!tmdbId.isEmpty()) {
+                for (DanmakuMatchCandidate &candidate : candidates) {
+                    candidate.matchReason = QStringLiteral("tmdb");
+                    candidate.score = qMax(candidate.score, 160.0);
+                }
+            }
+            if (!candidates.isEmpty()) {
+                allCandidates.append(candidates);
+                qDebug().noquote()
+                    << "[Danmaku][DandanPlay] Episode search hit"
+                    << "| keyword:" << keyword
+                    << "| count:" << candidates.size();
+            }
+            if (response.object.value(QStringLiteral("hasMore")).toBool()) {
+                qWarning().noquote()
+                    << "[Danmaku][DandanPlay] Search result truncated by server"
+                    << "| keyword:" << keyword
+                    << "| returnedCount:" << candidates.size();
+            }
         }
     }
 
@@ -993,7 +1382,7 @@ QCoro::Task<QList<DanmakuMatchCandidate>> DandanplayProvider::searchCandidates(
         << "| deduplicatedCount:" << deduplicated.size();
 
     
-    if (context.isEpisode() && !deduplicated.isEmpty()) {
+    if (!deduplicated.isEmpty()) {
         const int topN = std::min<int>(deduplicated.size(), 5);
         for (int i = 0; i < topN; ++i) {
             const DanmakuMatchCandidate &c = deduplicated.at(i);
@@ -1014,6 +1403,7 @@ QCoro::Task<QList<DanmakuMatchCandidate>> DandanplayProvider::searchCandidates(
                 << (context.episodeNumber > 0 && c.episodeNumber > 0 &&
                     c.episodeNumber == context.episodeNumber)
                 << "| score:" << c.score
+                << "| matchReason:" << c.matchReason
                 << "| commentCount:" << c.commentCount;
         }
     }
@@ -1043,7 +1433,8 @@ QCoro::Task<QList<DanmakuComment>> DandanplayProvider::fetchComments(
         << "| withRelated:" << config.withRelated
         << "| url:" << url;
     const QJsonObject response =
-        co_await m_networkManager->get(url, buildHeaders(config, apiPath));
+        co_await m_networkManager->get(url, buildHeaders(config, apiPath),
+                                      danmakuRequestOptions());
     comments = parseCommentsResponse(response);
     qDebug().noquote()
         << "[Danmaku][DandanPlay] Fetch comments result"

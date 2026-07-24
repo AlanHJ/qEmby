@@ -24,6 +24,54 @@
         <source>Search</source>
         <translation>搜索</translation>
     </message>
+    <message>
+        <source>A new qEmby version is available</source>
+        <translation>发现新的 qEmby 版本</translation>
+    </message>
+    <message>
+        <source>qEmby %1 is available</source>
+        <translation>qEmby %1 已可用</translation>
+    </message>
+    <message>
+        <source>qEmby Update</source>
+        <translation>qEmby 更新</translation>
+    </message>
+    <message>
+        <source>Update Now</source>
+        <translation>立即升级</translation>
+    </message>
+    <message>
+        <source>No release notes were provided.</source>
+        <translation>此版本未提供更新说明。</translation>
+    </message>
+    <message>
+        <source>… Open the release page to read more.</source>
+        <translation>… 打开发布页面查看更多内容。</translation>
+    </message>
+    <message>
+        <source>A new version of qEmby is available.
+
+Current version: %1
+New version: %2
+
+Release notes:
+%3</source>
+        <translation>发现新的 qEmby 版本。
+
+当前版本：%1
+新版本：%2
+
+更新说明：
+%3</translation>
+    </message>
+    <message>
+        <source>Update Failed</source>
+        <translation>升级失败</translation>
+    </message>
+    <message>
+        <source>The update page could not be opened. Please try again later.</source>
+        <translation>无法打开升级页面，请稍后重试。</translation>
+    </message>
 </context>
 
 <context>
@@ -2019,6 +2067,22 @@ Choose a file, paste an image URL, or drag one onto the preview.</source>
         <translation>最小化到系统托盘而非退出应用</translation>
     </message>
     <message>
+        <source>Single Application Mode</source>
+        <translation>单例应用模式</translation>
+    </message>
+    <message>
+        <source>Check for Updates</source>
+        <translation>检查更新</translation>
+    </message>
+    <message>
+        <source>Automatically check GitHub for a new qEmby version on startup</source>
+        <translation>每次启动时自动从 GitHub 检查新的 qEmby 版本</translation>
+    </message>
+    <message>
+        <source>Allow only one qEmby instance and activate it when launched again (requires restart)</source>
+        <translation>仅允许一个 qEmby 实例运行，再次启动时激活现有窗口（需要重启生效）</translation>
+    </message>
+    <message>
         <source>Enable Logging</source>
         <translation>启用日志</translation>
     </message>
@@ -2586,6 +2650,193 @@ This will remove the current log and rotated backups. This action cannot be undo
         <source>French translation</source>
         <translation>法语翻译</translation>
     </message>
+    <message>
+        <source>Check for Updates</source>
+        <translation>检查更新</translation>
+    </message>
+    <message>
+        <source>Checking for updates…</source>
+        <translation>正在检查更新…</translation>
+    </message>
+    <message>
+        <source>You are using the latest version</source>
+        <translation>当前已是最新版本</translation>
+    </message>
+    <message>
+        <source>Update Check Failed</source>
+        <translation>检查更新失败</translation>
+    </message>
+    <message>
+        <source>qEmby Update</source>
+        <translation>qEmby 更新</translation>
+    </message>
+    <message>
+        <source>Update Now</source>
+        <translation>立即升级</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <source>No release notes were provided.</source>
+        <translation>此版本未提供更新说明。</translation>
+    </message>
+    <message>
+        <source>… Open the release page to read more.</source>
+        <translation>… 打开发布页面查看更多内容。</translation>
+    </message>
+    <message>
+        <source>A new version of qEmby is available.
+
+Current version: %1
+New version: %2
+
+Release notes:
+%3</source>
+        <translation>发现新的 qEmby 版本。
+
+当前版本：%1
+新版本：%2
+
+更新说明：
+%3</translation>
+    </message>
+    <message>
+        <source>Update Failed</source>
+        <translation>升级失败</translation>
+    </message>
+    <message>
+        <source>The update page could not be opened. Please try again later.</source>
+        <translation>无法打开升级页面，请稍后重试。</translation>
+    </message>
+</context>
+
+<context>
+    <name>UpdateManager</name>
+    <message>
+        <source>Could not connect to GitHub: %1</source>
+        <translation>无法连接 GitHub：%1</translation>
+    </message>
+    <message>
+        <source>GitHub returned invalid update information.</source>
+        <translation>GitHub 返回了无效的更新信息。</translation>
+    </message>
+    <message>
+        <source>The release contains an invalid version number: %1</source>
+        <translation>发布版本包含无效的版本号：%1</translation>
+    </message>
+</context>
+
+<context>
+    <name>UpdateDialog</name>
+    <message>
+        <source>qEmby Update</source>
+        <translation>qEmby 更新</translation>
+    </message>
+    <message>
+        <source>A new version of qEmby is available.</source>
+        <translation>发现新的 qEmby 版本。</translation>
+    </message>
+    <message>
+        <source>Current version</source>
+        <translation>当前版本</translation>
+    </message>
+    <message>
+        <source>New version</source>
+        <translation>新版本</translation>
+    </message>
+    <message>
+        <source>Release</source>
+        <translation>发布名称</translation>
+    </message>
+    <message>
+        <source>Published</source>
+        <translation>发布日期</translation>
+    </message>
+    <message>
+        <source>Release notes</source>
+        <translation>更新说明</translation>
+    </message>
+    <message>
+        <source>No release notes were provided.</source>
+        <translation>此版本未提供更新说明。</translation>
+    </message>
+    <message>
+        <source>Unknown</source>
+        <translation>未知</translation>
+    </message>
+    <message>
+        <source>Ignore</source>
+        <translation>忽略此版本</translation>
+    </message>
+    <message>
+        <source>Remind Me Later</source>
+        <translation>忽略本次（下次提示）</translation>
+    </message>
+    <message>
+        <source>Hide this reminder until the next application startup</source>
+        <translation>本次不再显示，下次启动应用时继续提示</translation>
+    </message>
+    <message>
+        <source>Ignore This Version</source>
+        <translation>忽略此版本</translation>
+    </message>
+    <message>
+        <source>Do not remind me again for this version</source>
+        <translation>此版本不再提示，后续新版本仍会提示</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <source>Update Now</source>
+        <translation>立即升级</translation>
+    </message>
+</context>
+
+<context>
+    <name>WindowsUpdateManager</name>
+    <message><source>No compatible Windows installer is available for this release.</source><translation>此版本没有可用的 Windows 安装程序。</translation></message>
+    <message><source>The release does not provide a valid SHA-256 digest.</source><translation>此版本未提供有效的 SHA-256 摘要。</translation></message>
+    <message><source>Could not create the temporary update directory.</source><translation>无法创建临时更新目录。</translation></message>
+    <message><source>The Windows installer has an invalid file name.</source><translation>Windows 安装程序的文件名无效。</translation></message>
+    <message><source>Could not open the temporary update file for writing.</source><translation>无法写入临时更新文件。</translation></message>
+    <message><source>Downloading update…</source><translation>正在下载更新…</translation></message>
+    <message><source>Failed to write the downloaded update to disk.</source><translation>无法将下载的更新写入磁盘。</translation></message>
+    <message><source>Update download failed: %1</source><translation>更新下载失败：%1</translation></message>
+    <message><source>Could not finalize the downloaded update file.</source><translation>无法完成下载文件的保存。</translation></message>
+    <message><source>Verifying SHA-256 digest…</source><translation>正在校验 SHA-256 摘要…</translation></message>
+    <message><source>SHA-256 verification failed. The downloaded file may be corrupted.</source><translation>SHA-256 校验失败，下载文件可能已损坏。</translation></message>
+    <message><source>Update verified and ready to install.</source><translation>更新已通过校验，可以安装。</translation></message>
+    <message><source>The verified installer is no longer available.</source><translation>已校验的安装程序已不存在。</translation></message>
+    <message><source>Could not start the Windows installer.</source><translation>无法启动 Windows 安装程序。</translation></message>
+    <message><source>Could not start the Windows update helper.</source><translation>无法启动 Windows 更新辅助程序。</translation></message>
+    <message><source>In-app installation is only available on Windows.</source><translation>应用内安装仅支持 Windows。</translation></message>
+</context>
+
+<context>
+    <name>UpdateProgressDialog</name>
+    <message><source>%1 MB</source><translation>%1 MB</translation></message>
+    <message><source>%1 KB</source><translation>%1 KB</translation></message>
+    <message><source>Update qEmby</source><translation>升级 qEmby</translation></message>
+    <message><source>Updating to %1</source><translation>正在升级到 %1</translation></message>
+    <message><source>Preparing download…</source><translation>正在准备下载…</translation></message>
+    <message><source>Waiting for download…</source><translation>等待开始下载…</translation></message>
+    <message><source>Start qEmby after updating</source><translation>升级后自动启动 qEmby</translation></message>
+    <message><source>Automatically reopen the application after installation completes</source><translation>安装完成后自动重新打开应用</translation></message>
+    <message><source>Cancel</source><translation>取消</translation></message>
+    <message><source>Install Update</source><translation>安装更新</translation></message>
+    <message><source>SHA-256 digest verified.</source><translation>SHA-256 摘要校验已通过。</translation></message>
+    <message><source>Update Failed</source><translation>升级失败</translation></message>
+    <message><source>The update page could not be opened. Please try again later.</source><translation>无法打开升级页面，请稍后重试。</translation></message>
+    <message><source>%1 of %2 (%3%)</source><translation>已下载 %1，共 %2（%3%）</translation></message>
+    <message><source>Downloaded %1</source><translation>已下载 %1</translation></message>
+    <message><source>Update failed</source><translation>升级失败</translation></message>
+    <message><source>Close</source><translation>关闭</translation></message>
+    <message><source>Starting the Windows installer…</source><translation>正在启动 Windows 安装程序…</translation></message>
+    <message><source>qEmby will close now. Installation progress will be shown by the Windows installer.</source><translation>qEmby 即将关闭，后续安装进度将由 Windows 安装程序显示。</translation></message>
 </context>
 
 <context>
@@ -2613,6 +2864,14 @@ This will remove the current log and rotated backups. This action cannot be undo
     <message>
         <source>Unknown Series</source>
         <translation>未知剧集</translation>
+    </message>
+    <message>
+        <source>Mark as Played</source>
+        <translation>标记为已播放</translation>
+    </message>
+    <message>
+        <source>Mark as Unplayed</source>
+        <translation>标记为未播放</translation>
     </message>
     <message>
         <source>Error Loading Episodes</source>
@@ -7737,6 +7996,10 @@ Comments: %4</source>
 <context>
     <name>PlayerDanmakuIdentifyDialog</name>
     <message>
+        <source>LogVar / danmu_api</source>
+        <translation>LogVar / danmu_api</translation>
+    </message>
+    <message>
         <source>Local File</source>
         <translation>本地文件</translation>
     </message>
@@ -8113,6 +8376,38 @@ Comments: %4</source>
 <context>
     <name>DanmakuServerDialog</name>
     <message>
+        <source>Each item shows the danmaku server name, type, address, credentials, and description. The built-in official DandanPlay server supports anime only.</source>
+        <translation>每个列表项会显示弹幕服务器的名称、类型、地址、凭据和说明。内置的官方弹弹Play服务器仅支持动画。</translation>
+    </message>
+    <message>
+        <source>Choose the server type and configure its address and credentials. Official DandanPlay uses signed App credentials; LogVar / danmu_api uses an optional access token and supports general video content.</source>
+        <translation>选择服务器类型并配置地址和凭据。官方弹弹Play使用 App 签名凭据；LogVar / danmu_api 使用可选访问令牌并支持常规影视内容。</translation>
+    </message>
+    <message>
+        <source>Server Type</source>
+        <translation>服务类型</translation>
+    </message>
+    <message>
+        <source>DandanPlay Official API</source>
+        <translation>弹弹Play 官方 API</translation>
+    </message>
+    <message>
+        <source>LogVar / danmu_api</source>
+        <translation>LogVar / danmu_api</translation>
+    </message>
+    <message>
+        <source>Access Token</source>
+        <translation>访问令牌</translation>
+    </message>
+    <message>
+        <source>Optional TOKEN configured by danmu_api</source>
+        <translation>danmu_api 中配置的可选 TOKEN</translation>
+    </message>
+    <message>
+        <source>General video danmaku service</source>
+        <translation>常规影视弹幕服务</translation>
+    </message>
+    <message>
         <source>Danmaku Servers</source>
         <translation>弹幕服务器</translation>
     </message>
@@ -8217,6 +8512,10 @@ Comments: %4</source>
         <translation>每个弹幕服务器都必须填写名称。</translation>
     </message>
     <message>
+        <source>Every danmaku server must use a supported server type.</source>
+        <translation>每个弹幕服务器都必须选择受支持的服务器类型。</translation>
+    </message>
+    <message>
         <source>Every danmaku server must have a server URL.</source>
         <translation>每个弹幕服务器都必须填写服务器地址。</translation>
     </message>
@@ -8228,6 +8527,18 @@ Comments: %4</source>
 
 <context>
     <name>DanmakuServerListItemWidget</name>
+    <message>
+        <source>DandanPlay</source>
+        <translation>弹弹Play</translation>
+    </message>
+    <message>
+        <source>LogVar / danmu_api</source>
+        <translation>LogVar / danmu_api</translation>
+    </message>
+    <message>
+        <source>Token: %1</source>
+        <translation>令牌：%1</translation>
+    </message>
     <message>
         <source>Remove Server</source>
         <translation>删除服务器</translation>
@@ -8252,6 +8563,30 @@ Comments: %4</source>
 
 <context>
     <name>PagePlayer</name>
+    <message>
+        <source>Preferred server: %1</source>
+        <translation>首选服务器：%1</translation>
+    </message>
+    <message>
+        <source>Server type: %1</source>
+        <translation>服务类型：%1</translation>
+    </message>
+    <message>
+        <source>Enabled servers: %1</source>
+        <translation>已启用服务器：%1</translation>
+    </message>
+    <message>
+        <source>Supported content: General video</source>
+        <translation>支持内容：常规影视</translation>
+    </message>
+    <message>
+        <source>DandanPlay</source>
+        <translation>弹弹Play</translation>
+    </message>
+    <message>
+        <source>LogVar / danmu_api</source>
+        <translation>LogVar / danmu_api</translation>
+    </message>
     <message>
         <source>Danmaku</source>
         <translation>弹幕</translation>
@@ -8656,6 +8991,10 @@ Address: %2</source>
 
 <context>
     <name>PlayerView</name>
+    <message>
+        <source>LogVar / danmu_api</source>
+        <translation>LogVar / danmu_api</translation>
+    </message>
     <message>
         <source>Seasons &amp; Episodes</source>
         <translation>季与剧集</translation>
@@ -9267,6 +9606,18 @@ This cannot be undone.</source>
     <message>
         <source>Sync passphrase</source>
         <translation>同步密码短语</translation>
+    </message>
+</context>
+
+<context>
+    <name>TrayManager</name>
+    <message>
+        <source>Show qEmby</source>
+        <translation>显示 qEmby</translation>
+    </message>
+    <message>
+        <source>Quit</source>
+        <translation>退出</translation>
     </message>
 </context>
 

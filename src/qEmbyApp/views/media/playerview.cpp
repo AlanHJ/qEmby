@@ -1063,39 +1063,68 @@ void PlayerView::pausePlayback()
 
 
 
+
 void PlayerView::resumePlayback()
 {
-    if (!m_mpvWidget || m_currentMediaId.isEmpty())
+    if (!m_mpvWidget || m_currentMediaId.isEmpty() || m_isViewTearingDown || m_hasReportedStop)
         return;
 
-    
-    QString newStreamUrl = m_originalStreamUrl;
+    qInfo().noquote() << "[PlayerView] Resume after window restore"
+                      << "| mediaId:" << m_currentMediaId
+                      << "| position:" << m_currentPosition;
+
+    updateOverlayLayout();
+    m_mpvWidget->update();
+    showControls();
+    m_mpvWidget->resumeAfterContextRestore();
+}
+
+void PlayerView::restoreAfterWindowShow(bool shouldResumePlaying)
+{
+    if (!m_mpvWidget || m_currentMediaId.isEmpty() || m_isViewTearingDown || m_hasReportedStop)
+        return;
+
+    const double restorePosition = qMax(0.0, m_currentPosition);
+    QString streamUrl = m_originalStreamUrl;
     if (m_currentSourceInfoVar.isValid())
     {
         MediaSourceInfo sourceInfo;
         if (m_currentSourceInfoVar.canConvert<PlayerLaunchContext>())
-        {
             sourceInfo = m_currentSourceInfoVar.value<PlayerLaunchContext>().selectedSource;
-        }
         else if (m_currentSourceInfoVar.canConvert<MediaSourceInfo>())
-        {
             sourceInfo = m_currentSourceInfoVar.value<MediaSourceInfo>();
-        }
 
-        QString directUrl = m_core->mediaService()->getStreamUrl(m_currentMediaId, sourceInfo);
-        if (!directUrl.isEmpty())
-        {
-            newStreamUrl = directUrl;
-        }
+        const QString refreshedUrl = m_core->mediaService()->getStreamUrl(m_currentMediaId, sourceInfo);
+        if (!refreshedUrl.isEmpty())
+            streamUrl = refreshedUrl;
     }
 
-    
-    m_pendingSeekSeconds = m_currentPosition;
+    if (streamUrl.isEmpty())
+    {
+        qWarning().noquote() << "[PlayerView] Cannot restore playback: stream URL is empty"
+                             << "| mediaId:" << m_currentMediaId;
+        return;
+    }
+
+    qInfo().noquote() << "[PlayerView] Restore playback after window show"
+                      << "| mediaId:" << m_currentMediaId
+                      << "| position:" << restorePosition
+                      << "| shouldPlay:" << shouldResumePlaying;
+
+    m_pendingSeekSeconds = restorePosition;
+    m_windowRestorePending = true;
+    m_windowRestoreShouldPlay = shouldResumePlaying;
     m_isBuffering = true;
     updateLoadingState();
+    updateOverlayLayout();
+    showControls();
+
+    if (m_danmakuController) {
+        m_danmakuController->prepareForMediaReload();
+    }
+
     const QString activeServerId = m_core->serverManager()->activeProfile().id;
-    m_mpvWidget->loadMedia(newStreamUrl, activeServerId);
-    m_mpvWidget->play(); 
+    m_mpvWidget->loadMedia(streamUrl, activeServerId);
 }
 
 
@@ -1135,6 +1164,22 @@ void PlayerView::setupUi()
     connect(m_mpvWidget->controller(), &MpvController::fileLoaded, this,
             [this]()
             {
+                if (m_windowRestorePending)
+                {
+                    const double restorePosition = m_pendingSeekSeconds;
+                    m_windowRestorePending = false;
+                    m_pendingSeekSeconds = 0.0;
+                    if (restorePosition > 0.0)
+                        m_mpvWidget->seek(restorePosition);
+                    if (m_windowRestoreShouldPlay)
+                        m_mpvWidget->play();
+                    else
+                        m_mpvWidget->pause();
+
+                    qInfo().noquote() << "[PlayerView] Window restore state applied"
+                                      << "| position:" << restorePosition
+                                      << "| playing:" << m_windowRestoreShouldPlay;
+                }
                 m_isBuffering = false;
                 updateLoadingState();
                 applySubtitleStyleSettings();
@@ -1250,11 +1295,11 @@ void PlayerView::setupUi()
             });
 
     
+    
+    
     connect(m_closeBtn, &QPushButton::clicked, this,
             [this]()
             {
-                beginViewTeardown();
-                stopAndReport();
                 window()->close();
             });
 #endif
@@ -1656,6 +1701,10 @@ QString PlayerView::formatDanmakuProviderLabel(QString provider) const
     if (provider == QLatin1String("dandanplay"))
     {
         return tr("DandanPlay");
+    }
+    if (provider == QLatin1String("danmu_api"))
+    {
+        return tr("LogVar / danmu_api");
     }
     return provider.isEmpty() ? tr("Unknown Source") : provider;
 }
@@ -2152,15 +2201,21 @@ QCoro::Task<void> PlayerView::switchFromMediaSwitcher(QString mediaId, QString t
         {
             int sourceIdx = MediaSourcePreferenceUtils::resolvePreferredMediaSourceIndex(
                 detail.mediaSources,
-                ConfigStore::instance()->get<QString>(ConfigKeys::PlayerPreferredVersion).trimmed());
+                ConfigStore::instance()->get<QString>(ConfigKeys::PlayerPreferredVersion).trimmed(),
+                MediaSourcePreferenceUtils::rememberedMediaSourceId(
+                    m_core->serverManager() ? m_core->serverManager()->activeProfile().id : QString(),
+                    detail.id));
             if (sourceIdx < 0 || sourceIdx >= detail.mediaSources.size())
             {
                 sourceIdx = 0;
             }
 
             selectedSource = detail.mediaSources.at(sourceIdx);
-            PlayerPreferenceUtils::applyPreferredStreamRules(
-                selectedSource, ConfigStore::instance()->get<QString>(ConfigKeys::PlayerAudioLang, "auto"),
+            PlayerPreferenceUtils::applyRememberedOrPreferredStreamRules(
+                selectedSource,
+                m_core->serverManager() ? m_core->serverManager()->activeProfile().id : QString(),
+                detail.id,
+                ConfigStore::instance()->get<QString>(ConfigKeys::PlayerAudioLang, "auto"),
                 ConfigStore::instance()->get<QString>(ConfigKeys::PlayerSubLang, "auto"));
             mediaSourceId = selectedSource.id;
         }
@@ -4626,6 +4681,62 @@ QCoro::Task<void> PlayerView::executeFetchLogo(QPointer<PlayerView> safeThis, QE
     }
 }
 
+QCoro::Task<void> PlayerView::resolveDanmakuPlaybackContext(
+    QPointer<PlayerView> safeThis,
+    QPointer<QEmbyCore> core,
+    QString mediaId,
+    QString fallbackTitle,
+    MediaSourceInfo sourceInfo)
+{
+    if (!safeThis || !core || !core->mediaService() || mediaId.isEmpty()) {
+        co_return;
+    }
+
+    try {
+        MediaItem detail = co_await core->mediaService()->getItemDetail(mediaId);
+        if (!safeThis || safeThis->m_currentMediaId != mediaId ||
+            !safeThis->m_danmakuController) {
+            co_return;
+        }
+        if (detail.id.isEmpty()) {
+            detail.id = mediaId;
+        }
+        if (detail.name.isEmpty()) {
+            detail.name = fallbackTitle;
+        }
+        if (sourceInfo.id.isEmpty() && !detail.mediaSources.isEmpty()) {
+            const auto selectedIt = std::find_if(
+                detail.mediaSources.cbegin(), detail.mediaSources.cend(),
+                [safeThis](const MediaSourceInfo &candidate) {
+                    return safeThis &&
+                           candidate.id == safeThis->m_currentMediaSourceId;
+                });
+            sourceInfo = selectedIt == detail.mediaSources.cend()
+                             ? detail.mediaSources.first()
+                             : *selectedIt;
+        }
+
+        PlayerLaunchContext context;
+        context.mediaItem = detail;
+        context.selectedSource = sourceInfo;
+        qDebug().noquote()
+            << "[Danmaku][PlayerView] Resolved complete playback context"
+            << "| mediaId:" << detail.id
+            << "| sourceId:" << sourceInfo.id
+            << "| itemType:" << detail.type
+            << "| title:" << detail.name
+            << "| providerIds:" << detail.providerIds.keys().join(QStringLiteral(","));
+        safeThis->m_danmakuController->setPlaybackContext(context);
+    } catch (const std::exception &e) {
+        if (safeThis && safeThis->m_currentMediaId == mediaId) {
+            qWarning().noquote()
+                << "[Danmaku][PlayerView] Failed to resolve complete playback context"
+                << "| mediaId:" << mediaId
+                << "| error:" << e.what();
+        }
+    }
+}
+
 void PlayerView::playMedia(const QString &mediaId, const QString &title, const QString &streamUrl,
                            long long startPositionTicks, const QVariant &sourceInfoVar)
 {
@@ -4841,13 +4952,11 @@ void PlayerView::playMedia(const QString &mediaId, const QString &title, const Q
     const QString activeServerId = m_core->serverManager()->activeProfile().id;
     m_mpvWidget->loadMedia(actualStreamUrl, activeServerId);
 
-    if (!resolvedItem.id.isEmpty() || !resolvedSourceInfo.id.isEmpty())
+    const bool hasCompleteDanmakuContext =
+        !resolvedItem.id.isEmpty() && !resolvedItem.name.trimmed().isEmpty() &&
+        !resolvedItem.type.trimmed().isEmpty();
+    if (hasCompleteDanmakuContext)
     {
-        if (resolvedItem.id.isEmpty())
-        {
-            resolvedItem.id = mediaId;
-            resolvedItem.name = title;
-        }
         PlayerLaunchContext danmakuContext;
         danmakuContext.mediaItem = resolvedItem;
         danmakuContext.selectedSource = resolvedSourceInfo;
@@ -4857,10 +4966,21 @@ void PlayerView::playMedia(const QString &mediaId, const QString &title, const Q
                            << "| title:" << danmakuContext.mediaItem.name;
         m_danmakuController->setPlaybackContext(danmakuContext);
     }
+    else if (!mediaId.isEmpty())
+    {
+        m_danmakuController->clearPlaybackContext();
+        qDebug().noquote()
+            << "[Danmaku][PlayerView] Playback metadata incomplete, resolving before danmaku search"
+            << "| mediaId:" << mediaId
+            << "| sourceId:" << resolvedSourceInfo.id
+            << "| sourceInfoValid:" << sourceInfoVar.isValid();
+        QCoro::connect(resolveDanmakuPlaybackContext(
+                           QPointer<PlayerView>(this), QPointer<QEmbyCore>(m_core),
+                           mediaId, title, resolvedSourceInfo),
+                       this, []() {});
+    }
     else
     {
-        qDebug().noquote() << "[Danmaku][PlayerView] No playback context available for danmaku"
-                           << "| mediaId:" << mediaId << "| sourceInfoValid:" << sourceInfoVar.isValid();
         m_danmakuController->clearPlaybackContext();
     }
 
@@ -4887,6 +5007,7 @@ void PlayerView::playMedia(const QString &mediaId, const QString &title, const Q
         m_targetSubStreamIndex = -2;
         bool hasExternalDefault = false;
         bool foundDefaultAudio = false;
+        PlayerPreferenceUtils::RememberedStreamSelection remembered;
 
         for (const auto &stream : sourceInfo.mediaStreams)
         {
@@ -4908,11 +5029,28 @@ void PlayerView::playMedia(const QString &mediaId, const QString &title, const Q
             }
         }
 
+        if (m_core && m_core->serverManager())
+        {
+            remembered =
+                PlayerPreferenceUtils::validatedRememberedStreamSelection(
+                    m_core->serverManager()->activeProfile().id, mediaId,
+                    sourceInfo);
+            if (remembered.audioIndex.has_value())
+            {
+                m_targetAudioStreamIndex = *remembered.audioIndex;
+            }
+            if (remembered.subtitleIndex.has_value())
+            {
+                
+                m_targetSubStreamIndex = *remembered.subtitleIndex;
+            }
+        }
+
         
         
 
         
-        if (hasExternalDefault)
+        if (hasExternalDefault && !remembered.subtitleIndex.has_value())
         {
             m_targetSubStreamIndex = -2;
         }
@@ -4993,7 +5131,11 @@ void PlayerView::playMedia(const QString &mediaId, const QString &title, const Q
 
                 
                 
-                QString flag = stream.isDefault ? "select" : "auto";
+                const bool selectExternal =
+                    remembered.subtitleIndex.has_value()
+                        ? *remembered.subtitleIndex == stream.index
+                        : stream.isDefault;
+                QString flag = selectExternal ? "select" : "auto";
 
                 
                 QVariantMap subMap;
@@ -5304,7 +5446,9 @@ void PlayerView::onDurationChanged(double duration)
         applyPersistedExternalSubtitleIfAny();
     }
 
-    if (m_pendingSeekSeconds > 0 && duration > 0)
+    
+    
+    if (!m_windowRestorePending && m_pendingSeekSeconds > 0 && duration > 0)
     {
         m_mpvWidget->seek(m_pendingSeekSeconds);
         m_pendingSeekSeconds = 0.0;

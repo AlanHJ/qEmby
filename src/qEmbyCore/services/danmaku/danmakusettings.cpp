@@ -182,17 +182,31 @@ QList<DanmakuServerDefinition> normalizedServers(QList<DanmakuServerDefinition> 
     {
         server.id = server.id.trimmed();
         server.name = server.name.trimmed();
-        server.provider = server.provider.trimmed();
+        server.provider = server.provider.trimmed().toLower();
         server.baseUrl = normalizeBaseUrl(server.baseUrl);
         server.description = server.description.trimmed();
         server.appId = server.appId.trimmed();
         server.appSecret = server.appSecret.trimmed();
+        server.accessToken = server.accessToken.trimmed();
         server.contentScope = server.contentScope.trimmed().toLower();
         server.builtIn = isBuiltInOfficialDandanplayServer(server);
 
         if (server.provider.isEmpty())
         {
             server.provider = QString::fromLatin1(kOfficialDandanplayProvider);
+        }
+        if (server.provider == QLatin1String("danmu_api"))
+        {
+            server.appId.clear();
+            server.appSecret.clear();
+            if (server.contentScope.isEmpty())
+            {
+                server.contentScope = QStringLiteral("general");
+            }
+        }
+        else
+        {
+            server.accessToken.clear();
         }
         if (server.id.isEmpty())
         {
@@ -250,6 +264,7 @@ QList<DanmakuServerDefinition> parseServers(const QString &json)
         server.description = object.value(QStringLiteral("description")).toString().trimmed();
         server.appId = object.value(QStringLiteral("appId")).toString().trimmed();
         server.appSecret = object.value(QStringLiteral("appSecret")).toString().trimmed();
+        server.accessToken = object.value(QStringLiteral("accessToken")).toString().trimmed();
         server.contentScope = object.value(QStringLiteral("contentScope")).toString().trimmed();
         server.builtIn = object.value(QStringLiteral("builtIn")).toBool(false);
         server.enabled = object.value(QStringLiteral("enabled")).toBool(true);
@@ -270,6 +285,7 @@ QJsonArray toJsonArray(const QList<DanmakuServerDefinition> &servers)
             savedServer.description.clear();
             savedServer.appId.clear();
             savedServer.appSecret.clear();
+            savedServer.accessToken.clear();
         }
 
         QJsonObject object;
@@ -280,6 +296,7 @@ QJsonArray toJsonArray(const QList<DanmakuServerDefinition> &servers)
         object.insert(QStringLiteral("description"), savedServer.description);
         object.insert(QStringLiteral("appId"), savedServer.appId);
         object.insert(QStringLiteral("appSecret"), savedServer.appSecret);
+        object.insert(QStringLiteral("accessToken"), savedServer.accessToken);
         object.insert(QStringLiteral("contentScope"), savedServer.contentScope);
         object.insert(QStringLiteral("builtIn"), savedServer.builtIn);
         object.insert(QStringLiteral("enabled"), savedServer.enabled);

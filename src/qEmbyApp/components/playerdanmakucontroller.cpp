@@ -9,11 +9,14 @@
 #include <qembycore.h>
 #include <services/danmaku/danmakuservice.h>
 #include <services/manager/servermanager.h>
+#include <services/media/mediaservice.h>
 
 #include <QCoreApplication>
 #include <QDir>
 #include <QDebug>
+#include <QFileInfo>
 #include <QTimer>
+#include <QUrl>
 #include <exception>
 
 namespace {
@@ -206,6 +209,34 @@ void PlayerDanmakuController::clearPlaybackContext()
         m_nativeDanmakuOverlay->clearDanmaku();
     }
     qDebug() << "[Danmaku][Player] Cleared playback context";
+    emit stateChanged();
+}
+
+void PlayerDanmakuController::prepareForMediaReload()
+{
+    if (!hasPlaybackContext()) {
+        return;
+    }
+
+    const bool hadTrack = m_danmakuTrackId > 0;
+    const bool hasPreparedContent = hasPreparedDanmaku();
+
+    
+    
+    
+    removeDanmakuTrack();
+    m_fileLoaded = false;
+    m_selectedSubtitleTrackId = -1;
+    if (m_nativeDanmakuOverlay) {
+        m_nativeDanmakuOverlay->setDanmakuVisible(false);
+    }
+
+    qDebug().noquote()
+        << "[Danmaku][Player] Prepared for media reload"
+        << "| mediaId:" << m_mediaContext.mediaId
+        << "| hadTrack:" << hadTrack
+        << "| hasPreparedContent:" << hasPreparedContent
+        << "| nativeRenderer:" << shouldUseNativeRenderer();
     emit stateChanged();
 }
 
@@ -493,6 +524,27 @@ DanmakuMediaContext PlayerDanmakuController::buildMediaContext(
     mediaContext.durationMs =
         (source.runTimeTicks > 0 ? source.runTimeTicks : item.runTimeTicks) / 10000;
     mediaContext.path = !source.path.isEmpty() ? source.path : item.path;
+    QString normalizedMediaPath = mediaContext.path;
+    const QUrl mediaPathUrl = QUrl::fromUserInput(normalizedMediaPath);
+    if (mediaPathUrl.scheme().compare(QStringLiteral("http"),
+                                      Qt::CaseInsensitive) == 0 ||
+        mediaPathUrl.scheme().compare(QStringLiteral("https"),
+                                      Qt::CaseInsensitive) == 0) {
+        normalizedMediaPath = mediaPathUrl.path();
+    }
+    normalizedMediaPath.replace(QLatin1Char('\\'), QLatin1Char('/'));
+    mediaContext.fileName =
+        QFileInfo(normalizedMediaPath).completeBaseName().trimmed();
+    if (mediaContext.fileName.isEmpty() && !item.name.trimmed().isEmpty()) {
+        mediaContext.fileName = item.name.trimmed();
+    }
+    mediaContext.fileSize = source.size > 0 ? source.size : item.size;
+    mediaContext.mediaModifiedAt = source.dateModified;
+    mediaContext.genres = item.genres;
+    if (m_core->mediaService() && !item.id.isEmpty() && !source.id.isEmpty()) {
+        mediaContext.mediaUrl =
+            m_core->mediaService()->getStreamUrl(item.id, source);
+    }
     mediaContext.providerIds = item.providerIds;
     return mediaContext;
 }

@@ -225,6 +225,10 @@ public:
     QString resumeItemId;
     MediaUserDataInfo resumeUserData;
     bool hasResumeContext = false;
+    
+    
+    
+    bool isResumeDisplayFallback = false;
 
     QList<MediaPersonInfo> people;
     QList<MediaStudioInfo> studios; 

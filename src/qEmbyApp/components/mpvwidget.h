@@ -20,6 +20,7 @@ public:
 
     void loadMedia(const QString &url, const QString &serverId = QString());
     void play();
+    void resumeAfterContextRestore();
     void pause();
     void stop();
     void seek(double positionInSeconds);
@@ -52,6 +53,7 @@ private:
     MpvController *m_controller;
     MpvHttpStreamRelay *m_streamRelay = nullptr;
     bool m_usingStreamRelay = false;
+    bool m_resumeWhenRenderReady = false;
     mpv_render_context *m_mpv_gl;
 
     

@@ -154,7 +154,7 @@ void MediaGridWidget::setItems(const QList<MediaItem>& items) {
     adjustGrid();
     
     
-    if (m_shimmer && m_shimmer->isVisible() && !items.isEmpty()) {
+    if (m_shimmer && !items.isEmpty()) {
         m_shimmer->stopAnimation();
         m_shimmer->hide();
     }
@@ -274,6 +274,11 @@ void MediaGridWidget::updateVisibleImagePriority()
         return;
     }
 
+    if (!isVisible() || visibleRegion().isEmpty()) {
+        m_listModel->setPriorityRows({});
+        return;
+    }
+
     QWidget* viewport = m_listView->viewport();
     if (!viewport) {
         return;
@@ -323,6 +328,9 @@ void MediaGridWidget::adjustGrid() {
         if (cellWidth < 100) cellWidth = 100;
         
         m_listDelegate->setTileSize(QSize(cellWidth, 160));
+        const int requestWidth = qBound(
+            160, qRound(250 * devicePixelRatioF()), 768);
+        m_listModel->setImageMaxWidth(requestWidth);
     } else {
         availableWidth -= (m_basePadding * 2);
         int defaultCellWidth = 150;
@@ -353,6 +361,9 @@ void MediaGridWidget::adjustGrid() {
 
         int cellHeight = imgHeight + 60;
         m_listDelegate->setTileSize(QSize(cellWidth, cellHeight));
+        const int requestWidth = qBound(
+            160, qRound(imgWidth * devicePixelRatioF()), 768);
+        m_listModel->setImageMaxWidth(requestWidth);
     }
     
     m_listView->doItemsLayout();

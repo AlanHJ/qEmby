@@ -75,6 +75,21 @@ QWK--WindowBar>QLabel#win-title-label {
     font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
 }
 
+QWK--WindowBar QPushButton#titlebar-update-button {
+    border: none;
+    border-radius: 6px;
+    background-color: transparent;
+    padding: 6px;
+}
+
+QWK--WindowBar QPushButton#titlebar-update-button:hover {
+    background-color: #E2E8F0;
+}
+
+QWK--WindowBar QPushButton#titlebar-update-button:pressed {
+    background-color: #CBD5E1;
+}
+
 QLabel#mac-title-label {
     padding: 0;
     border: none;
@@ -1126,6 +1141,115 @@ QPushButton#dialog-btn-primary:hover {
 QPushButton#dialog-btn-primary:disabled {
     background-color: rgba(59, 130, 246, 0.4);
     color: rgba(255, 255, 255, 0.7);
+}
+
+QLabel#UpdateDialogHeadline {
+    color: #0F172A;
+    font-size: 16px;
+    font-weight: 700;
+    padding-bottom: 2px;
+}
+
+QFrame#UpdateDialogSummary {
+    background-color: #F8FAFC;
+    border: 1px solid #E2E8F0;
+    border-radius: 10px;
+}
+
+QLabel#UpdateDialogSummaryLabel {
+    color: #64748B;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+QLabel#UpdateDialogSummaryValue {
+    color: #1E293B;
+    font-size: 13px;
+}
+
+QLabel#UpdateDialogSectionTitle {
+    color: #0F172A;
+    font-size: 14px;
+    font-weight: 700;
+    padding-top: 4px;
+}
+
+QTextBrowser#UpdateDialogReleaseNotes {
+    color: #334155;
+    background-color: #FFFFFF;
+    border: 1px solid #CBD5E1;
+    border-radius: 10px;
+    padding: 0;
+    selection-background-color: #3B82F6;
+}
+
+QTextBrowser#UpdateDialogReleaseNotes QScrollBar:vertical {
+    width: 10px;
+    margin: 0;
+    background: transparent;
+}
+
+QTextBrowser#UpdateDialogReleaseNotes QScrollBar::handle:vertical {
+    min-height: 30px;
+    margin: 2px 1px;
+    border-radius: 4px;
+    background-color: #94A3B8;
+}
+
+QTextBrowser#UpdateDialogReleaseNotes QScrollBar::handle:vertical:hover {
+    background-color: #64748B;
+}
+
+QTextBrowser#UpdateDialogReleaseNotes QScrollBar::add-line:vertical,
+QTextBrowser#UpdateDialogReleaseNotes QScrollBar::sub-line:vertical,
+QTextBrowser#UpdateDialogReleaseNotes QScrollBar::add-page:vertical,
+QTextBrowser#UpdateDialogReleaseNotes QScrollBar::sub-page:vertical {
+    height: 0;
+    background: transparent;
+    border: none;
+}
+
+QLabel#UpdateProgressHeadline {
+    color: #0F172A;
+    font-size: 17px;
+    font-weight: 700;
+}
+
+QLabel#UpdateProgressStatus {
+    color: #1E293B;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+QLabel#UpdateProgressDetail,
+QLabel#UpdateRestartDescription {
+    color: #64748B;
+    font-size: 13px;
+}
+
+QLabel#UpdateRestartTitle {
+    color: #1E293B;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+QWidget#UpdateRestartCard {
+    background-color: #F8FAFC;
+    border: 1px solid #E2E8F0;
+    border-radius: 10px;
+}
+
+QProgressBar#UpdateDownloadProgressBar {
+    min-height: 8px;
+    max-height: 8px;
+    background-color: #E2E8F0;
+    border: none;
+    border-radius: 4px;
+}
+
+QProgressBar#UpdateDownloadProgressBar::chunk {
+    background-color: #22C55E;
+    border-radius: 4px;
 }
 
 ModernDialogBase#playerDanmakuSettingsDialog,
@@ -3873,6 +3997,17 @@ QMenu#TagPresetMenu::indicator {
     background-color: transparent;
 }
 
+QScrollArea#ManagePageScrollArea {
+    background-color: transparent;
+    border: none;
+    margin: 0;
+    padding: 0;
+}
+
+QScrollArea#ManagePageScrollArea>QWidget>QWidget {
+    background-color: transparent;
+}
+
 /* 副标题 */
 QLabel#SettingsSubTitle {
     font-size: 11px;
@@ -3885,19 +4020,21 @@ QLabel#SettingsSubTitle {
 
 /* ==========================================
    Modern Tray Menu (Light Mode)
-   设计理念：Fluent 干净通透 / 柔和对比
+   设计理念：与全局 QMenu 同色系 (Gray) / 胶囊式悬浮
    ========================================== */
 #modern-tray-menu {
     background-color: rgba(255, 255, 255, 248);
     border: 1px solid #E5E7EB;
-    /* Tailwind Gray 200 */
+    /* Gray 200 边框，与全局 QMenu 一致 */
     border-radius: 8px;
     padding: 6px 0px;
+    /* margin 让圆角绘制区域内缩，脱离物理窗口直角边界 */
+    margin: 4px;
 }
 
 #modern-tray-menu::item {
-    color: #374151;
-    /* Tailwind Gray 700 */
+    color: #4B5563;
+    /* Gray 600，与全局 QMenu::item 一致 */
     padding: 6px 32px 6px 14px;
     margin: 2px 6px;
     border-radius: 5px;
@@ -3905,16 +4042,15 @@ QLabel#SettingsSubTitle {
 }
 
 #modern-tray-menu::item:selected {
-    background-color: #EFF6FF;
-    /* Tailwind Blue 50 (极柔和的浅蓝色底) */
-    color: #1D4ED8;
-    /* Tailwind Blue 700 (选中时文字变深蓝，层次分明) */
+    background-color: #E5E7EB;
+    /* Gray 200，胶囊式 item 在白底上需要更深一档才可见 */
+    color: #111827;
 }
 
 #modern-tray-menu::separator {
     height: 1px;
-    background-color: #F3F4F6;
-    /* Tailwind Gray 100 */
+    background-color: #E5E7EB;
+    /* Gray 200 分割线 */
     margin: 4px 12px;
 }
 

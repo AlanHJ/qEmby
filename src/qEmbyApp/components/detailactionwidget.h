@@ -3,6 +3,7 @@
 
 #include <QWidget>
 #include "models/media/mediaitem.h"
+#include <optional>
 
 class QPushButton;
 class QProgressBar;
@@ -21,8 +22,10 @@ public:
 
     void setFavoriteState(bool isFavorite);
     void setPlayedState(bool played);
-    void setSources(const QList<MediaSourceInfo>& sources, int currentIndex = 0);
-    void setStreams(const MediaSourceInfo& source);
+    void setSources(const QList<MediaSourceInfo>& sources, int currentIndex = -1);
+    void setStreams(const MediaSourceInfo& source,
+                    std::optional<int> rememberedAudioIndex = std::nullopt,
+                    std::optional<int> rememberedSubtitleIndex = std::nullopt);
     void clear();
 
     int currentSourceIndex() const;
@@ -38,6 +41,8 @@ signals:
     void favoriteRequested();
     void playedToggleRequested();
     void sourceVersionChanged(int index);
+    void audioStreamChanged(int streamIndex);
+    void subtitleStreamChanged(int streamIndex);
     void externalPlayRequested(const QString &playerPath);
 
 private:
@@ -55,6 +60,7 @@ private:
     ModernMenuButton* m_versionComboBox;
     ModernMenuButton* m_audioComboBox;
     ModernMenuButton* m_subtitleComboBox;
+    QList<int> m_sourceIndexes;
 
     
     SplitPlayerButton* m_extPlayerBtn;

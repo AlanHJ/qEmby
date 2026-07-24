@@ -1218,8 +1218,8 @@ void HomeView::goHome()
 {
     if (m_contentSwitcher->currentWidget() == m_dashboardView)
     {
-        
-        m_dashboardView->loadDashboardData();
+        QCoro::connect(m_dashboardView->loadDashboardData(), m_dashboardView,
+                       []() {});
         return;
     }
     m_libraryList->clearSelection();

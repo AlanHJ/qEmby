@@ -35,7 +35,12 @@ public:
     
     void removeItem(const QString& itemId);
     int itemCount() const;
+    QList<MediaItem> items() const;
     void clearImageCache();
+    void setForceNetworkImages(bool forceNetwork);
+    
+    
+    void clearFailedImageItems();
 
     
     void setCardStyle(MediaCardDelegate::CardStyle style);
@@ -67,12 +72,15 @@ Q_SIGNALS:
 
 protected:
     void resizeEvent(QResizeEvent* event) override;
+    void hideEvent(QHideEvent* event) override;
+    void showEvent(QShowEvent* event) override;
     bool eventFilter(QObject* obj, QEvent* event) override;
 
 private:
     void updateButtonsVisibility();
     void updateButtonPositions();
     void updateVisibleImagePriority();
+    void updateImageRequestSize();
 
     QEmbyCore* m_core;
     QListView* m_listView;
@@ -92,6 +100,7 @@ private:
 
     
     ShimmerWidget* m_shimmer = nullptr;
+    bool m_imageRequestsSuspendedForVisibility = false;
 };
 
 #endif 

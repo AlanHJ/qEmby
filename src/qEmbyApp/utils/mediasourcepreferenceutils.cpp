@@ -1,5 +1,7 @@
 #include "mediasourcepreferenceutils.h"
 
+#include <config/config_keys.h>
+#include <config/configstore.h>
 #include <QDateTime>
 #include <QDebug>
 #include <QFileInfo>
@@ -266,16 +268,21 @@ int compareByCriterion(const MediaSourceInfo &left, const MediaSourceInfo &right
         criterion == SortCriterion::BitrateAsc) {
         bool leftValid = false;
         bool rightValid = false;
-        return compareNumbers(sourceVideoBitrate(left, &leftValid), leftValid,
-                              sourceVideoBitrate(right, &rightValid), rightValid);
+        
+        
+        
+        const qint64 leftBitrate = sourceVideoBitrate(left, &leftValid);
+        const qint64 rightBitrate = sourceVideoBitrate(right, &rightValid);
+        return compareNumbers(leftBitrate, leftValid, rightBitrate, rightValid);
     }
 
     if (criterion == SortCriterion::SizeDesc ||
         criterion == SortCriterion::SizeAsc) {
         bool leftValid = false;
         bool rightValid = false;
-        return compareNumbers(sourceFileSize(left, &leftValid), leftValid,
-                              sourceFileSize(right, &rightValid), rightValid);
+        const qint64 leftSize = sourceFileSize(left, &leftValid);
+        const qint64 rightSize = sourceFileSize(right, &rightValid);
+        return compareNumbers(leftSize, leftValid, rightSize, rightValid);
     }
 
     bool leftValid = false;
@@ -359,16 +366,6 @@ QList<int> sortedCandidates(const QList<MediaSourceInfo> &mediaSources,
     return candidates;
 }
 
-QList<SortCriterion> collectAllSortCriteria(const QList<ParsedRule> &rules) {
-    QList<SortCriterion> result;
-    for (const ParsedRule &rule : rules) {
-        if (rule.isSort) {
-            result.append(rule.sortCriterion);
-        }
-    }
-    return result;
-}
-
 QList<SortCriterion> collectFollowingSortCriteria(const QList<ParsedRule> &rules,
                                                   int startIndex) {
     QList<SortCriterion> result;
@@ -414,15 +411,20 @@ QStringList splitPreferredVersionRules(const QString &rawRules) {
     return result;
 }
 
-int resolvePreferredMediaSourceIndex(const QList<MediaSourceInfo> &mediaSources,
+QList<int> preferredMediaSourceOrder(const QList<MediaSourceInfo> &mediaSources,
                                      const QString &rawRules) {
-    if (mediaSources.size() <= 1) {
-        return 0;
+    QList<int> remaining;
+    remaining.reserve(mediaSources.size());
+    for (int i = 0; i < mediaSources.size(); ++i) {
+        remaining.append(i);
+    }
+    if (remaining.size() <= 1) {
+        return remaining;
     }
 
     const QStringList tokens = splitPreferredVersionRules(rawRules);
     if (tokens.isEmpty()) {
-        return 0;
+        return remaining;
     }
 
     QList<ParsedRule> rules;
@@ -430,14 +432,18 @@ int resolvePreferredMediaSourceIndex(const QList<MediaSourceInfo> &mediaSources,
         rules.append(parseRule(token));
     }
 
-    const QList<SortCriterion> globalSortCriteria = collectAllSortCriteria(rules);
+    QList<int> ordered;
+    ordered.reserve(mediaSources.size());
 
     for (int i = 0; i < rules.size(); ++i) {
+        if (remaining.isEmpty()) {
+            break;
+        }
+
         const ParsedRule &rule = rules[i];
         if (!rule.isSort) {
             QList<int> matches;
-            for (int sourceIndex = 0; sourceIndex < mediaSources.size();
-                 ++sourceIndex) {
+            for (const int sourceIndex : remaining) {
                 if (sourceMatchesKeyword(mediaSources[sourceIndex], rule.keyword)) {
                     matches.append(sourceIndex);
                 }
@@ -449,48 +455,41 @@ int resolvePreferredMediaSourceIndex(const QList<MediaSourceInfo> &mediaSources,
 
             QList<SortCriterion> sortCriteria =
                 collectFollowingSortCriteria(rules, i);
-            if (sortCriteria.isEmpty()) {
-                sortCriteria = globalSortCriteria;
-            }
 
             bool usedMeaningfulSort = false;
             const QList<int> orderedMatches = sortedCandidates(
                 mediaSources, matches, sortCriteria, &usedMeaningfulSort);
-            const int chosenIndex =
-                orderedMatches.isEmpty() ? matches.first() : orderedMatches.first();
+            for (const int sourceIndex : orderedMatches) {
+                ordered.append(sourceIndex);
+                remaining.removeOne(sourceIndex);
+            }
 
             QStringList sortNames;
             for (const SortCriterion criterion : sortCriteria) {
                 sortNames.append(criterionName(criterion));
             }
             qDebug().noquote()
-                << QStringLiteral("[MediaSourcePreferenceUtils] Preferred source matched by keyword")
+                << QStringLiteral("[MediaSourcePreferenceUtils] Ordered sources matched by keyword")
                        + QStringLiteral(" | rules=%1").arg(rawRules)
                        + QStringLiteral(" | keyword=%1").arg(rule.keyword)
                        + QStringLiteral(" | matchedCount=%1").arg(matches.size())
                        + QStringLiteral(" | sortCriteria=%1").arg(sortNames.join(','))
-                       + QStringLiteral(" | selectedIndex=%1").arg(chosenIndex)
-                       + QStringLiteral(" | selectedName=%1")
-                             .arg(mediaSources[chosenIndex].name);
-            return chosenIndex;
+                       + QStringLiteral(" | firstMatchedIndex=%1")
+                             .arg(orderedMatches.first());
+            continue;
         }
 
         QList<SortCriterion> sortCriteria = collectFollowingSortCriteria(rules, i);
         sortCriteria.prepend(rule.sortCriterion);
 
         bool usedMeaningfulSort = false;
-        QList<int> candidates;
-        for (int sourceIndex = 0; sourceIndex < mediaSources.size(); ++sourceIndex) {
-            candidates.append(sourceIndex);
-        }
-
         const QList<int> orderedCandidates = sortedCandidates(
-            mediaSources, candidates, sortCriteria, &usedMeaningfulSort);
+            mediaSources, remaining, sortCriteria, &usedMeaningfulSort);
         if (orderedCandidates.isEmpty()) {
             continue;
         }
 
-        if (!usedMeaningfulSort && mediaSources.size() > 1) {
+        if (!usedMeaningfulSort && remaining.size() > 1) {
             qDebug().noquote()
                 << QStringLiteral("[MediaSourcePreferenceUtils] Sort rule skipped because metadata is unavailable")
                        + QStringLiteral(" | rules=%1").arg(rawRules)
@@ -504,17 +503,65 @@ int resolvePreferredMediaSourceIndex(const QList<MediaSourceInfo> &mediaSources,
             sortNames.append(criterionName(criterion));
         }
         qDebug().noquote()
-            << QStringLiteral("[MediaSourcePreferenceUtils] Preferred source matched by sort")
+                << QStringLiteral("[MediaSourcePreferenceUtils] Ordered sources by sort")
                    + QStringLiteral(" | rules=%1").arg(rawRules)
                    + QStringLiteral(" | sortCriteria=%1").arg(sortNames.join(','))
-                   + QStringLiteral(" | selectedIndex=%1")
-                         .arg(orderedCandidates.first())
-                   + QStringLiteral(" | selectedName=%1")
-                         .arg(mediaSources[orderedCandidates.first()].name);
-        return orderedCandidates.first();
+                       + QStringLiteral(" | firstIndex=%1")
+                             .arg(orderedCandidates.first())
+                       + QStringLiteral(" | firstName=%1")
+                             .arg(mediaSources[orderedCandidates.first()].name);
+        ordered.append(orderedCandidates);
+        remaining.clear();
+        break;
     }
 
-    return 0;
+    ordered.append(remaining);
+    return ordered;
+}
+
+int resolvePreferredMediaSourceIndex(const QList<MediaSourceInfo> &mediaSources,
+                                     const QString &rawRules,
+                                     const QString &rememberedSourceId) {
+    if (mediaSources.isEmpty()) {
+        return 0;
+    }
+
+    if (!rememberedSourceId.trimmed().isEmpty()) {
+        for (int i = 0; i < mediaSources.size(); ++i) {
+            if (mediaSources[i].id.compare(rememberedSourceId,
+                                           Qt::CaseInsensitive) == 0) {
+                qDebug() << "[MediaSourcePreferenceUtils] Restored manually selected source"
+                         << "sourceId=" << rememberedSourceId << "sourceIndex=" << i;
+                return i;
+            }
+        }
+        qDebug() << "[MediaSourcePreferenceUtils] Remembered source is unavailable; using preference rules"
+                 << "sourceId=" << rememberedSourceId;
+    }
+
+    const QList<int> order = preferredMediaSourceOrder(mediaSources, rawRules);
+    return order.isEmpty() ? 0 : order.first();
+}
+
+QString rememberedMediaSourceId(const QString &serverId, const QString &mediaId) {
+    if (serverId.trimmed().isEmpty() || mediaId.trimmed().isEmpty()) {
+        return {};
+    }
+    return ConfigStore::instance()->get<QString>(ConfigKeys::forServerMedia(
+        serverId, mediaId, ConfigKeys::PlayerSelectedMediaSource));
+}
+
+void rememberMediaSourceId(const QString &serverId, const QString &mediaId,
+                           const QString &mediaSourceId) {
+    if (serverId.trimmed().isEmpty() || mediaId.trimmed().isEmpty() ||
+        mediaSourceId.trimmed().isEmpty()) {
+        return;
+    }
+    ConfigStore::instance()->set(ConfigKeys::forServerMedia(
+        serverId, mediaId, ConfigKeys::PlayerSelectedMediaSource),
+        mediaSourceId);
+    qDebug() << "[MediaSourcePreferenceUtils] Remembered manual source selection"
+             << "mediaId=" << mediaId << "sourceId=" << mediaSourceId;
 }
 
 } 

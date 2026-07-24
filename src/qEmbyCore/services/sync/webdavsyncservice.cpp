@@ -39,8 +39,7 @@ QString sanitizeNameSegment(const QString &s, const QString &fallback)
     out.reserve(trimmed.size());
     for (QChar c : trimmed)
     {
-        if (c.isLetterOrNumber() || c == QLatin1Char('_') ||
-            c == QLatin1Char('-') || c == QLatin1Char('.'))
+        if (c.isLetterOrNumber() || c == QLatin1Char('_') || c == QLatin1Char('-') || c == QLatin1Char('.'))
         {
             out.append(c);
         }
@@ -101,8 +100,7 @@ bool writeServersJson(const QJsonArray &arr)
         QFile out(tmpPath);
         if (!out.open(QIODevice::WriteOnly | QIODevice::Truncate))
         {
-            qWarning() << "[WebdavSyncService] failed to open" << tmpPath
-                       << "|" << out.errorString();
+            qWarning() << "[WebdavSyncService] failed to open" << tmpPath << "|" << out.errorString();
             return false;
         }
         if (out.write(payload) != payload.size())
@@ -150,7 +148,8 @@ QVariant jsonValueToVariant(const QJsonValue &v)
     {
     case QJsonValue::Bool:
         return v.toBool();
-    case QJsonValue::Double: {
+    case QJsonValue::Double:
+    {
         const double d = v.toDouble();
         const qlonglong i = static_cast<qlonglong>(d);
         if (static_cast<double>(i) == d)
@@ -190,10 +189,7 @@ bool keyMatchesIncludedNamespace(const QString &key)
 
 
 
-WebdavSyncService::WebdavSyncService(WebdavProfileStore *store, QObject *parent)
-    : QObject(parent), m_store(store)
-{
-}
+WebdavSyncService::WebdavSyncService(WebdavProfileStore *store, QObject *parent) : QObject(parent), m_store(store) {}
 
 WebdavSyncService::~WebdavSyncService() = default;
 
@@ -201,40 +197,31 @@ WebdavSyncService::~WebdavSyncService() = default;
 
 
 
-QString WebdavSyncService::proposedSnapshotFileName(const ConfigBundleMetadata &metadata,
-                                                    QString customTag)
+QString WebdavSyncService::proposedSnapshotFileName(const ConfigBundleMetadata &metadata, QString customTag)
 {
-    const qint64 exportedAt = metadata.exportedAt > 0
-                                  ? metadata.exportedAt
-                                  : QDateTime::currentMSecsSinceEpoch();
+    const qint64 exportedAt = metadata.exportedAt > 0 ? metadata.exportedAt : QDateTime::currentMSecsSinceEpoch();
     const QString version = sanitizeNameSegment(metadata.appVersion, QStringLiteral("dev"));
     const QString osName = sanitizeNameSegment(metadata.osName, QStringLiteral("OS"));
     const QString device = sanitizeNameSegment(metadata.deviceName, QStringLiteral("device"));
     const QString tag = sanitizeNameSegment(customTag, QString::fromLatin1(kDefaultSnapshotTag));
-    const QString ts = QDateTime::fromMSecsSinceEpoch(exportedAt, Qt::LocalTime)
+    const QString ts = QDateTime::fromMSecsSinceEpoch(exportedAt, QTimeZone::LocalTime)
                            .toString(QStringLiteral("yyyy-MM-dd-HH-mm-ss"));
 
-    return QString::fromLatin1(kSnapshotPrefix) + version + QLatin1Char('-') + osName +
-           QLatin1Char('-') + device + QLatin1Char('-') + ts + QLatin1Char('-') + tag +
-           QString::fromLatin1(kSnapshotSuffix);
+    return QString::fromLatin1(kSnapshotPrefix) + version + QLatin1Char('-') + osName + QLatin1Char('-') + device +
+           QLatin1Char('-') + ts + QLatin1Char('-') + tag + QString::fromLatin1(kSnapshotSuffix);
 }
 
 bool WebdavSyncService::isQEmbySnapshotName(const QString &fileName)
 {
     const bool isNewName = fileName.startsWith(QString::fromLatin1(kSnapshotPrefix)) &&
                            fileName.endsWith(QString::fromLatin1(kSnapshotSuffix));
-    const bool isLegacyName =
-        fileName.startsWith(QString::fromLatin1(kLegacySnapshotPrefix)) &&
-        fileName.endsWith(QString::fromLatin1(kLegacySnapshotSuffix));
+    const bool isLegacyName = fileName.startsWith(QString::fromLatin1(kLegacySnapshotPrefix)) &&
+                              fileName.endsWith(QString::fromLatin1(kLegacySnapshotSuffix));
     return isNewName || isLegacyName;
 }
 
-void WebdavSyncService::parseSnapshotName(const QString &fileName,
-                                          QString &appVersionOut,
-                                          QString &osNameOut,
-                                          QString &deviceHintOut,
-                                          QString &customTagOut,
-                                          QDateTime &createdAtOut)
+void WebdavSyncService::parseSnapshotName(const QString &fileName, QString &appVersionOut, QString &osNameOut,
+                                          QString &deviceHintOut, QString &customTagOut, QDateTime &createdAtOut)
 {
     appVersionOut.clear();
     osNameOut.clear();
@@ -254,8 +241,8 @@ void WebdavSyncService::parseSnapshotName(const QString &fileName,
         const int suffixLen = static_cast<int>(sizeof(kSnapshotSuffix)) - 1;
         const QString core = fileName.mid(prefixLen, fileName.size() - prefixLen - suffixLen);
 
-        static const QRegularExpression tsPattern(QStringLiteral(
-            "-(\\d{4}-\\d{2}-\\d{2}(?: \\d{2}:\\d{2}:\\d{2}|-\\d{2}-\\d{2}-\\d{2}))-"));
+        static const QRegularExpression tsPattern(
+            QStringLiteral("-(\\d{4}-\\d{2}-\\d{2}(?: \\d{2}:\\d{2}:\\d{2}|-\\d{2}-\\d{2}-\\d{2}))-"));
         const QRegularExpressionMatch match = tsPattern.match(core);
         if (!match.hasMatch())
         {
@@ -266,9 +253,7 @@ void WebdavSyncService::parseSnapshotName(const QString &fileName,
         const QString beforeTs = core.left(match.capturedStart(0));
         customTagOut = core.mid(match.capturedEnd(0));
         const int firstDash = beforeTs.indexOf(QLatin1Char('-'));
-        const int secondDash = firstDash >= 0
-                                   ? beforeTs.indexOf(QLatin1Char('-'), firstDash + 1)
-                                   : -1;
+        const int secondDash = firstDash >= 0 ? beforeTs.indexOf(QLatin1Char('-'), firstDash + 1) : -1;
         if (firstDash >= 0)
         {
             appVersionOut = beforeTs.left(firstDash);
@@ -290,8 +275,7 @@ void WebdavSyncService::parseSnapshotName(const QString &fileName,
         const QDateTime parsed = QDateTime::fromString(timestampText, timestampFormat);
         if (parsed.isValid())
         {
-            createdAtOut = QDateTime(parsed.date(), parsed.time(),
-                                     QTimeZone::systemTimeZone());
+            createdAtOut = QDateTime(parsed.date(), parsed.time(), QTimeZone::systemTimeZone());
         }
         return;
     }
@@ -302,9 +286,7 @@ void WebdavSyncService::parseSnapshotName(const QString &fileName,
 
     
     const int lastDash = core.lastIndexOf(QLatin1Char('-'));
-    const int secondLastDash = lastDash >= 0
-                                   ? core.lastIndexOf(QLatin1Char('-'), lastDash - 1)
-                                   : -1;
+    const int secondLastDash = lastDash >= 0 ? core.lastIndexOf(QLatin1Char('-'), lastDash - 1) : -1;
     if (secondLastDash < 0)
     {
         deviceHintOut = core;
@@ -326,26 +308,19 @@ WebdavClient *WebdavSyncService::buildClient()
 {
     if (!m_store)
     {
-        throw std::runtime_error(
-            tr("Internal error: WebDAV profile store is unavailable.")
-                .toUtf8()
-                .toStdString());
+        throw std::runtime_error(tr("Internal error: WebDAV profile store is unavailable.").toUtf8().toStdString());
     }
     if (!m_store->hasProfile())
     {
         throw std::runtime_error(
-            tr("WebDAV profile is not configured. Please save a profile first.")
-                .toUtf8()
-                .toStdString());
+            tr("WebDAV profile is not configured. Please save a profile first.").toUtf8().toStdString());
     }
 
     WebdavProfile profile = m_store->profile();
     if (!profile.isValid())
     {
         throw std::runtime_error(
-            tr("WebDAV profile is incomplete. Please fill in URL, username and password.")
-                .toUtf8()
-                .toStdString());
+            tr("WebDAV profile is incomplete. Please fill in URL, username and password.").toUtf8().toStdString());
     }
 
     
@@ -367,16 +342,13 @@ QCoro::Task<bool> WebdavSyncService::testConnection()
     co_return ok;
 }
 
-QCoro::Task<QString> WebdavSyncService::uploadSnapshot(QString customTag, bool encrypt,
-                                                       QString passphrase)
+QCoro::Task<QString> WebdavSyncService::uploadSnapshot(QString customTag, bool encrypt, QString passphrase)
 {
     qDebug() << "[WebdavSyncService] uploadSnapshot START"
-             << "| encrypt:" << encrypt
-             << "| customTag:" << customTag;
+             << "| encrypt:" << encrypt << "| customTag:" << customTag;
     if (encrypt && passphrase.isEmpty())
     {
-        throw std::runtime_error(
-            tr("Passphrase cannot be empty.").toUtf8().toStdString());
+        throw std::runtime_error(tr("Passphrase cannot be empty.").toUtf8().toStdString());
     }
 
     std::unique_ptr<WebdavClient> client(buildClient());
@@ -386,10 +358,7 @@ QCoro::Task<QString> WebdavSyncService::uploadSnapshot(QString customTag, bool e
     QByteArray plain = bundle.serialize(false);
     if (plain.isEmpty())
     {
-        throw std::runtime_error(
-            tr("There is no local configuration to upload.")
-                .toUtf8()
-                .toStdString());
+        throw std::runtime_error(tr("There is no local configuration to upload.").toUtf8().toStdString());
     }
 
     QByteArray payload;
@@ -399,10 +368,7 @@ QCoro::Task<QString> WebdavSyncService::uploadSnapshot(QString customTag, bool e
         SecureSecretBox::secureZero(plain);
         if (payload.isEmpty())
         {
-            throw std::runtime_error(
-                tr("Failed to encrypt the snapshot.")
-                    .toUtf8()
-                    .toStdString());
+            throw std::runtime_error(tr("Failed to encrypt the snapshot.").toUtf8().toStdString());
         }
     }
     else
@@ -412,12 +378,9 @@ QCoro::Task<QString> WebdavSyncService::uploadSnapshot(QString customTag, bool e
 
     const QString fileName = proposedSnapshotFileName(bundle.metadata, customTag);
     qDebug() << "[WebdavSyncService] uploadSnapshot uploading"
-             << "| fileName:" << fileName
-             << "| encrypted:" << encrypt
-             << "| size:" << payload.size();
+             << "| fileName:" << fileName << "| encrypted:" << encrypt << "| size:" << payload.size();
 
-    co_await client->putFile(fileName, payload,
-                             QStringLiteral("application/octet-stream"));
+    co_await client->putFile(fileName, payload, QStringLiteral("application/octet-stream"));
     SecureSecretBox::secureZero(payload);
 
     if (m_store)
@@ -454,8 +417,7 @@ QCoro::Task<QList<WebdavSnapshot>> WebdavSyncService::listSnapshots()
         s.fileName = e.displayName;
         s.mtime = e.lastModified;
         s.size = e.contentLength;
-        parseSnapshotName(s.fileName, s.appVersion, s.osName, s.deviceHint,
-                          s.customTag, s.createdAt);
+        parseSnapshotName(s.fileName, s.appVersion, s.osName, s.deviceHint, s.customTag, s.createdAt);
         if (!s.createdAt.isValid())
         {
             s.createdAt = s.mtime;
@@ -464,12 +426,10 @@ QCoro::Task<QList<WebdavSnapshot>> WebdavSyncService::listSnapshots()
     }
 
     std::sort(snapshots.begin(), snapshots.end(),
-              [](const WebdavSnapshot &a, const WebdavSnapshot &b)
-              { return a.createdAt > b.createdAt; });
+              [](const WebdavSnapshot &a, const WebdavSnapshot &b) { return a.createdAt > b.createdAt; });
 
     qDebug() << "[WebdavSyncService] listSnapshots DONE"
-             << "| total:" << entries.size()
-             << "| matched:" << snapshots.size();
+             << "| total:" << entries.size() << "| matched:" << snapshots.size();
     co_return snapshots;
 }
 
@@ -478,10 +438,7 @@ QCoro::Task<ConfigBundle> WebdavSyncService::downloadSnapshot(QString fileName, 
     qDebug() << "[WebdavSyncService] downloadSnapshot START | fileName:" << fileName;
     if (!isQEmbySnapshotName(fileName))
     {
-        throw std::runtime_error(
-            tr("Selected file is not a valid qEmby snapshot.")
-                .toUtf8()
-                .toStdString());
+        throw std::runtime_error(tr("Selected file is not a valid qEmby snapshot.").toUtf8().toStdString());
     }
 
     std::unique_ptr<WebdavClient> client(buildClient());
@@ -493,16 +450,12 @@ QCoro::Task<ConfigBundle> WebdavSyncService::downloadSnapshot(QString fileName, 
         if (!plainBundleOpt.has_value())
         {
             SecureSecretBox::secureZero(payload);
-            throw std::runtime_error(
-                tr("Snapshot is not a valid qEmby configuration bundle.")
-                    .toUtf8()
-                    .toStdString());
+            throw std::runtime_error(tr("Snapshot is not a valid qEmby configuration bundle.").toUtf8().toStdString());
         }
 
         SecureSecretBox::secureZero(payload);
         qDebug() << "[WebdavSyncService] downloadSnapshot DONE"
-                 << "| encrypted:" << false
-                 << "| servers:" << plainBundleOpt->servers.size()
+                 << "| encrypted:" << false << "| servers:" << plainBundleOpt->servers.size()
                  << "| entries:" << plainBundleOpt->configEntries.size()
                  << "| fromHost:" << plainBundleOpt->metadata.deviceName
                  << "| fromOs:" << plainBundleOpt->metadata.osPretty
@@ -514,9 +467,7 @@ QCoro::Task<ConfigBundle> WebdavSyncService::downloadSnapshot(QString fileName, 
     {
         SecureSecretBox::secureZero(payload);
         throw WebdavPassphraseRequiredError(
-            tr("Passphrase is required for encrypted snapshots.")
-                .toUtf8()
-                .toStdString());
+            tr("Passphrase is required for encrypted snapshots.").toUtf8().toStdString());
     }
 
     auto plainOpt = SecureSecretBox::decryptWithPassphrase(payload, passphrase);
@@ -534,19 +485,13 @@ QCoro::Task<ConfigBundle> WebdavSyncService::downloadSnapshot(QString fileName, 
     SecureSecretBox::secureZero(plain);
     if (!bundleOpt.has_value())
     {
-        throw std::runtime_error(
-            tr("Snapshot is not a valid qEmby configuration bundle.")
-                .toUtf8()
-                .toStdString());
+        throw std::runtime_error(tr("Snapshot is not a valid qEmby configuration bundle.").toUtf8().toStdString());
     }
 
     qDebug() << "[WebdavSyncService] downloadSnapshot DONE"
-             << "| encrypted:" << true
-             << "| servers:" << bundleOpt->servers.size()
-             << "| entries:" << bundleOpt->configEntries.size()
-             << "| fromHost:" << bundleOpt->metadata.deviceName
-             << "| fromOs:" << bundleOpt->metadata.osPretty
-             << "| fromApp:" << bundleOpt->metadata.appVersion;
+             << "| encrypted:" << true << "| servers:" << bundleOpt->servers.size()
+             << "| entries:" << bundleOpt->configEntries.size() << "| fromHost:" << bundleOpt->metadata.deviceName
+             << "| fromOs:" << bundleOpt->metadata.osPretty << "| fromApp:" << bundleOpt->metadata.appVersion;
     co_return bundleOpt.value();
 }
 
@@ -555,10 +500,7 @@ QCoro::Task<bool> WebdavSyncService::deleteSnapshot(QString fileName)
     qDebug() << "[WebdavSyncService] deleteSnapshot START | fileName:" << fileName;
     if (!isQEmbySnapshotName(fileName))
     {
-        throw std::runtime_error(
-            tr("Refused to delete a file that is not a qEmby snapshot.")
-                .toUtf8()
-                .toStdString());
+        throw std::runtime_error(tr("Refused to delete a file that is not a qEmby snapshot.").toUtf8().toStdString());
     }
 
     std::unique_ptr<WebdavClient> client(buildClient());
@@ -578,10 +520,8 @@ QCoro::Task<bool> WebdavSyncService::deleteSnapshot(QString fileName)
 bool WebdavSyncService::applyBundle(const ConfigBundle &bundle, MergeStrategy strategy)
 {
     qDebug() << "[WebdavSyncService] applyBundle START"
-             << "| strategy:" << static_cast<int>(strategy)
-             << "| bundleServers:" << bundle.servers.size()
-             << "| bundleEntries:" << bundle.configEntries.size()
-             << "| fromHost:" << bundle.metadata.deviceName;
+             << "| strategy:" << static_cast<int>(strategy) << "| bundleServers:" << bundle.servers.size()
+             << "| bundleEntries:" << bundle.configEntries.size() << "| fromHost:" << bundle.metadata.deviceName;
 
     
     QJsonArray finalServers;
@@ -590,7 +530,8 @@ bool WebdavSyncService::applyBundle(const ConfigBundle &bundle, MergeStrategy st
     case MergeStrategy::Replace:
         finalServers = bundle.servers;
         break;
-    case MergeStrategy::Merge: {
+    case MergeStrategy::Merge:
+    {
         const QJsonArray local = readServersJson();
         const QSet<QString> bundleIds = idSetOfArray(bundle.servers);
         finalServers = bundle.servers;
@@ -604,7 +545,8 @@ bool WebdavSyncService::applyBundle(const ConfigBundle &bundle, MergeStrategy st
         }
         break;
     }
-    case MergeStrategy::LocalWins: {
+    case MergeStrategy::LocalWins:
+    {
         const QJsonArray local = readServersJson();
         const QSet<QString> localIds = idSetOfArray(local);
         finalServers = local;
@@ -664,8 +606,7 @@ bool WebdavSyncService::applyBundle(const ConfigBundle &bundle, MergeStrategy st
         localKeysCache = store->allKeys();
     }
 
-    for (auto it = bundle.configEntries.constBegin();
-         it != bundle.configEntries.constEnd(); ++it)
+    for (auto it = bundle.configEntries.constBegin(); it != bundle.configEntries.constEnd(); ++it)
     {
         const QString &key = it.key();
         if (ConfigBundle::shouldExcludeKey(key))

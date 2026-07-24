@@ -26,6 +26,7 @@
 #include <config/config_keys.h>
 #include <config/configstore.h>
 #include <qembycore.h>
+#include <services/manager/servermanager.h>
 #include <services/media/mediaservice.h>
 
 SeasonView::SeasonView(QEmbyCore *core, QWidget *parent) : BaseView(core, parent)
@@ -105,6 +106,12 @@ void SeasonView::setupUi()
     m_favBtn->setFixedSize(36, 36);
     m_favBtn->setCursor(Qt::PointingHandCursor);
 
+    m_playedBtn = new QPushButton(m_contentWidget);
+    m_playedBtn->setObjectName("detail-played-btn");
+    m_playedBtn->setIconSize(QSize(20, 20));
+    m_playedBtn->setFixedSize(36, 36);
+    m_playedBtn->setCursor(Qt::PointingHandCursor);
+
     
     m_extPlayerBtn = new SplitPlayerButton(m_contentWidget);
     m_extPlayerBtn->setObjectName("detail-ext-player-btn");
@@ -114,6 +121,7 @@ void SeasonView::setupUi()
     actionsLayout->addWidget(m_playBtn);
     actionsLayout->addWidget(m_extPlayerBtn);
     actionsLayout->addWidget(m_favBtn);
+    actionsLayout->addWidget(m_playedBtn);
 
     textLayout->addWidget(m_seriesTitleLabel);
     textLayout->addWidget(m_titleLabel);
@@ -230,6 +238,25 @@ void SeasonView::setupUi()
                 }
             });
 
+    connect(m_playedBtn, &QPushButton::clicked, this,
+            [this]()
+            {
+                if (m_currentSeasonItem.id.isEmpty())
+                    return;
+
+                if (m_currentSeasonItem.userData.played)
+                    handleMarkUnplayedRequested(m_currentSeasonItem);
+                else
+                    handleMarkPlayedRequested(m_currentSeasonItem);
+            });
+
+    connect(ThemeManager::instance(), &ThemeManager::themeChanged, this,
+            [this]()
+            {
+                updateFavBtnState();
+                updatePlayedBtnState();
+            });
+
     connect(m_sortButton, &ModernSortButton::sortChanged, this, [this]() { onFilterChanged(); });
 
     connect(m_mediaGrid, &MediaGridWidget::itemClicked, this,
@@ -254,6 +281,47 @@ void SeasonView::updateFavBtnState()
     m_favBtn->style()->polish(m_favBtn);
 }
 
+void SeasonView::updatePlayedBtnState()
+{
+    const bool played = m_currentSeasonItem.userData.played;
+    m_playedBtn->setProperty("played", played);
+    m_playedBtn->setToolTip(played ? tr("Mark as Unplayed") : tr("Mark as Played"));
+
+    const QString themeDir = ThemeManager::instance()->isDarkMode() ? "dark" : "light";
+    m_playedBtn->setIcon(played ? QIcon(":/svg/dark/played-check.svg")
+                                : QIcon(QString(":/svg/%1/unplayed-check.svg").arg(themeDir)));
+
+    m_playedBtn->style()->unpolish(m_playedBtn);
+    m_playedBtn->style()->polish(m_playedBtn);
+}
+
+void SeasonView::syncSeasonPlayedStateFromEpisodes()
+{
+    if (m_currentEpisodes.isEmpty() || m_currentSeasonItem.id.isEmpty())
+        return;
+
+    int total = 0;
+    int played = 0;
+    for (const MediaItem &episode : m_currentEpisodes)
+    {
+        if (episode.type != "Episode")
+            continue;
+
+        ++total;
+        if (episode.userData.played)
+            ++played;
+    }
+
+    const bool allPlayed = total > 0 && played == total;
+    if (m_currentSeasonItem.userData.played != allPlayed)
+    {
+        m_currentSeasonItem.userData.played = allPlayed;
+        m_currentSeasonItem.userData.playbackPositionTicks = 0;
+        m_currentSeasonItem.userData.playedPercentage = allPlayed ? 100.0 : 0.0;
+        updatePlayedBtnState();
+    }
+}
+
 QCoro::Task<void> SeasonView::loadSeason(QString seriesId, QString seasonId, QString seasonName)
 {
     QPointer<SeasonView> guard(this);
@@ -261,6 +329,8 @@ QCoro::Task<void> SeasonView::loadSeason(QString seriesId, QString seasonId, QSt
     m_currentSeasonId = seasonId;
     m_currentSeasonItem = MediaItem();
     m_currentSeasonItem.id = seasonId; 
+    m_currentSeasonItem.name = seasonName;
+    m_currentSeasonItem.type = "Season";
 
     m_seriesTitleLabel->setText(tr("Loading..."));
     m_titleLabel->setText(seasonName);
@@ -271,6 +341,7 @@ QCoro::Task<void> SeasonView::loadSeason(QString seriesId, QString seasonId, QSt
 
     m_isFavorite = false;
     updateFavBtnState();
+    updatePlayedBtnState();
 
     m_contentWidget->setBackdrop(QPixmap());
     m_posterLabel->setPixmap(QPixmap());
@@ -318,6 +389,7 @@ QCoro::Task<void> SeasonView::loadSeason(QString seriesId, QString seasonId, QSt
                 m_currentSeasonItem = detail;
                 m_isFavorite = detail.isFavorite();
                 updateFavBtnState();
+                updatePlayedBtnState();
 
                 
                 if (!detail.overview.isEmpty())
@@ -497,6 +569,7 @@ QCoro::Task<void> SeasonView::onFilterChanged(bool preserveScroll)
             co_return;
 
         m_currentEpisodes = episodes; 
+        syncSeasonPlayedStateFromEpisodes();
         m_statsLabel->setText(tr("%1 Episodes").arg(episodes.size()));
         m_mediaGrid->setItems(episodes);
 
@@ -542,6 +615,20 @@ void SeasonView::onMediaItemUpdated(const MediaItem &item)
         m_currentSeasonItem = item;
         m_isFavorite = item.isFavorite();
         updateFavBtnState();
+        updatePlayedBtnState();
+
+        if (item.type == "Season")
+        {
+            for (MediaItem &episode : m_currentEpisodes)
+            {
+                episode.userData.played = item.userData.played;
+                episode.userData.playbackPositionTicks = 0;
+                episode.userData.playedPercentage = item.userData.played ? 100.0 : 0.0;
+                episode.userData.lastPlayedDate = item.userData.lastPlayedDate;
+                if (m_mediaGrid)
+                    m_mediaGrid->updateItem(episode);
+            }
+        }
     }
     if (m_mediaGrid)
     {
@@ -554,6 +641,7 @@ void SeasonView::onMediaItemUpdated(const MediaItem &item)
         if (ep.id == item.id)
         {
             ep = item;
+            syncSeasonPlayedStateFromEpisodes();
             break;
         }
     }
@@ -661,14 +749,19 @@ QCoro::Task<void> SeasonView::executeExternalPlay(MediaItem targetItem, QString 
 
         int sourceIdx = MediaSourcePreferenceUtils::resolvePreferredMediaSourceIndex(
             actualItem.mediaSources,
-            ConfigStore::instance()->get<QString>(ConfigKeys::PlayerPreferredVersion).trimmed());
+            ConfigStore::instance()->get<QString>(ConfigKeys::PlayerPreferredVersion).trimmed(),
+            MediaSourcePreferenceUtils::rememberedMediaSourceId(
+                m_core->serverManager() ? m_core->serverManager()->activeProfile().id : QString(),
+                actualItem.id));
 
         if (sourceIdx >= actualItem.mediaSources.size())
             sourceIdx = 0;
         MediaSourceInfo modifiedSource = actualItem.mediaSources[sourceIdx];
 
-        PlayerPreferenceUtils::applyPreferredStreamRules(
+        PlayerPreferenceUtils::applyRememberedOrPreferredStreamRules(
             modifiedSource,
+            m_core->serverManager() ? m_core->serverManager()->activeProfile().id : QString(),
+            actualItem.id,
             ConfigStore::instance()->get<QString>(ConfigKeys::PlayerAudioLang, "auto"),
             ConfigStore::instance()->get<QString>(ConfigKeys::PlayerSubLang, "auto"));
 
@@ -706,14 +799,19 @@ QCoro::Task<void> SeasonView::executeInternalPlay(MediaItem targetItem)
 
         int sourceIdx = MediaSourcePreferenceUtils::resolvePreferredMediaSourceIndex(
             actualItem.mediaSources,
-            ConfigStore::instance()->get<QString>(ConfigKeys::PlayerPreferredVersion).trimmed());
+            ConfigStore::instance()->get<QString>(ConfigKeys::PlayerPreferredVersion).trimmed(),
+            MediaSourcePreferenceUtils::rememberedMediaSourceId(
+                m_core->serverManager() ? m_core->serverManager()->activeProfile().id : QString(),
+                actualItem.id));
 
         if (sourceIdx >= actualItem.mediaSources.size())
             sourceIdx = 0;
         MediaSourceInfo modifiedSource = actualItem.mediaSources[sourceIdx];
 
-        PlayerPreferenceUtils::applyPreferredStreamRules(
+        PlayerPreferenceUtils::applyRememberedOrPreferredStreamRules(
             modifiedSource,
+            m_core->serverManager() ? m_core->serverManager()->activeProfile().id : QString(),
+            actualItem.id,
             ConfigStore::instance()->get<QString>(ConfigKeys::PlayerAudioLang, "auto"),
             ConfigStore::instance()->get<QString>(ConfigKeys::PlayerSubLang, "auto"));
 

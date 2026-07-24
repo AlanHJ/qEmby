@@ -5,6 +5,7 @@
 #include "../../managers/thememanager.h"
 #include "../../utils/dashboardrequestlimitutils.h"
 #include "../../utils/mediaitemutils.h"
+#include "../../utils/resumeitemresolver.h"
 #include <QDebug>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -13,8 +14,7 @@
 #include <QPropertyAnimation>
 #include <QPushButton>
 #include <QScrollArea>
-#include <QSet> 
-#include <QStringList>
+#include <QSet>
 #include <QVBoxLayout>
 #include <config/config_keys.h>
 #include <config/configstore.h>
@@ -22,7 +22,6 @@
 #include <services/manager/servermanager.h>
 #include <services/media/mediaservice.h>
 #include <utility>
-#include <vector>
 
 namespace {
 constexpr int kDashboardCategoryFirstPageSize = 100;
@@ -370,67 +369,25 @@ CategoryView::fetchDashboardCategoryPage(DashboardCategoryQuery query,
                                          int startIndex, int limit) {
   QPointer<CategoryView> guard(this);
   DashboardCategoryPage categoryPage;
-  auto *mediaService = m_core->mediaService();
+  QPointer<MediaService> mediaService(m_core->mediaService());
+  if (!mediaService)
+    co_return categoryPage;
   MediaQueryPage page;
 
   if (query.category == "resume") {
     page = co_await mediaService->getResumeItemsPage(
         query.sortBy, query.sortOrder, startIndex, limit);
-    if (!guard)
+    if (!guard || !mediaService)
       co_return categoryPage;
 
     categoryPage.rawItemCount = page.items.size();
     categoryPage.fingerprint = pageFingerprint(page.items);
 
-    QSet<QString> seenSeriesIds;
-    QStringList seriesIdsToFetch;
-    QList<int> insertIndices;
-    QList<MediaItem> resumeContextItems;
-    QList<MediaItem> displayItems;
-
-    for (MediaItem item : page.items) {
-      if (item.type == "Episode" && !item.seriesId.isEmpty()) {
-        if (seenSeriesIds.contains(item.seriesId)) {
-          continue;
-        }
-        seenSeriesIds.insert(item.seriesId);
-        seriesIdsToFetch.append(item.seriesId);
-        insertIndices.append(displayItems.size());
-        resumeContextItems.append(item);
-        displayItems.append(MediaItem {});
-      } else {
-        displayItems.append(MediaItemUtils::withResumeContext(item, item));
-      }
-    }
-
-    std::vector<QCoro::Task<MediaItem>> detailTasks;
-    detailTasks.reserve(seriesIdsToFetch.size());
-    for (const QString &seriesId : std::as_const(seriesIdsToFetch)) {
-      detailTasks.push_back(mediaService->getItemDetail(seriesId));
-    }
-
-    for (int i = 0; i < static_cast<int>(detailTasks.size()); ++i) {
-      try {
-        MediaItem seriesItem = co_await std::move(detailTasks[i]);
-        if (!guard)
-          co_return categoryPage;
-        displayItems[insertIndices[i]] = MediaItemUtils::withResumeContext(
-            seriesItem, resumeContextItems[i]);
-      } catch (const std::exception &e) {
-        if (!guard)
-          co_return categoryPage;
-        qWarning() << "[CategoryView] failed to resolve resume series"
-                   << "| seriesId=" << seriesIdsToFetch.value(i)
-                   << "| error=" << e.what();
-      }
-    }
-
-    for (int i = displayItems.size() - 1; i >= 0; --i) {
-      if (displayItems.at(i).id.isEmpty()) {
-        displayItems.removeAt(i);
-      }
-    }
-    categoryPage.items = std::move(displayItems);
+    categoryPage.items = co_await ResumeItemResolver::resolve(
+        mediaService.data(), std::move(page.items),
+        QStringLiteral("category-page"));
+    if (!guard)
+      co_return categoryPage;
   } else if (query.category == "latest") {
     page = co_await mediaService->getLatestItemsPage(
         query.sortBy, query.sortOrder, startIndex, limit);
@@ -567,7 +524,8 @@ QCoro::Task<void> CategoryView::loadCategory(const QString &categoryType,
     m_sortButton->setCurrentIndex(1); 
     m_sortButton->setDescending(true);
     m_sortButton->setEnabled(true);
-  } else if (categoryType == "Favorite_Movie" || categoryType == "Movie") {
+  } else if (categoryType == "Favorite_Movie" || categoryType == "Movie" ||
+             categoryType == "Favorite_Series" || categoryType == "Series") {
     m_sortButton->setCurrentIndex(1); 
     m_sortButton->setDescending(true);
     m_sortButton->setEnabled(true);
@@ -640,7 +598,9 @@ QCoro::Task<void> CategoryView::onFilterChanged() {
 
   const int requestLimit = dashboardCategoryRequestLimit(m_currentCategory);
 
-  auto *mediaService = m_core->mediaService();
+  QPointer<MediaService> mediaService(m_core->mediaService());
+  if (!mediaService)
+    co_return;
 
   try {
     QList<MediaItem> resultItems;
@@ -650,31 +610,14 @@ QCoro::Task<void> CategoryView::onFilterChanged() {
       QList<MediaItem> rawItems =
           co_await mediaService->getResumeItems(requestLimit, sortBy,
                                                 sortOrder);
-      if (!guard)
+      if (!guard || !mediaService)
         co_return;
 
-      
-      QSet<QString> seenSeriesIds;
-      for (MediaItem item : rawItems) {
-        if (item.type == "Episode" && !item.seriesId.isEmpty()) {
-          if (seenSeriesIds.contains(item.seriesId))
-            continue;
-          seenSeriesIds.insert(item.seriesId);
-          try {
-            MediaItem seriesItem =
-                co_await mediaService->getItemDetail(item.seriesId);
-            if (!guard)
-              co_return;
-            resultItems.append(
-                MediaItemUtils::withResumeContext(seriesItem, item));
-          } catch (...) {
-            if (!guard)
-              co_return;
-          }
-        } else {
-          resultItems.append(MediaItemUtils::withResumeContext(item, item));
-        }
-      }
+      resultItems = co_await ResumeItemResolver::resolve(
+          mediaService.data(), std::move(rawItems),
+          QStringLiteral("category"));
+      if (!guard)
+        co_return;
     } else if (m_currentCategory == "latest") {
       resultItems =
           co_await mediaService->getLatestItems(requestLimit, sortBy,
@@ -690,6 +633,10 @@ QCoro::Task<void> CategoryView::onFilterChanged() {
                m_currentCategory == "Movie") {
       resultItems =
           co_await mediaService->getFavoriteMovies(0, sortBy, sortOrder);
+    } else if (m_currentCategory == "Favorite_Series" ||
+               m_currentCategory == "Series") {
+      resultItems =
+          co_await mediaService->getFavoriteSeries(0, sortBy, sortOrder);
     } else if (m_currentCategory == "Favorite_BoxSet" ||
                m_currentCategory == "BoxSet") {
       resultItems =

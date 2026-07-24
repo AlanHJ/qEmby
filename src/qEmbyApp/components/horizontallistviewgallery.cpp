@@ -8,6 +8,8 @@
 #include <QScrollBar>
 #include <QPropertyAnimation>
 #include <QEvent>
+#include <QHideEvent>
+#include <QShowEvent>
 #include <QWheelEvent>
 #include <QCursor>
 #include <QScroller>           
@@ -17,6 +19,31 @@
 #include <QDebug>
 #include <QSet>
 #include <algorithm>
+
+namespace {
+
+bool intersectsVisibleAncestorChain(const QWidget* widget)
+{
+    if (!widget || !widget->isVisible()) {
+        return false;
+    }
+
+    QRect visibleRect = widget->rect();
+    const QWidget* child = widget;
+    const QWidget* parent = child->parentWidget();
+    while (parent) {
+        visibleRect.moveTopLeft(child->mapTo(parent, visibleRect.topLeft()));
+        visibleRect = visibleRect.intersected(parent->rect());
+        if (visibleRect.isEmpty()) {
+            return false;
+        }
+        child = parent;
+        parent = child->parentWidget();
+    }
+    return true;
+}
+
+} 
 
 HorizontalListViewGallery::HorizontalListViewGallery(QEmbyCore* core, QWidget* parent)
     : QWidget(parent), m_core(core), m_hScrollAnim(nullptr), m_hScrollTarget(0), m_cardStyle(MediaCardDelegate::Poster)
@@ -165,7 +192,9 @@ void HorizontalListViewGallery::setItems(const QList<MediaItem>& items)
                            [this]() { updateVisibleImagePriority(); });
     }
     
-    if (m_shimmer && m_shimmer->isVisible() && !items.isEmpty()) {
+    
+    
+    if (m_shimmer && !items.isEmpty()) {
         m_shimmer->stopAnimation();
         m_shimmer->hide();
     }
@@ -220,6 +249,11 @@ int HorizontalListViewGallery::itemCount() const
     return m_listModel ? m_listModel->rowCount() : 0;
 }
 
+QList<MediaItem> HorizontalListViewGallery::items() const
+{
+    return m_listModel ? m_listModel->items() : QList<MediaItem> {};
+}
+
 void HorizontalListViewGallery::clearImageCache()
 {
     if (m_listModel) {
@@ -227,9 +261,22 @@ void HorizontalListViewGallery::clearImageCache()
     }
 }
 
+void HorizontalListViewGallery::setForceNetworkImages(bool forceNetwork)
+{
+    if (m_listModel) {
+        m_listModel->setForceNetworkImages(forceNetwork);
+    }
+}
+
+void HorizontalListViewGallery::clearFailedImageItems()
+{
+    if (m_listModel) {
+        m_listModel->clearFailedImageItems();
+    }
+}
+
 void HorizontalListViewGallery::setCardStyle(MediaCardDelegate::CardStyle style)
 {
-    bool styleChanged = (m_cardStyle != style);
     m_cardStyle = style; 
     if (m_listDelegate) {
         m_listDelegate->setStyle(style);
@@ -254,10 +301,7 @@ void HorizontalListViewGallery::setCardStyle(MediaCardDelegate::CardStyle style)
     
     if (m_listModel) {
         m_listModel->setPreferThumb(style == MediaCardDelegate::LibraryTile || style == MediaCardDelegate::EpisodeList);
-        
-        if (styleChanged) {
-            m_listModel->clearImageCache();
-        }
+        updateImageRequestSize();
     }
     
     updateButtonPositions();
@@ -270,6 +314,7 @@ void HorizontalListViewGallery::setTileSize(const QSize &size)
         m_listView->doItemsLayout();
         m_listView->viewport()->update();
     }
+    updateImageRequestSize();
     updateButtonPositions();
 }
 
@@ -289,6 +334,7 @@ void HorizontalListViewGallery::setContentPadding(int padding)
         m_listView->doItemsLayout();
         m_listView->viewport()->update();
     }
+    updateImageRequestSize();
     updateButtonPositions();
 }
 
@@ -379,6 +425,30 @@ void HorizontalListViewGallery::resizeEvent(QResizeEvent* event)
     if (m_shimmer && m_shimmer->isVisible()) {
         m_shimmer->setGeometry(m_listView->geometry());
     }
+}
+
+void HorizontalListViewGallery::hideEvent(QHideEvent* event)
+{
+    if (m_listModel && !m_imageRequestsSuspendedForVisibility) {
+        m_listModel->suspendImageRequests();
+        m_imageRequestsSuspendedForVisibility = true;
+    }
+    QWidget::hideEvent(event);
+}
+
+void HorizontalListViewGallery::showEvent(QShowEvent* event)
+{
+    QWidget::showEvent(event);
+    if (m_listModel && m_imageRequestsSuspendedForVisibility) {
+        m_listModel->resumeImageRequests();
+        m_imageRequestsSuspendedForVisibility = false;
+    }
+    QTimer::singleShot(0, this, [this]() {
+        updateVisibleImagePriority();
+        if (m_listView && m_listView->viewport()) {
+            m_listView->viewport()->update();
+        }
+    });
 }
 
 void HorizontalListViewGallery::updateButtonPositions()
@@ -488,6 +558,15 @@ void HorizontalListViewGallery::updateVisibleImagePriority()
         return;
     }
 
+    
+    
+    
+    
+    if (!intersectsVisibleAncestorChain(this)) {
+        m_listModel->setPriorityRows({});
+        return;
+    }
+
     QWidget* viewport = m_listView->viewport();
     if (!viewport) {
         return;
@@ -512,4 +591,19 @@ void HorizontalListViewGallery::updateVisibleImagePriority()
     QList<int> rows = rowSet.values();
     std::sort(rows.begin(), rows.end());
     m_listModel->setPriorityRows(rows);
+}
+
+void HorizontalListViewGallery::updateImageRequestSize()
+{
+    if (!m_listModel || !m_listDelegate) {
+        return;
+    }
+
+    QStyleOptionViewItem option;
+    const QSize cardSize = m_listDelegate->sizeHint(option, QModelIndex());
+    const int displayWidth =
+        qMax(1, cardSize.width() - m_listDelegate->contentPadding() * 2);
+    const int requestWidth = qBound(
+        160, qRound(displayWidth * devicePixelRatioF()), 768);
+    m_listModel->setImageMaxWidth(requestWidth);
 }

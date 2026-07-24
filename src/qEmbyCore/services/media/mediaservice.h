@@ -5,10 +5,17 @@
 #include "../../models/media/mediaitem.h"
 #include "../../models/media/playbackinfo.h"
 #include <QHash>
+#include <QCache>
+#include <QImage>
 #include <QObject>
 #include <QList>
 #include <QPixmap>
+#include <QPointer>
 #include <QDateTime>
+#include <QFuture>
+#include <QPromise>
+#include <QSharedPointer>
+#include <QSet>
 #include <qcorotask.h>
 
 
@@ -89,6 +96,19 @@ struct QEMBYCORE_EXPORT MediaQueryPage {
 class ServerManager;
 class QNetworkAccessManager;
 
+enum class ImageRequestPriority
+{
+    High,
+    Normal,
+    Low
+};
+
+enum class ImageFetchPolicy
+{
+    CachePreferred,
+    NetworkOnly
+};
+
 class QEMBYCORE_EXPORT MediaService : public QObject
 {
     Q_OBJECT
@@ -150,11 +170,17 @@ public:
     QCoro::Task<MediaQueryPage> getItemsByFilterPage(const QString& genreFilter = "", const QString& tagFilter = "", const QString& studioFilter = "", const QString& sortBy = "SortName", const QString& sortOrder = "Ascending", int startIndex = 0, int limit = 0);
     QCoro::Task<QList<MediaItem>> getItemsByFilter(const QString& genreFilter = "", const QString& tagFilter = "", const QString& studioFilter = "", const QString& sortBy = "SortName", const QString& sortOrder = "Ascending", int limit = 0);
 
-    QCoro::Task<QPixmap> fetchImage(const QString& itemId, const QString& imageType,
-                                    const QString& imageTag, int maxWidth,
-                                    int imageIndex = -1);
+    QCoro::Task<QPixmap> fetchImage(QString itemId, QString imageType,
+                                    QString imageTag, int maxWidth,
+                                    int imageIndex = -1,
+                                    ImageRequestPriority priority =
+                                        ImageRequestPriority::Normal,
+                                    QObject* requestContext = nullptr,
+                                    ImageFetchPolicy fetchPolicy =
+                                        ImageFetchPolicy::CachePreferred);
     QCoro::Task<QPixmap> fetchImageByUrl(QString imageUrl);
     QCoro::Task<DownloadedImageData> downloadImageByUrl(QString imageUrl);
+    void clearImageCaches();
     void invalidateImageCache(QString itemId, QString imageType,
                               int imageIndex = -1);
     
@@ -180,12 +206,39 @@ Q_SIGNALS:
     void recommendCacheCleared();
 
 private:
+    struct InFlightImageRequest {
+        quint64 requestId = 0;
+        
+        
+        QFuture<QImage> future;
+    };
+
+    struct PendingImageNetworkSlot {
+        quint64 requestId = 0;
+        ImageRequestPriority priority = ImageRequestPriority::Normal;
+        bool hasRequestContext = false;
+        QPointer<QObject> requestContext;
+        QSharedPointer<QPromise<bool>> promise;
+    };
+
     ServerManager* m_serverManager;
     QNetworkAccessManager* m_imageManager;
     RecommendCache m_recommendCache; 
     UserViewsCache m_userViewsCache;
     QHash<QString, quint64> m_invalidatedImageRequestVersions;
+    
+    
+    
+    QCache<QString, QImage> m_decodedImageCache;
+    QHash<QString, InFlightImageRequest> m_inFlightImageRequests;
+    quint64 m_imageCacheGeneration = 0;
+    quint64 m_nextInFlightImageRequestId = 0;
+    quint64 m_nextImageNetworkSlotRequestId = 0;
     quint64 m_nextImageRequestVersion = 0;
+    QList<PendingImageNetworkSlot> m_pendingImageNetworkSlots;
+    QSet<quint64> m_grantedImageNetworkSlots;
+    int m_activeImageNetworkRequests = 0;
+    bool m_dispatchingImageNetworkSlots = false;
     
     
     void ensureValidProfile() const;
@@ -200,6 +253,15 @@ private:
                               QString userId, bool includesHidden);
     void updateUserViewsCache(MediaItem view, QString serverId,
                               QString userId);
+    void removeInFlightImageRequest(const QString& cacheKey,
+                                    quint64 requestId);
+    QFuture<bool> acquireImageNetworkSlot(
+        ImageRequestPriority priority,
+        QPointer<QObject> requestContext,
+        bool hasRequestContext,
+        quint64* outRequestId);
+    void releaseImageNetworkSlot(quint64 requestId);
+    void dispatchPendingImageNetworkSlots();
 };
 
 #endif 

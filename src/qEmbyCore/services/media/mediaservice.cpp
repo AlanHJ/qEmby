@@ -8,6 +8,7 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QHash>
 #include <QImage>
@@ -16,10 +17,13 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkAccessManager>
+#include <QAbstractNetworkCache>
 #include <QNetworkDiskCache>
 #include <QNetworkReply>
 #include <QPointer>
+#include <QPromise>
 #include <QSettings>
+#include <QScopeGuard>
 #include <QSet>
 #include <QStandardPaths>
 #include <QUrl>
@@ -34,50 +38,56 @@
 
 namespace
 {
-template <typename T> QList<T> parseJsonArray(const QJsonArray &array)
-{
-    QList<T> list;
-    for (const auto &val : array)
+    constexpr int kDecodedImageCacheCostKb = 128 * 1024;
+    constexpr int kImageTransferTimeoutMs = 30 * 1000;
+    constexpr int kMaxGlobalImageNetworkRequests = 8;
+    constexpr qint64 kSlowImageRequestThresholdMs = 500;
+    constexpr int kImageWidthBuckets[] = {
+        160, 240, 320, 480, 640, 768, 1024, 1280, 1920};
+
+    int bucketImageWidth(int width)
     {
-        list.append(T::fromJson(val.toObject()));
-    }
-    return list;
-}
+        if (width <= 0)
+        {
+            return width;
+        }
 
-MediaQueryPage parseMediaQueryPage(const QJsonObject& response, int startIndex,
-                                   int limit)
-{
-    MediaQueryPage page;
-    page.items = parseJsonArray<MediaItem>(response.value("Items").toArray());
-    page.startIndex = qMax(0, startIndex);
-    page.limit = limit;
-    page.hasTotalRecordCount =
-        response.contains(QStringLiteral("TotalRecordCount"));
-    page.totalRecordCount =
-        response.value(QStringLiteral("TotalRecordCount"))
-            .toInt(page.startIndex + page.items.size());
-    return page;
-}
-
-
-
-
-
-
-
-
-constexpr int kRecommendCacheFormatVersion = 7;
-constexpr int kDefaultRecommendFetchLimit = 1000;
-
-QString appendMediaCardTooltipFields(QString fieldsCsv)
-{
-    QStringList fields =
-        fieldsCsv.split(QLatin1Char(','), Qt::SkipEmptyParts);
-
-    for (QString& field : fields) {
-        field = field.trimmed();
+        for (const int bucket : kImageWidthBuckets)
+        {
+            if (width <= bucket)
+            {
+                return bucket;
+            }
+        }
+        return width;
     }
 
+    template <typename T>
+    QList<T> parseJsonArray(const QJsonArray &array)
+    {
+        QList<T> list;
+        for (const auto &val : array)
+        {
+            list.append(T::fromJson(val.toObject()));
+        }
+        return list;
+    }
+
+    MediaQueryPage parseMediaQueryPage(const QJsonObject &response, int startIndex,
+                                       int limit)
+    {
+        MediaQueryPage page;
+        page.items = parseJsonArray<MediaItem>(response.value("Items").toArray());
+        page.startIndex = qMax(0, startIndex);
+        page.limit = limit;
+        page.hasTotalRecordCount =
+            response.contains(QStringLiteral("TotalRecordCount"));
+        page.totalRecordCount =
+            response.value(QStringLiteral("TotalRecordCount"))
+                .toInt(page.startIndex + page.items.size());
+        return page;
+    }
+
     
     
     
@@ -85,293 +95,367 @@ QString appendMediaCardTooltipFields(QString fieldsCsv)
     
     
     
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    const QStringList tooltipFields = {
-        QStringLiteral("PremiereDate"),
-        QStringLiteral("RunTimeTicks"),
-        QStringLiteral("Overview"),
-        QStringLiteral("Genres"),
-        QStringLiteral("OfficialRating"),
-        QStringLiteral("Taglines"),
-        QStringLiteral("MediaSources"),
-        QStringLiteral("MediaStreams"),
-        QStringLiteral("Tags"),
-        QStringLiteral("Studios"),
-        QStringLiteral("ExternalUrls"),
+    constexpr int kRecommendCacheFormatVersion = 7;
+    constexpr int kDefaultRecommendFetchLimit = 1000;
+
+    QString appendMediaCardTooltipFields(QString fieldsCsv)
+    {
+        QStringList fields =
+            fieldsCsv.split(QLatin1Char(','), Qt::SkipEmptyParts);
+
+        for (QString &field : fields)
+        {
+            field = field.trimmed();
+        }
+
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        const QStringList tooltipFields = {
+            QStringLiteral("PremiereDate"),
+            QStringLiteral("RunTimeTicks"),
+            QStringLiteral("Overview"),
+            QStringLiteral("Genres"),
+            QStringLiteral("OfficialRating"),
+            QStringLiteral("Taglines"),
+            QStringLiteral("MediaSources"),
+            QStringLiteral("MediaStreams"),
+            QStringLiteral("Tags"),
+            QStringLiteral("Studios"),
+            QStringLiteral("ExternalUrls"),
+        };
+
+        for (const QString &field : tooltipFields)
+        {
+            if (!fields.contains(field, Qt::CaseInsensitive))
+            {
+                fields.append(field);
+            }
+        }
+
+        return fields.join(QLatin1Char(','));
+    }
+
+    struct PlayedItemEntry
+    {
+        MediaItem item;
+        QDateTime playedAt;
+        int sequence = 0;
     };
 
-    for (const QString& field : tooltipFields) {
-        if (!fields.contains(field, Qt::CaseInsensitive)) {
-            fields.append(field);
+    QDateTime parseServerDateTime(const QString &rawValue)
+    {
+        const QString trimmed = rawValue.trimmed();
+        if (trimmed.isEmpty())
+        {
+            return {};
         }
+
+        QDateTime parsed = QDateTime::fromString(trimmed, Qt::ISODateWithMs);
+        if (!parsed.isValid())
+        {
+            parsed = QDateTime::fromString(trimmed, Qt::ISODate);
+        }
+        return parsed.isValid() ? parsed.toUTC() : QDateTime();
     }
 
-    return fields.join(QLatin1Char(','));
-}
-
-struct PlayedItemEntry
-{
-    MediaItem item;
-    QDateTime playedAt;
-    int sequence = 0;
-};
-
-QDateTime parseServerDateTime(const QString& rawValue)
-{
-    const QString trimmed = rawValue.trimmed();
-    if (trimmed.isEmpty()) {
-        return {};
+    QDateTime mediaDateCreated(const MediaItem &item)
+    {
+        const QDateTime rawDate = parseServerDateTime(item.dateCreatedRaw);
+        if (rawDate.isValid())
+        {
+            return rawDate;
+        }
+        return parseServerDateTime(item.dateCreated);
     }
 
-    QDateTime parsed = QDateTime::fromString(trimmed, Qt::ISODateWithMs);
-    if (!parsed.isValid()) {
-        parsed = QDateTime::fromString(trimmed, Qt::ISODate);
+    QDateTime mediaPlayedAt(const MediaItem &item)
+    {
+        return parseServerDateTime(item.userData.lastPlayedDate);
     }
-    return parsed.isValid() ? parsed.toUTC() : QDateTime();
-}
 
-QDateTime mediaDateCreated(const MediaItem& item)
-{
-    const QDateTime rawDate = parseServerDateTime(item.dateCreatedRaw);
-    if (rawDate.isValid()) {
-        return rawDate;
+    QString mediaSortTitle(const MediaItem &item)
+    {
+        const QString sortTitle = item.sortName.trimmed();
+        return sortTitle.isEmpty() ? item.name.trimmed() : sortTitle;
     }
-    return parseServerDateTime(item.dateCreated);
-}
 
-QDateTime mediaPlayedAt(const MediaItem& item)
-{
-    return parseServerDateTime(item.userData.lastPlayedDate);
-}
-
-QString mediaSortTitle(const MediaItem& item)
-{
-    const QString sortTitle = item.sortName.trimmed();
-    return sortTitle.isEmpty() ? item.name.trimmed() : sortTitle;
-}
-
-int compareDateTime(const QDateTime& lhs, const QDateTime& rhs)
-{
-    const qint64 lhsValue = lhs.isValid() ? lhs.toMSecsSinceEpoch() : 0;
-    const qint64 rhsValue = rhs.isValid() ? rhs.toMSecsSinceEpoch() : 0;
-    if (lhsValue == rhsValue) {
-        return 0;
-    }
-    return lhsValue < rhsValue ? -1 : 1;
-}
-
-int comparePlayedEntries(const PlayedItemEntry& lhs,
-                         const PlayedItemEntry& rhs,
-                         const QString& sortBy)
-{
-    if (sortBy.compare(QStringLiteral("DateCreated"), Qt::CaseInsensitive) == 0) {
-        return compareDateTime(mediaDateCreated(lhs.item),
-                               mediaDateCreated(rhs.item));
-    }
-    if (sortBy.compare(QStringLiteral("Runtime"), Qt::CaseInsensitive) == 0) {
-        if (lhs.item.runTimeTicks == rhs.item.runTimeTicks) {
+    int compareDateTime(const QDateTime &lhs, const QDateTime &rhs)
+    {
+        const qint64 lhsValue = lhs.isValid() ? lhs.toMSecsSinceEpoch() : 0;
+        const qint64 rhsValue = rhs.isValid() ? rhs.toMSecsSinceEpoch() : 0;
+        if (lhsValue == rhsValue)
+        {
             return 0;
         }
-        return lhs.item.runTimeTicks < rhs.item.runTimeTicks ? -1 : 1;
-    }
-    if (sortBy.compare(QStringLiteral("PremiereDate"), Qt::CaseInsensitive) == 0) {
-        const int result =
-            QString::compare(lhs.item.premiereDate, rhs.item.premiereDate,
-                             Qt::CaseInsensitive);
-        return result == 0 ? 0 : (result < 0 ? -1 : 1);
-    }
-    if (sortBy.compare(QStringLiteral("SortName"), Qt::CaseInsensitive) == 0 ||
-        sortBy.compare(QStringLiteral("Title"), Qt::CaseInsensitive) == 0) {
-        const int result =
-            QString::localeAwareCompare(mediaSortTitle(lhs.item),
-                                        mediaSortTitle(rhs.item));
-        return result == 0 ? 0 : (result < 0 ? -1 : 1);
+        return lhsValue < rhsValue ? -1 : 1;
     }
 
-    return compareDateTime(lhs.playedAt, rhs.playedAt);
-}
-
-QString mediaPageFingerprint(const QList<MediaItem>& items)
-{
-    QString fingerprint;
-    for (const MediaItem& item : items) {
-        if (item.id.isEmpty()) {
-            continue;
-        }
-        fingerprint += item.id;
-        fingerprint += QLatin1Char('|');
-    }
-    return fingerprint;
-}
-
-QString findUserViewIdByCollectionType(const QList<MediaItem> &views,
-                                       QString collectionType)
-{
-    collectionType = collectionType.trimmed();
-    if (collectionType.isEmpty())
+    int comparePlayedEntries(const PlayedItemEntry &lhs,
+                             const PlayedItemEntry &rhs,
+                             const QString &sortBy)
     {
+        if (sortBy.compare(QStringLiteral("DateCreated"), Qt::CaseInsensitive) == 0)
+        {
+            return compareDateTime(mediaDateCreated(lhs.item),
+                                   mediaDateCreated(rhs.item));
+        }
+        if (sortBy.compare(QStringLiteral("Runtime"), Qt::CaseInsensitive) == 0)
+        {
+            if (lhs.item.runTimeTicks == rhs.item.runTimeTicks)
+            {
+                return 0;
+            }
+            return lhs.item.runTimeTicks < rhs.item.runTimeTicks ? -1 : 1;
+        }
+        if (sortBy.compare(QStringLiteral("PremiereDate"), Qt::CaseInsensitive) == 0)
+        {
+            const int result =
+                QString::compare(lhs.item.premiereDate, rhs.item.premiereDate,
+                                 Qt::CaseInsensitive);
+            return result == 0 ? 0 : (result < 0 ? -1 : 1);
+        }
+        if (sortBy.compare(QStringLiteral("SortName"), Qt::CaseInsensitive) == 0 ||
+            sortBy.compare(QStringLiteral("Title"), Qt::CaseInsensitive) == 0)
+        {
+            const int result =
+                QString::localeAwareCompare(mediaSortTitle(lhs.item),
+                                            mediaSortTitle(rhs.item));
+            return result == 0 ? 0 : (result < 0 ? -1 : 1);
+        }
+
+        return compareDateTime(lhs.playedAt, rhs.playedAt);
+    }
+
+    QString mediaPageFingerprint(const QList<MediaItem> &items)
+    {
+        QString fingerprint;
+        for (const MediaItem &item : items)
+        {
+            if (item.id.isEmpty())
+            {
+                continue;
+            }
+            fingerprint += item.id;
+            fingerprint += QLatin1Char('|');
+        }
+        return fingerprint;
+    }
+
+    QString findUserViewIdByCollectionType(const QList<MediaItem> &views,
+                                           QString collectionType)
+    {
+        collectionType = collectionType.trimmed();
+        if (collectionType.isEmpty())
+        {
+            return {};
+        }
+
+        for (const MediaItem &view : views)
+        {
+            if (view.collectionType.compare(collectionType, Qt::CaseInsensitive) == 0 && !view.id.isEmpty())
+            {
+                return view.id;
+            }
+        }
+
         return {};
     }
 
-    for (const MediaItem &view : views)
+    int effectivePort(const QUrl &url)
     {
-        if (view.collectionType.compare(collectionType, Qt::CaseInsensitive) == 0
-            && !view.id.isEmpty())
+        if (url.port() > 0)
         {
-            return view.id;
+            return url.port();
         }
+
+        if (url.scheme().compare(QStringLiteral("https"), Qt::CaseInsensitive) == 0)
+        {
+            return 443;
+        }
+        if (url.scheme().compare(QStringLiteral("http"), Qt::CaseInsensitive) == 0)
+        {
+            return 80;
+        }
+        return -1;
     }
 
-    return {};
-}
-
-int effectivePort(const QUrl& url)
-{
-    if (url.port() > 0) {
-        return url.port();
+    bool isSameOrigin(const QUrl &left, const QUrl &right)
+    {
+        return left.scheme().compare(right.scheme(), Qt::CaseInsensitive) == 0 &&
+               left.host().compare(right.host(), Qt::CaseInsensitive) == 0 &&
+               effectivePort(left) == effectivePort(right);
     }
 
-    if (url.scheme().compare(QStringLiteral("https"), Qt::CaseInsensitive) == 0) {
-        return 443;
-    }
-    if (url.scheme().compare(QStringLiteral("http"), Qt::CaseInsensitive) == 0) {
-        return 80;
-    }
-    return -1;
-}
+    NetworkRequestOptions buildImageRequestOptions(const ServerProfile &profile,
+                                                   const QUrl &requestUrl)
+    {
+        NetworkRequestOptions options;
+        if (!profile.isValid() || !requestUrl.isValid())
+        {
+            return options;
+        }
 
-bool isSameOrigin(const QUrl& left, const QUrl& right)
-{
-    return left.scheme().compare(right.scheme(), Qt::CaseInsensitive) == 0 &&
-           left.host().compare(right.host(), Qt::CaseInsensitive) == 0 &&
-           effectivePort(left) == effectivePort(right);
-}
+        const QUrl profileUrl(profile.url);
+        if (profile.ignoreSslVerification &&
+            isSameOrigin(requestUrl, profileUrl))
+        {
+            options.ignoreSslErrors = true;
+        }
 
-NetworkRequestOptions buildImageRequestOptions(const ServerProfile& profile,
-                                               const QUrl& requestUrl)
-{
-    NetworkRequestOptions options;
-    if (!profile.isValid() || !requestUrl.isValid()) {
         return options;
     }
 
-    const QUrl profileUrl(profile.url);
-    if (profile.ignoreSslVerification &&
-        isSameOrigin(requestUrl, profileUrl)) {
-        options.ignoreSslErrors = true;
-    }
-
-    return options;
-}
-
-struct ResolvedImageRequest {
-    QUrl url;
-
-    bool isValid() const
+    struct ResolvedImageRequest
     {
-        return url.isValid() && !url.scheme().trimmed().isEmpty();
-    }
-};
+        QUrl url;
 
-QString sanitizeMimeType(QString mimeType)
-{
-    const int separatorIndex = mimeType.indexOf(QLatin1Char(';'));
-    if (separatorIndex >= 0) {
-        mimeType = mimeType.left(separatorIndex);
-    }
+        bool isValid() const
+        {
+            return url.isValid() && !url.scheme().trimmed().isEmpty();
+        }
+    };
 
-    return mimeType.trimmed().toLower();
-}
+    QString sanitizeMimeType(QString mimeType)
+    {
+        const int separatorIndex = mimeType.indexOf(QLatin1Char(';'));
+        if (separatorIndex >= 0)
+        {
+            mimeType = mimeType.left(separatorIndex);
+        }
 
-QString detectImageMimeType(const QByteArray& data)
-{
-    if (data.isEmpty()) {
-        return {};
-    }
-
-    QBuffer buffer;
-    buffer.setData(data);
-    if (!buffer.open(QIODevice::ReadOnly)) {
-        return {};
+        return mimeType.trimmed().toLower();
     }
 
-    QImageReader reader(&buffer);
-    const QString format = QString::fromLatin1(reader.format()).trimmed().toLower();
-    if (format.isEmpty()) {
-        return {};
+    QString detectImageMimeType(const QByteArray &data)
+    {
+        if (data.isEmpty())
+        {
+            return {};
+        }
+
+        QBuffer buffer;
+        buffer.setData(data);
+        if (!buffer.open(QIODevice::ReadOnly))
+        {
+            return {};
+        }
+
+        QImageReader reader(&buffer);
+        const QString format = QString::fromLatin1(reader.format()).trimmed().toLower();
+        if (format.isEmpty())
+        {
+            return {};
+        }
+
+        return QStringLiteral("image/%1").arg(format);
     }
 
-    return QStringLiteral("image/%1").arg(format);
-}
+    QString buildItemImagePath(QString itemId, QString imageType, int imageIndex)
+    {
+        itemId = itemId.trimmed();
+        imageType = imageType.trimmed();
 
-QString buildItemImagePath(QString itemId, QString imageType, int imageIndex)
-{
-    itemId = itemId.trimmed();
-    imageType = imageType.trimmed();
+        QString path = QStringLiteral("/Items/%1/Images/%2").arg(itemId, imageType);
+        if (imageIndex >= 0)
+        {
+            path += QStringLiteral("/%1").arg(imageIndex);
+        }
 
-    QString path = QStringLiteral("/Items/%1/Images/%2").arg(itemId, imageType);
-    if (imageIndex >= 0) {
-        path += QStringLiteral("/%1").arg(imageIndex);
+        return path;
     }
 
-    return path;
-}
+    QString buildImageCacheKey(QString itemId, QString imageType, int imageIndex)
+    {
+        return QStringLiteral("%1|%2|%3")
+            .arg(itemId.trimmed(), imageType.trimmed())
+            .arg(imageIndex);
+    }
 
-QString buildImageCacheKey(QString itemId, QString imageType, int imageIndex)
-{
-    return QStringLiteral("%1|%2|%3")
-        .arg(itemId.trimmed(), imageType.trimmed())
-        .arg(imageIndex);
-}
+    QString buildDecodedImageCacheKey(const ServerProfile &profile,
+                                      const QString &itemId,
+                                      const QString &imageType,
+                                      const QString &imageTag, int imageIndex,
+                                      int maxWidth, quint64 cacheVersion)
+    {
+        return profile.id + QLatin1Char('|') + profile.url +
+               QLatin1Char('|') + profile.userId + QLatin1Char('|') + itemId +
+               QLatin1Char('|') + imageType + QLatin1Char('|') + imageTag +
+               QLatin1Char('|') + QString::number(imageIndex) +
+               QLatin1Char('|') + QString::number(maxWidth) +
+               QLatin1Char('|') + QString::number(cacheVersion);
+    }
 
-ResolvedImageRequest resolveImageRequest(const ServerManager* serverManager,
-                                        QString imageUrl)
-{
-    ResolvedImageRequest result;
+    int decodedImageCostKb(const QImage &image)
+    {
+        if (image.isNull())
+        {
+            return 1;
+        }
 
-    imageUrl = imageUrl.trimmed();
-    if (imageUrl.isEmpty()) {
+        const qint64 bytes = image.sizeInBytes();
+        return qMax(1, static_cast<int>(bytes / 1024));
+    }
+
+    ResolvedImageRequest resolveImageRequest(const ServerManager *serverManager,
+                                             QString imageUrl)
+    {
+        ResolvedImageRequest result;
+
+        imageUrl = imageUrl.trimmed();
+        if (imageUrl.isEmpty())
+        {
+            return result;
+        }
+
+        const ServerProfile profile =
+            serverManager ? serverManager->activeProfile() : ServerProfile{};
+        QUrl resolvedUrl(imageUrl);
+
+        if (resolvedUrl.isRelative() && profile.isValid())
+        {
+            QUrl baseUrl(profile.url);
+            if (baseUrl.isValid() && baseUrl.path().isEmpty())
+            {
+                baseUrl.setPath(QStringLiteral("/"));
+            }
+            resolvedUrl = baseUrl.resolved(QUrl(imageUrl));
+        }
+
+        if (!resolvedUrl.isValid() || resolvedUrl.scheme().trimmed().isEmpty())
+        {
+            return result;
+        }
+
+        if (profile.isValid() && !profile.accessToken.isEmpty() &&
+            isSameOrigin(resolvedUrl, QUrl(profile.url)))
+        {
+            QUrlQuery query(resolvedUrl);
+            if (!query.hasQueryItem(QStringLiteral("api_key")))
+            {
+                query.addQueryItem(QStringLiteral("api_key"), profile.accessToken);
+                resolvedUrl.setQuery(query);
+            }
+        }
+
+        result.url = resolvedUrl;
         return result;
     }
-
-    const ServerProfile profile =
-        serverManager ? serverManager->activeProfile() : ServerProfile{};
-    QUrl resolvedUrl(imageUrl);
-
-    if (resolvedUrl.isRelative() && profile.isValid()) {
-        QUrl baseUrl(profile.url);
-        if (baseUrl.isValid() && baseUrl.path().isEmpty()) {
-            baseUrl.setPath(QStringLiteral("/"));
-        }
-        resolvedUrl = baseUrl.resolved(QUrl(imageUrl));
-    }
-
-    if (!resolvedUrl.isValid() || resolvedUrl.scheme().trimmed().isEmpty()) {
-        return result;
-    }
-
-    if (profile.isValid() && !profile.accessToken.isEmpty() &&
-        isSameOrigin(resolvedUrl, QUrl(profile.url))) {
-        QUrlQuery query(resolvedUrl);
-        if (!query.hasQueryItem(QStringLiteral("api_key"))) {
-            query.addQueryItem(QStringLiteral("api_key"), profile.accessToken);
-            resolvedUrl.setQuery(query);
-        }
-    }
-
-    result.url = resolvedUrl;
-    return result;
-}
 } 
 
 MediaService::MediaService(ServerManager *serverManager, QObject *parent)
@@ -384,6 +468,7 @@ MediaService::MediaService(ServerManager *serverManager, QObject *parent)
     diskCache->setCacheDirectory(cachePath);
     diskCache->setMaximumCacheSize(500 * 1024 * 1024);
     m_imageManager->setCache(diskCache);
+    m_decodedImageCache.setMaxCost(kDecodedImageCacheCostKb);
 }
 
 void MediaService::ensureValidProfile() const
@@ -451,10 +536,10 @@ QCoro::Task<MediaQueryPage> MediaService::getLibraryItemsPage(const QString &par
     ensureValidProfile();
     ServerProfile profile = m_serverManager->activeProfile();
 
-    QStringList fields = {QStringLiteral("BasicSyncInfo"),  QStringLiteral("CanDelete"),
-                          QStringLiteral("CanDownload"),    QStringLiteral("PrimaryImageAspectRatio"),
+    QStringList fields = {QStringLiteral("BasicSyncInfo"), QStringLiteral("CanDelete"),
+                          QStringLiteral("CanDownload"), QStringLiteral("PrimaryImageAspectRatio"),
                           QStringLiteral("ProductionYear"), QStringLiteral("Status"),
-                          QStringLiteral("EndDate"),        QStringLiteral("RecursiveItemCount"),
+                          QStringLiteral("EndDate"), QStringLiteral("RecursiveItemCount"),
                           QStringLiteral("MediaType"),
                           QStringLiteral("DateCreated")};
     if (includeChildCount)
@@ -592,14 +677,24 @@ QCoro::Task<QList<MediaItem>> MediaService::getNextUp(const QString &seriesId)
     co_return parseJsonArray<MediaItem>(response["Items"].toArray());
 }
 
-QCoro::Task<QPixmap> MediaService::fetchImage(const QString &itemId,
-                                              const QString &imageType,
-                                              const QString &imageTag,
-                                              int maxWidth, int imageIndex)
+QCoro::Task<QPixmap> MediaService::fetchImage(QString itemId,
+                                              QString imageType,
+                                              QString imageTag,
+                                              int maxWidth, int imageIndex,
+                                              ImageRequestPriority priority,
+                                              QObject *requestContext,
+                                              ImageFetchPolicy fetchPolicy)
 {
     ServerProfile profile = m_serverManager->activeProfile();
     if (!profile.isValid())
+    {
+        qWarning() << "[MediaService] fetchImage skipped: invalid active profile"
+                   << "| itemId=" << itemId
+                   << "| imageType=" << imageType;
         co_return QPixmap();
+    }
+    const bool hasRequestContext = requestContext != nullptr;
+    QPointer<QObject> requestContextGuard(requestContext);
 
     
     QString quality = ConfigStore::instance()->get<QString>(ConfigKeys::ImageQuality, "high");
@@ -610,6 +705,7 @@ QCoro::Task<QPixmap> MediaService::fetchImage(const QString &itemId,
         effectiveMaxWidth = maxWidth * 3 / 4;
     else if (quality == "original")
         effectiveMaxWidth = 0; 
+    effectiveMaxWidth = bucketImageWidth(effectiveMaxWidth);
 
     const QString trimmedItemId = itemId.trimmed();
     const QString trimmedImageType = imageType.trimmed();
@@ -619,6 +715,184 @@ QCoro::Task<QPixmap> MediaService::fetchImage(const QString &itemId,
         buildImageCacheKey(trimmedItemId, trimmedImageType, imageIndex);
     const quint64 cacheVersion =
         m_invalidatedImageRequestVersions.value(imageCacheKey, 0);
+    const QString decodedCacheKey = buildDecodedImageCacheKey(
+        profile, trimmedItemId, trimmedImageType, imageTag, imageIndex,
+        effectiveMaxWidth, cacheVersion);
+    const bool networkOnly = fetchPolicy == ImageFetchPolicy::NetworkOnly;
+
+    if (!networkOnly)
+    {
+        if (QImage *cached = m_decodedImageCache.object(decodedCacheKey))
+        {
+            
+            
+            
+            const QImage cachedImage = *cached;
+            QPixmap cachedPixmap = QPixmap::fromImage(cachedImage);
+            qDebug() << "[MediaService] decoded image cache hit"
+                     << "| itemId=" << trimmedItemId
+                     << "| imageType=" << trimmedImageType
+                     << "| maxWidth=" << effectiveMaxWidth
+                     << "| imageSize=" << cachedImage.size()
+                     << "| pixmapNull=" << cachedPixmap.isNull();
+            if (!cachedPixmap.isNull())
+            {
+                co_return std::move(cachedPixmap);
+            }
+
+            
+            
+            
+            qWarning() << "[MediaService] removing unusable decoded image "
+                          "cache entry"
+                       << "| itemId=" << trimmedItemId
+                       << "| imageType=" << trimmedImageType
+                       << "| imageSize=" << cachedImage.size();
+            m_decodedImageCache.remove(decodedCacheKey);
+        }
+    }
+
+    QPointer<MediaService> serviceGuard(this);
+    
+    
+    
+    
+    
+    const bool shareInFlightRequest =
+        !networkOnly && !hasRequestContext;
+    const auto inFlightIt = shareInFlightRequest
+                                ? m_inFlightImageRequests.constFind(decodedCacheKey)
+                                : m_inFlightImageRequests.constEnd();
+    if (shareInFlightRequest && inFlightIt != m_inFlightImageRequests.constEnd())
+    {
+        const InFlightImageRequest sharedRequest = inFlightIt.value();
+        if (!sharedRequest.future.isCanceled())
+        {
+            try
+            {
+                QFuture<QImage> inFlightFuture = sharedRequest.future;
+                const QImage sharedImage = co_await inFlightFuture;
+                if (!serviceGuard)
+                {
+                    co_return QPixmap();
+                }
+
+                QPixmap sharedPixmap;
+                if (!inFlightFuture.isCanceled() && !sharedImage.isNull())
+                {
+                    sharedPixmap = QPixmap::fromImage(sharedImage);
+                }
+                if (!sharedPixmap.isNull())
+                {
+                    qDebug() << "[MediaService] reused in-flight image request"
+                             << "| itemId=" << trimmedItemId
+                             << "| imageType=" << trimmedImageType
+                             << "| requestId=" << sharedRequest.requestId
+                             << "| imageSize=" << sharedImage.size();
+                    co_return std::move(sharedPixmap);
+                }
+
+                qWarning() << "[MediaService] joined image request became "
+                              "cancelled or empty; starting a replacement"
+                           << "| itemId=" << trimmedItemId
+                           << "| imageType=" << trimmedImageType
+                           << "| requestId=" << sharedRequest.requestId;
+            }
+            catch (...)
+            {
+                if (!serviceGuard)
+                {
+                    co_return QPixmap();
+                }
+                qWarning() << "[MediaService] in-flight image request was "
+                              "cancelled; starting a replacement"
+                           << "| itemId=" << trimmedItemId
+                           << "| imageType=" << trimmedImageType
+                           << "| requestId=" << sharedRequest.requestId;
+            }
+        }
+
+        removeInFlightImageRequest(decodedCacheKey,
+                                   sharedRequest.requestId);
+    }
+
+    if (hasRequestContext && !requestContextGuard)
+    {
+        qDebug() << "[MediaService] fetchImage cancelled before scheduling"
+                 << "| itemId=" << trimmedItemId
+                 << "| imageType=" << trimmedImageType;
+        co_return QPixmap();
+    }
+
+    QPromise<QImage> sharedPromise;
+    sharedPromise.start();
+    QFuture<QImage> sharedFuture = sharedPromise.future();
+    const quint64 inFlightRequestId = ++m_nextInFlightImageRequestId;
+    if (shareInFlightRequest)
+    {
+        m_inFlightImageRequests.insert(
+            decodedCacheKey,
+            InFlightImageRequest {inFlightRequestId, sharedFuture});
+    }
+    auto inFlightCleanup = qScopeGuard(
+        [serviceGuard, decodedCacheKey, inFlightRequestId,
+         shareInFlightRequest]()
+        {
+            if (serviceGuard && shareInFlightRequest)
+            {
+                serviceGuard->removeInFlightImageRequest(
+                    decodedCacheKey, inFlightRequestId);
+            }
+        });
+    const quint64 memoryCacheGeneration = m_imageCacheGeneration;
+
+    quint64 networkSlotRequestId = 0;
+    bool networkSlotAcquired = true;
+    
+    
+    
+    
+    if (!networkOnly && !hasRequestContext)
+    {
+        QFuture<bool> networkSlotFuture = acquireImageNetworkSlot(
+            priority, requestContextGuard, hasRequestContext,
+            &networkSlotRequestId);
+        networkSlotAcquired = co_await networkSlotFuture;
+    }
+    auto networkSlotCleanup = qScopeGuard(
+        [serviceGuard, networkSlotRequestId]()
+        {
+            if (serviceGuard && networkSlotRequestId > 0)
+            {
+                serviceGuard->releaseImageNetworkSlot(
+                    networkSlotRequestId);
+            }
+        });
+    if (!serviceGuard || !networkSlotAcquired)
+    {
+        if (serviceGuard)
+        {
+            qDebug() << "[MediaService] fetchImage cancelled by global scheduler"
+                     << "| itemId=" << trimmedItemId
+                     << "| imageType=" << trimmedImageType
+                     << "| requestId=" << networkSlotRequestId
+                     << "| contextAlive=" << bool(requestContextGuard);
+        }
+        sharedPromise.addResult(QImage());
+        sharedPromise.finish();
+        co_return QPixmap();
+    }
+
+    if (hasRequestContext && !requestContextGuard)
+    {
+        qDebug() << "[MediaService] fetchImage cancelled after scheduling"
+                 << "| itemId=" << trimmedItemId
+                 << "| imageType=" << trimmedImageType
+                 << "| requestId=" << networkSlotRequestId;
+        sharedPromise.addResult(QImage());
+        sharedPromise.finish();
+        co_return QPixmap();
+    }
 
     QString urlStr;
     if (effectiveMaxWidth > 0)
@@ -654,7 +928,8 @@ QCoro::Task<QPixmap> MediaService::fetchImage(const QString &itemId,
         }
     }
 
-    if (cacheVersion > 0) {
+    if (cacheVersion > 0)
+    {
         urlStr += QStringLiteral("&qemby_image_rev=%1").arg(cacheVersion);
         qDebug() << "[MediaService] fetchImage using invalidated cache version"
                  << "| itemId=" << trimmedItemId
@@ -662,40 +937,120 @@ QCoro::Task<QPixmap> MediaService::fetchImage(const QString &itemId,
                  << "| imageIndex=" << imageIndex
                  << "| version=" << cacheVersion;
     }
+    if (networkOnly)
+    {
+        
+        
+        
+        urlStr += QStringLiteral("&qemby_network_only=%1_%2")
+                      .arg(QDateTime::currentMSecsSinceEpoch())
+                      .arg(inFlightRequestId);
+        qDebug() << "[MediaService] network-only image request"
+                 << "| itemId=" << trimmedItemId
+                 << "| imageType=" << trimmedImageType
+                 << "| maxWidth=" << effectiveMaxWidth;
+    }
 
     QNetworkRequest request((QUrl(urlStr)));
     const NetworkRequestOptions requestOptions =
         buildImageRequestOptions(profile, request.url());
     NetworkManager::applyRequestOptions(request, requestOptions);
-    request.setAttribute(QNetworkRequest::CacheLoadControlAttribute,
-                         cacheVersion > 0 ? QNetworkRequest::PreferNetwork
-                                          : QNetworkRequest::PreferCache);
+    request.setAttribute(
+        QNetworkRequest::CacheLoadControlAttribute,
+        networkOnly
+            ? QNetworkRequest::AlwaysNetwork
+            : (cacheVersion > 0 ? QNetworkRequest::PreferNetwork
+                                : QNetworkRequest::PreferCache));
+    if (networkOnly)
+    {
+        request.setAttribute(QNetworkRequest::CacheSaveControlAttribute,
+                             false);
+    }
     request.setAttribute(QNetworkRequest::Http2AllowedAttribute, true);
+    request.setTransferTimeout(kImageTransferTimeoutMs);
+    switch (priority)
+    {
+    case ImageRequestPriority::High:
+        request.setPriority(QNetworkRequest::HighPriority);
+        break;
+    case ImageRequestPriority::Low:
+        request.setPriority(QNetworkRequest::LowPriority);
+        break;
+    case ImageRequestPriority::Normal:
+        request.setPriority(QNetworkRequest::NormalPriority);
+        break;
+    }
 
+    QElapsedTimer totalTimer;
+    totalTimer.start();
+    QElapsedTimer networkTimer;
+    networkTimer.start();
     QNetworkReply *reply = m_imageManager->get(request);
+    QPointer<QNetworkReply> replyGuard(reply);
+    if (requestContextGuard)
+    {
+        QObject::connect(
+            requestContextGuard.data(), &QObject::destroyed, reply,
+            [replyGuard]()
+            {
+                if (replyGuard && !replyGuard->isFinished())
+                {
+                    replyGuard->abort();
+                }
+            });
+    }
+    auto replyCleanup = qScopeGuard(
+        [replyGuard]()
+        {
+            if (!replyGuard)
+            {
+                return;
+            }
+            if (!replyGuard->isFinished())
+            {
+                replyGuard->abort();
+            }
+            replyGuard->deleteLater();
+        });
     NetworkManager::attachReplyHandlers(reply, requestOptions,
                                         QStringLiteral("GET_IMAGE"));
     co_await reply;
+    if (!serviceGuard || !replyGuard)
+    {
+        sharedPromise.addResult(QImage());
+        sharedPromise.finish();
+        co_return QPixmap();
+    }
+    const qint64 networkElapsedMs = networkTimer.elapsed();
+    const bool loadedFromDiskCache =
+        reply->attribute(QNetworkRequest::SourceIsFromCacheAttribute).toBool();
 
     QPixmap result;
+    QImage decodedImage;
+    qint64 decodeElapsedMs = 0;
+    int imageBytes = 0;
     if (reply->error() == QNetworkReply::NoError)
     {
         QByteArray data = reply->readAll();
-        const int imageBytes = data.size();
+        imageBytes = data.size();
         
         
         
         
+        QElapsedTimer decodeTimer;
+        decodeTimer.start();
         auto future = QtConcurrent::run(
-            [data = std::move(data)]() mutable {
+            [data = std::move(data)]() mutable
+            {
                 QImage decoded;
                 decoded.loadFromData(data);
                 return decoded;
             });
-        QImage image = co_await future;
-        if (!image.isNull())
+        decodedImage = co_await future;
+        decodeElapsedMs = decodeTimer.elapsed();
+        if (!decodedImage.isNull())
         {
-            result = QPixmap::fromImage(std::move(image));
+            result = QPixmap::fromImage(decodedImage);
         }
         else
         {
@@ -719,7 +1074,53 @@ QCoro::Task<QPixmap> MediaService::fetchImage(const QString &itemId,
                    << NetworkManager::buildReplyErrorMessage(reply, httpStatus);
     }
 
-    reply->deleteLater();
+    if (!serviceGuard)
+    {
+        sharedPromise.addResult(decodedImage);
+        sharedPromise.finish();
+        co_return result;
+    }
+
+    if (!networkOnly && !result.isNull() && !decodedImage.isNull() &&
+        memoryCacheGeneration == m_imageCacheGeneration)
+    {
+        m_decodedImageCache.insert(
+            decodedCacheKey, new QImage(decodedImage),
+            decodedImageCostKb(decodedImage));
+    }
+
+    sharedPromise.addResult(decodedImage);
+    sharedPromise.finish();
+    if (shareInFlightRequest)
+    {
+        removeInFlightImageRequest(decodedCacheKey, inFlightRequestId);
+    }
+
+    const qint64 totalElapsedMs = totalTimer.elapsed();
+    if (!result.isNull())
+    {
+        qDebug() << "[MediaService] image request completed"
+                 << "| itemId=" << trimmedItemId
+                 << "| imageType=" << trimmedImageType
+                 << "| maxWidth=" << effectiveMaxWidth
+                 << "| bytes=" << imageBytes
+                 << "| fromDiskCache=" << loadedFromDiskCache
+                 << "| totalMs=" << totalElapsedMs;
+    }
+    if (totalElapsedMs >= kSlowImageRequestThresholdMs)
+    {
+        qWarning() << "[MediaService] slow image request"
+                   << "| itemId=" << trimmedItemId
+                   << "| imageType=" << trimmedImageType
+                   << "| imageIndex=" << imageIndex
+                   << "| maxWidth=" << effectiveMaxWidth
+                   << "| bytes=" << imageBytes
+                   << "| fromDiskCache=" << loadedFromDiskCache
+                   << "| networkMs=" << networkElapsedMs
+                   << "| decodeMs=" << decodeElapsedMs
+                   << "| totalMs=" << totalElapsedMs;
+    }
+
     co_return result;
 }
 
@@ -728,7 +1129,8 @@ void MediaService::invalidateImageCache(QString itemId, QString imageType,
 {
     itemId = itemId.trimmed();
     imageType = imageType.trimmed();
-    if (itemId.isEmpty() || imageType.isEmpty()) {
+    if (itemId.isEmpty() || imageType.isEmpty())
+    {
         qWarning() << "[MediaService] invalidateImageCache skipped"
                    << "| itemId=" << itemId
                    << "| imageType=" << imageType
@@ -739,7 +1141,8 @@ void MediaService::invalidateImageCache(QString itemId, QString imageType,
     const quint64 nextVersion = ++m_nextImageRequestVersion;
     m_invalidatedImageRequestVersions.insert(
         buildImageCacheKey(itemId, imageType, imageIndex), nextVersion);
-    if (imageIndex >= 0) {
+    if (imageIndex >= 0)
+    {
         m_invalidatedImageRequestVersions.insert(
             buildImageCacheKey(itemId, imageType, -1), nextVersion);
     }
@@ -751,9 +1154,225 @@ void MediaService::invalidateImageCache(QString itemId, QString imageType,
              << "| version=" << nextVersion;
 }
 
+void MediaService::clearImageCaches()
+{
+    const int decodedEntries = m_decodedImageCache.size();
+    const int inFlightEntries = m_inFlightImageRequests.size();
+    ++m_imageCacheGeneration;
+    m_decodedImageCache.clear();
+    m_inFlightImageRequests.clear();
+    const QList<PendingImageNetworkSlot> pendingSlots =
+        std::exchange(m_pendingImageNetworkSlots, {});
+    for (const PendingImageNetworkSlot &slot : pendingSlots)
+    {
+        if (slot.promise)
+        {
+            slot.promise->addResult(false);
+            slot.promise->finish();
+        }
+    }
+    if (m_imageManager && m_imageManager->cache())
+    {
+        m_imageManager->cache()->clear();
+    }
+
+    qDebug() << "[MediaService] image caches cleared"
+             << "| decodedEntries=" << decodedEntries
+             << "| detachedInFlight=" << inFlightEntries;
+}
+
+void MediaService::removeInFlightImageRequest(const QString &cacheKey,
+                                              quint64 requestId)
+{
+    const auto it = m_inFlightImageRequests.find(cacheKey);
+    if (it == m_inFlightImageRequests.end() ||
+        it->requestId != requestId)
+    {
+        return;
+    }
+    m_inFlightImageRequests.erase(it);
+}
+
+QFuture<bool> MediaService::acquireImageNetworkSlot(
+    ImageRequestPriority priority,
+    QPointer<QObject> requestContext,
+    bool hasRequestContext,
+    quint64 *outRequestId)
+{
+    auto promise = QSharedPointer<QPromise<bool>>::create();
+    promise->start();
+    QFuture<bool> future = promise->future();
+
+    if (outRequestId)
+    {
+        *outRequestId = 0;
+    }
+
+    if (hasRequestContext && !requestContext)
+    {
+        promise->addResult(false);
+        promise->finish();
+        return future;
+    }
+
+    const quint64 slotRequestId = ++m_nextImageNetworkSlotRequestId;
+    if (outRequestId)
+    {
+        *outRequestId = slotRequestId;
+    }
+    PendingImageNetworkSlot slot;
+    slot.requestId = slotRequestId;
+    slot.priority = priority;
+    slot.hasRequestContext = hasRequestContext;
+    slot.requestContext = requestContext;
+    slot.promise = promise;
+    m_pendingImageNetworkSlots.append(std::move(slot));
+
+    if (requestContext)
+    {
+        QObject::connect(
+            requestContext.data(), &QObject::destroyed, this,
+            [this, slotRequestId]()
+            {
+                releaseImageNetworkSlot(slotRequestId);
+            });
+    }
+
+    const bool hadToWait =
+        m_activeImageNetworkRequests >= kMaxGlobalImageNetworkRequests;
+    dispatchPendingImageNetworkSlots();
+
+    if (hadToWait)
+    {
+        qDebug() << "[MediaService] image request queued by global scheduler"
+                 << "| requestId=" << slotRequestId
+                 << "| priority=" << static_cast<int>(priority)
+                 << "| active=" << m_activeImageNetworkRequests
+                 << "| pending=" << m_pendingImageNetworkSlots.size();
+    }
+
+    return future;
+}
+
+void MediaService::releaseImageNetworkSlot(quint64 requestId)
+{
+    for (int i = 0; i < m_pendingImageNetworkSlots.size(); ++i)
+    {
+        if (m_pendingImageNetworkSlots.at(i).requestId != requestId)
+        {
+            continue;
+        }
+
+        const PendingImageNetworkSlot slot =
+            m_pendingImageNetworkSlots.takeAt(i);
+        if (slot.promise)
+        {
+            slot.promise->addResult(false);
+            slot.promise->finish();
+        }
+
+        qDebug() << "[MediaService] cancelled pending image request"
+                 << "| requestId=" << requestId
+                 << "| active=" << m_activeImageNetworkRequests
+                 << "| pending=" << m_pendingImageNetworkSlots.size();
+        dispatchPendingImageNetworkSlots();
+        return;
+    }
+
+    if (!m_grantedImageNetworkSlots.remove(requestId))
+    {
+        return;
+    }
+    m_activeImageNetworkRequests =
+        qMax(0, m_activeImageNetworkRequests - 1);
+    dispatchPendingImageNetworkSlots();
+}
+
+void MediaService::dispatchPendingImageNetworkSlots()
+{
+    if (m_dispatchingImageNetworkSlots)
+    {
+        return;
+    }
+
+    m_dispatchingImageNetworkSlots = true;
+    auto dispatchGuard = qScopeGuard(
+        [this]()
+        {
+            m_dispatchingImageNetworkSlots = false;
+        });
+
+    while (m_activeImageNetworkRequests < kMaxGlobalImageNetworkRequests &&
+           !m_pendingImageNetworkSlots.isEmpty())
+    {
+        int selectedIndex = -1;
+        int selectedRank = 3;
+
+        for (int i = 0; i < m_pendingImageNetworkSlots.size(); ++i)
+        {
+            const PendingImageNetworkSlot &candidate =
+                m_pendingImageNetworkSlots.at(i);
+            if (candidate.hasRequestContext && !candidate.requestContext)
+            {
+                continue;
+            }
+
+            int rank = 1;
+            switch (candidate.priority)
+            {
+            case ImageRequestPriority::High:
+                rank = 0;
+                break;
+            case ImageRequestPriority::Normal:
+                rank = 1;
+                break;
+            case ImageRequestPriority::Low:
+                rank = 2;
+                break;
+            }
+
+            if (rank < selectedRank)
+            {
+                selectedRank = rank;
+                selectedIndex = i;
+                if (rank == 0)
+                {
+                    break;
+                }
+            }
+        }
+
+        if (selectedIndex < 0)
+        {
+            const QList<PendingImageNetworkSlot> cancelledSlots =
+                std::exchange(m_pendingImageNetworkSlots, {});
+            for (const PendingImageNetworkSlot &slot : cancelledSlots)
+            {
+                if (slot.promise)
+                {
+                    slot.promise->addResult(false);
+                    slot.promise->finish();
+                }
+            }
+            return;
+        }
+
+        PendingImageNetworkSlot slot =
+            m_pendingImageNetworkSlots.takeAt(selectedIndex);
+        ++m_activeImageNetworkRequests;
+        m_grantedImageNetworkSlots.insert(slot.requestId);
+        if (slot.promise)
+        {
+            slot.promise->addResult(true);
+            slot.promise->finish();
+        }
+    }
+}
+
 QCoro::Task<QPixmap> MediaService::fetchImageByUrl(QString imageUrl)
 {
-    try {
+    try
+    {
         const DownloadedImageData downloadedImage =
             co_await downloadImageByUrl(std::move(imageUrl));
 
@@ -762,20 +1381,24 @@ QCoro::Task<QPixmap> MediaService::fetchImageByUrl(QString imageUrl)
         
         
         auto future = QtConcurrent::run(
-            [data = downloadedImage.data]() mutable {
+            [data = downloadedImage.data]() mutable
+            {
                 QImage decoded;
                 decoded.loadFromData(data);
                 return decoded;
             });
         QImage image = co_await future;
-        if (image.isNull()) {
+        if (image.isNull())
+        {
             qWarning() << "[MediaService] fetchImageByUrl returned invalid image"
                        << "| bytes=" << downloadedImage.data.size();
             co_return QPixmap();
         }
 
         co_return QPixmap::fromImage(std::move(image));
-    } catch (const std::exception& e) {
+    }
+    catch (const std::exception &e)
+    {
         qWarning() << "[MediaService] fetchImageByUrl failed"
                    << "| error=" << e.what();
         co_return QPixmap();
@@ -786,7 +1409,8 @@ QCoro::Task<DownloadedImageData> MediaService::downloadImageByUrl(QString imageU
 {
     const ResolvedImageRequest resolvedRequest =
         resolveImageRequest(m_serverManager, imageUrl);
-    if (!resolvedRequest.isValid()) {
+    if (!resolvedRequest.isValid())
+    {
         qWarning() << "[MediaService] downloadImageByUrl skipped invalid url"
                    << "| imageUrl=" << imageUrl;
         throw std::runtime_error(tr("Invalid image URL").toStdString());
@@ -801,16 +1425,18 @@ QCoro::Task<DownloadedImageData> MediaService::downloadImageByUrl(QString imageU
     request.setAttribute(QNetworkRequest::CacheLoadControlAttribute,
                          QNetworkRequest::PreferCache);
     request.setAttribute(QNetworkRequest::Http2AllowedAttribute, true);
+    request.setTransferTimeout(kImageTransferTimeoutMs);
 
     qDebug() << "[MediaService] downloadImageByUrl"
              << "| url=" << resolvedRequest.url.toString(QUrl::RemoveQuery);
 
-    QNetworkReply* reply = m_imageManager->get(request);
+    QNetworkReply *reply = m_imageManager->get(request);
     NetworkManager::attachReplyHandlers(reply, requestOptions,
                                         QStringLiteral("GET_IMAGE_URL"));
     co_await reply;
 
-    if (reply->error() != QNetworkReply::NoError) {
+    if (reply->error() != QNetworkReply::NoError)
+    {
         const int httpStatus =
             reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         const QString errorString =
@@ -828,12 +1454,14 @@ QCoro::Task<DownloadedImageData> MediaService::downloadImageByUrl(QString imageU
         sanitizeMimeType(reply->header(QNetworkRequest::ContentTypeHeader).toString());
     reply->deleteLater();
 
-    if (!result.mimeType.startsWith(QStringLiteral("image/"))) {
+    if (!result.mimeType.startsWith(QStringLiteral("image/")))
+    {
         result.mimeType = detectImageMimeType(result.data);
     }
 
     if (result.data.isEmpty() ||
-        !result.mimeType.startsWith(QStringLiteral("image/"))) {
+        !result.mimeType.startsWith(QStringLiteral("image/")))
+    {
         qWarning() << "[MediaService] downloadImageByUrl returned invalid image"
                    << "| url=" << resolvedRequest.url.toString(QUrl::RemoveQuery)
                    << "| bytes=" << result.data.size()
@@ -851,10 +1479,12 @@ QCoro::Task<MediaQueryPage> MediaService::fetchItemPage(
     ensureValidProfile();
 
     QString path = basePath;
-    if (startIndex > 0) {
+    if (startIndex > 0)
+    {
         path += QStringLiteral("&StartIndex=%1").arg(startIndex);
     }
-    if (limit > 0) {
+    if (limit > 0)
+    {
         path += QStringLiteral("&Limit=%1").arg(limit);
     }
 
@@ -881,7 +1511,8 @@ QCoro::Task<QList<MediaItem>> MediaService::fetchPagedItemList(
     int totalRecordCount = 0;
     int pageSize = 0;
 
-    if (normalizedLimit > 0) {
+    if (normalizedLimit > 0)
+    {
         const MediaQueryPage initialPage =
             co_await fetchItemPage(basePath, 0, normalizedLimit, context);
         ++requestCount;
@@ -890,7 +1521,9 @@ QCoro::Task<QList<MediaItem>> MediaService::fetchPagedItemList(
             qMin(normalizedLimit,
                  qMax(initialPage.totalRecordCount, rawItems.size()));
         pageSize = initialPage.items.size();
-    } else {
+    }
+    else
+    {
         const MediaQueryPage unboundedPage =
             co_await fetchItemPage(basePath, 0, 0, context);
         ++requestCount;
@@ -906,30 +1539,35 @@ QCoro::Task<QList<MediaItem>> MediaService::fetchPagedItemList(
 
     QSet<QString> pageFingerprints;
     const QString initialFingerprint = mediaPageFingerprint(rawItems);
-    if (!initialFingerprint.isEmpty()) {
+    if (!initialFingerprint.isEmpty())
+    {
         pageFingerprints.insert(initialFingerprint);
     }
 
     if (normalizedLimit > 0 && rawItems.size() < totalRecordCount &&
-        pageSize > 0) {
+        pageSize > 0)
+    {
         qDebug() << "[MediaService] paged fetch server-side page cap detected"
                  << "| context=" << context
                  << "| pageSize=" << pageSize
                  << "| loaded=" << rawItems.size()
                  << "| total=" << totalRecordCount;
 
-        while (rawItems.size() < totalRecordCount) {
+        while (rawItems.size() < totalRecordCount)
+        {
             const int startIndex = rawItems.size();
             const int remainingCount = totalRecordCount - startIndex;
             const int pageLimit = qMin(pageSize, remainingCount);
-            if (pageLimit <= 0) {
+            if (pageLimit <= 0)
+            {
                 break;
             }
 
             const MediaQueryPage page =
                 co_await fetchItemPage(basePath, startIndex, pageLimit, context);
             ++requestCount;
-            if (page.items.isEmpty()) {
+            if (page.items.isEmpty())
+            {
                 qWarning() << "[MediaService] paged fetch returned empty page"
                            << "| context=" << context
                            << "| startIndex=" << startIndex
@@ -939,8 +1577,10 @@ QCoro::Task<QList<MediaItem>> MediaService::fetchPagedItemList(
             }
 
             const QString fingerprint = mediaPageFingerprint(page.items);
-            if (!fingerprint.isEmpty()) {
-                if (pageFingerprints.contains(fingerprint)) {
+            if (!fingerprint.isEmpty())
+            {
+                if (pageFingerprints.contains(fingerprint))
+                {
                     qWarning()
                         << "[MediaService] paged fetch repeated page detected"
                         << "| context=" << context
@@ -959,7 +1599,9 @@ QCoro::Task<QList<MediaItem>> MediaService::fetchPagedItemList(
                            qMax(totalRecordCount, page.totalRecordCount))
                     : qMax(totalRecordCount, page.totalRecordCount);
         }
-    } else if (normalizedLimit > 0 && rawItems.size() < totalRecordCount) {
+    }
+    else if (normalizedLimit > 0 && rawItems.size() < totalRecordCount)
+    {
         qWarning() << "[MediaService] paged fetch cannot continue"
                    << "| context=" << context
                    << "| loaded=" << rawItems.size()
@@ -968,23 +1610,30 @@ QCoro::Task<QList<MediaItem>> MediaService::fetchPagedItemList(
     }
 
     QList<MediaItem> items;
-    if (deduplicateItems) {
+    if (deduplicateItems)
+    {
         QSet<QString> itemIds;
-        for (const MediaItem& item : std::as_const(rawItems)) {
+        for (const MediaItem &item : std::as_const(rawItems))
+        {
             const QString id = item.id.trimmed();
-            if (!id.isEmpty()) {
-                if (itemIds.contains(id)) {
+            if (!id.isEmpty())
+            {
+                if (itemIds.contains(id))
+                {
                     continue;
                 }
                 itemIds.insert(id);
             }
             items.append(item);
         }
-    } else {
+    }
+    else
+    {
         items = std::move(rawItems);
     }
 
-    if (normalizedLimit > 0 && items.size() > normalizedLimit) {
+    if (normalizedLimit > 0 && items.size() > normalizedLimit)
+    {
         items = items.mid(0, normalizedLimit);
     }
 
@@ -1003,7 +1652,9 @@ QCoro::Task<QList<MediaItem>> MediaService::getResumeItems(int limit, const QStr
     const QString fieldQuery = appendMediaCardTooltipFields(
         QStringLiteral("ProductionYear,RecursiveItemCount,CanDownload"));
     QString path = QString("/Users/%1/Items/"
-                           "Resume?Recursive=true&Fields=%2&MediaTypes=Video")
+                           "Resume?Recursive=true&Fields=%2&MediaTypes=Video"
+                           "&EnableImageTypes=Primary,Backdrop,Thumb"
+                           "&ImageTypeLimit=1")
                        .arg(m_serverManager->activeProfile().userId, fieldQuery);
     if (!sortBy.isEmpty())
         path += QString("&SortBy=%1").arg(sortBy);
@@ -1038,7 +1689,9 @@ QCoro::Task<MediaQueryPage> MediaService::getResumeItemsPage(
     const QString fieldQuery = appendMediaCardTooltipFields(
         QStringLiteral("ProductionYear,RecursiveItemCount,CanDownload"));
     QString path = QString("/Users/%1/Items/"
-                           "Resume?Recursive=true&Fields=%2&MediaTypes=Video")
+                           "Resume?Recursive=true&Fields=%2&MediaTypes=Video"
+                           "&EnableImageTypes=Primary,Backdrop,Thumb"
+                           "&ImageTypeLimit=1")
                        .arg(m_serverManager->activeProfile().userId, fieldQuery);
     if (!sortBy.isEmpty())
         path += QString("&SortBy=%1").arg(sortBy);
@@ -1081,7 +1734,8 @@ QCoro::Task<QList<MediaItem>> MediaService::getPlayedItems(int limit, const QStr
         [this, fieldQuery, userId](QString includeItemTypes, int requestLimit,
                                    QString requestSortBy,
                                    QString requestSortOrder)
-            -> QCoro::Task<QList<MediaItem>> {
+        -> QCoro::Task<QList<MediaItem>>
+    {
         QString path =
             QString("/Users/%1/"
                     "Items?Recursive=true&Fields=%2&IncludeItemTypes=%3&Filters=IsPlayed")
@@ -1101,7 +1755,8 @@ QCoro::Task<QList<MediaItem>> MediaService::getPlayedItems(int limit, const QStr
     QHash<QString, bool> seriesCompletedCache;
     int sequence = 0;
 
-    const auto appendEntry = [&entries, &sequence](MediaItem item) {
+    const auto appendEntry = [&entries, &sequence](MediaItem item)
+    {
         PlayedItemEntry entry;
         entry.playedAt = mediaPlayedAt(item);
         entry.sequence = sequence++;
@@ -1112,16 +1767,19 @@ QCoro::Task<QList<MediaItem>> MediaService::getPlayedItems(int limit, const QStr
     const QList<MediaItem> movies =
         co_await fetchPlayedItems(QStringLiteral("Movie"), queryLimit,
                                   requestSortBy, requestSortOrder);
-    for (MediaItem movie : movies) {
+    for (MediaItem movie : movies)
+    {
         appendEntry(std::move(movie));
     }
 
     const QList<MediaItem> directSeries =
         co_await fetchPlayedItems(QStringLiteral("Series"), queryLimit,
                                   requestSortBy, requestSortOrder);
-    for (MediaItem series : directSeries) {
+    for (MediaItem series : directSeries)
+    {
         const QString seriesId = series.id.trimmed();
-        if (seriesId.isEmpty() || seriesEntryIndexes.contains(seriesId)) {
+        if (seriesId.isEmpty() || seriesEntryIndexes.contains(seriesId))
+        {
             continue;
         }
         seriesEntryIndexes.insert(seriesId, entries.size());
@@ -1131,17 +1789,21 @@ QCoro::Task<QList<MediaItem>> MediaService::getPlayedItems(int limit, const QStr
     const QList<MediaItem> episodes =
         co_await fetchPlayedItems(QStringLiteral("Episode"), queryLimit,
                                   requestSortBy, requestSortOrder);
-    for (const MediaItem& episode : episodes) {
+    for (const MediaItem &episode : episodes)
+    {
         const QString seriesId = episode.seriesId.trimmed();
-        if (seriesId.isEmpty()) {
+        if (seriesId.isEmpty())
+        {
             continue;
         }
 
         const QDateTime episodePlayedAt = mediaPlayedAt(episode);
-        if (seriesEntryIndexes.contains(seriesId)) {
-            PlayedItemEntry& entry = entries[seriesEntryIndexes.value(seriesId)];
+        if (seriesEntryIndexes.contains(seriesId))
+        {
+            PlayedItemEntry &entry = entries[seriesEntryIndexes.value(seriesId)];
             if (!entry.playedAt.isValid() ||
-                compareDateTime(entry.playedAt, episodePlayedAt) < 0) {
+                compareDateTime(entry.playedAt, episodePlayedAt) < 0)
+            {
                 entry.playedAt = episodePlayedAt;
                 entry.item.userData.lastPlayedDate =
                     episode.userData.lastPlayedDate;
@@ -1149,12 +1811,15 @@ QCoro::Task<QList<MediaItem>> MediaService::getPlayedItems(int limit, const QStr
             continue;
         }
 
-        if (!seriesCompletedCache.contains(seriesId)) {
-            try {
+        if (!seriesCompletedCache.contains(seriesId))
+        {
+            try
+            {
                 MediaItem series = co_await getItemDetail(seriesId);
                 const bool seriesCompleted = series.userData.played;
                 seriesCompletedCache.insert(seriesId, seriesCompleted);
-                if (seriesCompleted) {
+                if (seriesCompleted)
+                {
                     series.userData.played = true;
                     series.userData.playbackPositionTicks = 0;
                     series.userData.playedPercentage = 100.0;
@@ -1163,7 +1828,9 @@ QCoro::Task<QList<MediaItem>> MediaService::getPlayedItems(int limit, const QStr
                     appendEntry(std::move(series));
                     continue;
                 }
-            } catch (const std::exception& e) {
+            }
+            catch (const std::exception &e)
+            {
                 seriesCompletedCache.insert(seriesId, false);
                 qWarning() << "[MediaService] failed to resolve played series"
                            << "| seriesId=" << seriesId
@@ -1176,11 +1843,13 @@ QCoro::Task<QList<MediaItem>> MediaService::getPlayedItems(int limit, const QStr
         requestSortOrder.compare(QStringLiteral("Descending"),
                                  Qt::CaseInsensitive) == 0;
     std::stable_sort(entries.begin(), entries.end(),
-                     [requestSortBy, descending](const PlayedItemEntry& lhs,
-                                                 const PlayedItemEntry& rhs) {
+                     [requestSortBy, descending](const PlayedItemEntry &lhs,
+                                                 const PlayedItemEntry &rhs)
+                     {
                          const int result =
                              comparePlayedEntries(lhs, rhs, requestSortBy);
-                         if (result == 0) {
+                         if (result == 0)
+                         {
                              return lhs.sequence < rhs.sequence;
                          }
                          return descending ? result > 0 : result < 0;
@@ -1188,8 +1857,10 @@ QCoro::Task<QList<MediaItem>> MediaService::getPlayedItems(int limit, const QStr
 
     QList<MediaItem> result;
     result.reserve(limit > 0 ? qMin(limit, entries.size()) : entries.size());
-    for (const PlayedItemEntry& entry : std::as_const(entries)) {
-        if (limit > 0 && result.size() >= limit) {
+    for (const PlayedItemEntry &entry : std::as_const(entries))
+    {
+        if (limit > 0 && result.size() >= limit)
+        {
             break;
         }
         result.append(entry.item);
@@ -1222,9 +1893,12 @@ QCoro::Task<MediaQueryPage> MediaService::getPlayedItemsPage(
     MediaQueryPage page;
     page.startIndex = normalizedStartIndex;
     page.limit = limit;
-    if (normalizedLimit > 0) {
+    if (normalizedLimit > 0)
+    {
         page.items = items.mid(page.startIndex, normalizedLimit);
-    } else {
+    }
+    else
+    {
         page.items = items.mid(page.startIndex);
     }
 
@@ -1517,7 +2191,9 @@ QCoro::Task<QList<MediaItem>> MediaService::getSimilarItems(const QString &itemI
     const QString fieldQuery = appendMediaCardTooltipFields(
         QStringLiteral("PrimaryImageAspectRatio,ProductionYear,CanDownload"));
     QString path = QString("/Items/%1/"
-                           "Similar?UserId=%2&Limit=%3&Fields=%4")
+                           "Similar?UserId=%2&Limit=%3&Fields=%4"
+                           "&EnableImageTypes=Primary,Backdrop,Thumb"
+                           "&ImageTypeLimit=1")
                        .arg(itemId, m_serverManager->activeProfile().userId)
                        .arg(limit)
                        .arg(fieldQuery);
@@ -1533,7 +2209,9 @@ QCoro::Task<QList<MediaItem>> MediaService::getItemCollections(const QString &it
         QStringLiteral("PrimaryImageAspectRatio,CanDownload"));
     QString path = QString("/Users/%1/"
                            "Items?IncludeItemTypes=Playlist,BoxSet&Recursive="
-                           "true&ListItemIds=%2&Fields=%3")
+                           "true&ListItemIds=%2&Fields=%3"
+                           "&EnableImageTypes=Primary,Backdrop,Thumb"
+                           "&ImageTypeLimit=1")
                        .arg(m_serverManager->activeProfile().userId, itemId,
                             fieldQuery);
 
@@ -1547,7 +2225,9 @@ QCoro::Task<QList<MediaItem>> MediaService::getCollectionItems(const QString &co
     const QString fieldQuery = appendMediaCardTooltipFields(
         QStringLiteral("PrimaryImageAspectRatio,ProductionYear,RecursiveItemCount,CanDownload"));
     QString path = QString("/Users/%1/"
-                           "Items?ParentId=%2&Fields=%3&SortBy=SortName")
+                           "Items?ParentId=%2&Fields=%3&SortBy=SortName"
+                           "&EnableImageTypes=Primary,Backdrop,Thumb"
+                           "&ImageTypeLimit=1")
                        .arg(m_serverManager->activeProfile().userId, collectionId,
                             fieldQuery);
 
@@ -1896,11 +2576,12 @@ void MediaService::clearRecommendCache()
     Q_EMIT recommendCacheCleared();
 }
 
-void MediaService::removeRecommendCacheItem(const QString& itemId)
+void MediaService::removeRecommendCacheItem(const QString &itemId)
 {
     const QString trimmedItemId = itemId.trimmed();
     if (trimmedItemId.isEmpty() || !m_serverManager ||
-        !m_serverManager->activeProfile().isValid()) {
+        !m_serverManager->activeProfile().isValid())
+    {
         return;
     }
 
@@ -1909,19 +2590,22 @@ void MediaService::removeRecommendCacheItem(const QString& itemId)
         ConfigStore::instance()
             ->get<QString>(ConfigKeys::DataCacheDuration, "24")
             .toInt();
-    if (cacheDurationHours <= 0) {
+    if (cacheDurationHours <= 0)
+    {
         cacheDurationHours = 24;
     }
 
     bool hasUsableCache =
         m_recommendCache.isValid(profile.id, profile.userId, cacheDurationHours);
-    if (!hasUsableCache) {
+    if (!hasUsableCache)
+    {
         hasUsableCache =
             m_recommendCache.loadFromDisk(profile.id, profile.userId,
                                           cacheDurationHours);
     }
 
-    if (!hasUsableCache) {
+    if (!hasUsableCache)
+    {
         qDebug() << "[MediaService] Skip recommend cache item removal"
                  << "| reason=no-usable-cache"
                  << "| itemId=" << trimmedItemId;
@@ -1929,13 +2613,16 @@ void MediaService::removeRecommendCacheItem(const QString& itemId)
     }
 
     const int previousCount = m_recommendCache.items.size();
-    for (int i = m_recommendCache.items.size() - 1; i >= 0; --i) {
-        if (m_recommendCache.items.at(i).id == trimmedItemId) {
+    for (int i = m_recommendCache.items.size() - 1; i >= 0; --i)
+    {
+        if (m_recommendCache.items.at(i).id == trimmedItemId)
+        {
             m_recommendCache.items.removeAt(i);
         }
     }
 
-    if (m_recommendCache.items.size() == previousCount) {
+    if (m_recommendCache.items.size() == previousCount)
+    {
         qDebug() << "[MediaService] Skip recommend cache item removal"
                  << "| reason=item-not-found"
                  << "| itemId=" << trimmedItemId
@@ -1943,9 +2630,12 @@ void MediaService::removeRecommendCacheItem(const QString& itemId)
         return;
     }
 
-    if (m_recommendCache.items.isEmpty()) {
+    if (m_recommendCache.items.isEmpty())
+    {
         m_recommendCache.clear();
-    } else {
+    }
+    else
+    {
         m_recommendCache.saveToDisk();
     }
 
@@ -1976,8 +2666,7 @@ void MediaService::updateUserViewsCache(MediaItem view, QString serverId,
         return;
     }
 
-    if (!m_userViewsCache.isValid(serverId, userId, false)
-        || m_userViewsCache.views.isEmpty())
+    if (!m_userViewsCache.isValid(serverId, userId, false) || m_userViewsCache.views.isEmpty())
     {
         qDebug() << "[MediaService] Skipping partial user view cache update"
                  << "| reason=base-cache-missing"

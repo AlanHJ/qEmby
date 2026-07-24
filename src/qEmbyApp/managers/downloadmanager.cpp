@@ -145,13 +145,16 @@ QString buildSuggestedFileName(const MediaItem& item,
     return ensureFileExtension(baseName, extension);
 }
 
-int resolvePreferredMediaSourceIndex(const QList<MediaSourceInfo>& mediaSources)
+int resolvePreferredMediaSourceIndex(const QList<MediaSourceInfo>& mediaSources,
+                                     const QString& serverId,
+                                     const QString& mediaId)
 {
     return MediaSourcePreferenceUtils::resolvePreferredMediaSourceIndex(
         mediaSources,
         ConfigStore::instance()
             ->get<QString>(ConfigKeys::PlayerPreferredVersion)
-            .trimmed());
+            .trimmed(),
+        MediaSourcePreferenceUtils::rememberedMediaSourceId(serverId, mediaId));
 }
 
 bool recordMatchesProfile(const DownloadManager::DownloadRecord& record,
@@ -1081,7 +1084,8 @@ QCoro::Task<void> DownloadManager::startDownload(
         }
     } else {
         const int sourceIndex =
-            resolvePreferredMediaSourceIndex(detail.mediaSources);
+            resolvePreferredMediaSourceIndex(detail.mediaSources, profile.id,
+                                             detail.id);
         selectedSource =
             (sourceIndex >= 0 && sourceIndex < detail.mediaSources.size())
                 ? &detail.mediaSources.at(sourceIndex)

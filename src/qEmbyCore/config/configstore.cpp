@@ -66,6 +66,9 @@ ConfigStore::ConfigStore(QObject* parent) : QObject(parent) {
     if (!m_settings->contains(ConfigKeys::ImageCacheDuration)) {
         m_settings->setValue(ConfigKeys::ImageCacheDuration, "7");
     }
+    if (!m_settings->contains(canonicalStorageKey(ConfigKeys::CheckForUpdates))) {
+        m_settings->setValue(canonicalStorageKey(ConfigKeys::CheckForUpdates), true);
+    }
 }
 
 ConfigStore::~ConfigStore() {
@@ -80,6 +83,9 @@ void ConfigStore::migrateLegacyGeneralSettings() {
         ConfigKeys::RememberServer,
         ConfigKeys::LastSelectedServerId,
         ConfigKeys::CloseToTray,
+        ConfigKeys::SingleApplication,
+        ConfigKeys::CheckForUpdates,
+        ConfigKeys::IgnoredUpdateVersion,
         ConfigKeys::LogEnable,
         ConfigKeys::ApiTimeout,
         ConfigKeys::ImageCacheLimit,

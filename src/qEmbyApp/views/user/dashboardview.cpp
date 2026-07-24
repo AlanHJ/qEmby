@@ -8,6 +8,7 @@
 #include "../../utils/dashboardrequestlimitutils.h"
 #include "../../utils/dashboardsectionorderutils.h"
 #include "../../utils/mediaitemutils.h"
+#include "../../utils/resumeitemresolver.h"
 #include "../../utils/smoothscrollcontroller.h"
 #include "../../utils/textwraputils.h"
 #include "../media/mediacarddelegate.h"
@@ -22,14 +23,12 @@
 #include <QResizeEvent>
 #include <QScrollArea>
 #include <QScrollBar>
-#include <QSet>
 #include <QShowEvent>
 #include <QStyle>
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QWheelEvent>
 #include <utility>
-#include <vector>
 #include <config/config_keys.h>
 #include <config/configstore.h>
 #include <qembycore.h>
@@ -878,7 +877,8 @@ QCoro::Task<void> DashboardView::loadDashboardData()
 
     if (m_resumeSection) {
         m_resumeSection->setVisible(showResume);
-        if (showResume && shimmerEnabled && m_resumeGallery) {
+        if (showResume && shimmerEnabled && m_resumeGallery &&
+            m_resumeGallery->itemCount() == 0) {
             m_resumeGallery->setLoading(true);
         }
     }
@@ -907,11 +907,12 @@ QCoro::Task<void> DashboardView::loadDashboardData()
         m_librarySectionsContainer->setVisible(showEachLibrary);
     }
 
-    loadResumeSection(showResume, generation);
-    loadLatestSection(showLatest, generation);
-    loadRecommendedSection(showRecommended, generation);
-    loadCompletedSection(showCompleted, generation);
-    loadLibrarySections(showLibraries, showEachLibrary, generation);
+    launchDashboardTask(loadResumeSection(showResume, generation));
+    launchDashboardTask(loadLatestSection(showLatest, generation));
+    launchDashboardTask(loadRecommendedSection(showRecommended, generation));
+    launchDashboardTask(loadCompletedSection(showCompleted, generation));
+    launchDashboardTask(
+        loadLibrarySections(showLibraries, showEachLibrary, generation));
     co_return;
 }
 
@@ -1018,7 +1019,10 @@ QCoro::Task<void> DashboardView::loadResumeSection(bool show, int generation)
     }
 
     QPointer<DashboardView> guard(this);
-    auto* mediaService = m_core->mediaService();
+    QPointer<MediaService> mediaService(m_core->mediaService());
+    if (!mediaService) {
+        co_return;
+    }
     const int requestLimit =
         DashboardRequestLimitUtils::homeSectionRequestLimit(
             currentServerId(), ConfigKeys::ContinueWatchingRequestLimit, 0);
@@ -1026,65 +1030,66 @@ QCoro::Task<void> DashboardView::loadResumeSection(bool show, int generation)
     try {
         QList<MediaItem> rawResumeItems =
             co_await mediaService->getResumeItems(requestLimit);
+        if (!guard || !mediaService || m_loadGeneration != generation) {
+            co_return;
+        }
+
+        QList<MediaItem> resumeItems =
+            ResumeItemResolver::buildFallbackItems(
+                std::move(rawResumeItems), QStringLiteral("dashboard"));
         if (!guard || m_loadGeneration != generation) {
             co_return;
         }
 
-        QList<MediaItem> resumeItems;
-        QSet<QString> seenSeriesIds;
-        QStringList seriesIdsToFetch;
-        QList<int> insertIndices;
-        QList<MediaItem> resumeContextItems;
+        const QList<MediaItem> existingResumeItems =
+            m_resumeGallery ? m_resumeGallery->items() : QList<MediaItem> {};
 
-        for (const MediaItem& item : rawResumeItems) {
-            if (item.type == "Episode" && !item.seriesId.isEmpty()) {
-                if (seenSeriesIds.contains(item.seriesId)) {
-                    continue;
-                }
+        if (resumeItems.isEmpty()) {
+            m_resumeGallery->setItems({});
+            m_resumeGallery->setLoading(false);
+            if (m_resumeSection) {
+                m_resumeSection->setVisible(false);
+            }
+            qDebug() << "[DashboardView] resume response is empty"
+                     << "| generation=" << generation
+                     << "| clearedExisting=" << !existingResumeItems.isEmpty();
+            co_return;
+        }
 
-                seenSeriesIds.insert(item.seriesId);
-                seriesIdsToFetch.append(item.seriesId);
-                insertIndices.append(resumeItems.size());
-                resumeContextItems.append(item);
-                resumeItems.append(MediaItem {});
-            } else {
-                resumeItems.append(MediaItemUtils::withResumeContext(item, item));
+        
+        
+        
+        
+        if (existingResumeItems.isEmpty()) {
+            m_resumeGallery->setItems(resumeItems);
+            if (m_resumeSection) {
+                m_resumeSection->setVisible(!resumeItems.isEmpty());
             }
         }
 
-        std::vector<QCoro::Task<MediaItem>> detailTasks;
-        detailTasks.reserve(seriesIdsToFetch.size());
-        for (const QString& seriesId : seriesIdsToFetch) {
-            detailTasks.push_back(mediaService->getItemDetail(seriesId));
+        qDebug() << "[DashboardView] prepared resume fallbacks"
+                 << "| generation=" << generation
+                 << "| retainedExisting=" << !existingResumeItems.isEmpty()
+                 << "| display=" << resumeItems.size();
+
+        resumeItems = co_await ResumeItemResolver::enrichSeriesCards(
+            mediaService.data(), std::move(resumeItems),
+            QStringLiteral("dashboard"));
+        if (!guard || m_loadGeneration != generation) {
+            co_return;
         }
 
-        for (int i = 0; i < static_cast<int>(detailTasks.size()); ++i) {
-            try {
-                MediaItem seriesItem = co_await std::move(detailTasks[i]);
-                if (!guard || m_loadGeneration != generation) {
-                    co_return;
-                }
-
-                resumeItems[insertIndices[i]] =
-                    MediaItemUtils::withResumeContext(seriesItem,
-                                                      resumeContextItems[i]);
-            } catch (...) {
-                if (!guard || m_loadGeneration != generation) {
-                    co_return;
-                }
-            }
-        }
-
-        for (int i = resumeItems.size() - 1; i >= 0; --i) {
-            if (resumeItems[i].id.isEmpty()) {
-                resumeItems.removeAt(i);
-            }
-        }
-
+        resumeItems = ResumeItemResolver::preserveExistingResolvedCards(
+            std::move(resumeItems), existingResumeItems,
+            QStringLiteral("dashboard"));
         m_resumeGallery->setItems(resumeItems);
         if (m_resumeSection) {
             m_resumeSection->setVisible(!resumeItems.isEmpty());
         }
+
+        qDebug() << "[DashboardView] committed enriched resume items"
+                 << "| generation=" << generation
+                 << "| display=" << resumeItems.size();
     } catch (const std::exception& e) {
         if (!guard || m_loadGeneration != generation) {
             co_return;
@@ -1095,7 +1100,8 @@ QCoro::Task<void> DashboardView::loadResumeSection(bool show, int generation)
             m_resumeGallery->setLoading(false);
         }
         if (m_resumeSection) {
-            m_resumeSection->setVisible(false);
+            m_resumeSection->setVisible(
+                m_resumeGallery && m_resumeGallery->itemCount() > 0);
         }
     }
 }

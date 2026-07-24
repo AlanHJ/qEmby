@@ -193,6 +193,11 @@ QString DanmakuServerListItemWidget::maskedSecret(const QString &secret)
 void DanmakuServerListItemWidget::refreshCredentialsLabel()
 {
     QStringList parts;
+    const bool isDanmuApi =
+        m_server.provider.trimmed().compare(
+            QStringLiteral("danmu_api"), Qt::CaseInsensitive) == 0;
+    parts.append(isDanmuApi ? tr("LogVar / danmu_api")
+                            : tr("DandanPlay"));
     if (m_server.builtIn &&
         m_server.contentScope.trimmed().compare(QStringLiteral("anime"),
                                                 Qt::CaseInsensitive) == 0) {
@@ -207,6 +212,10 @@ void DanmakuServerListItemWidget::refreshCredentialsLabel()
     if (!m_server.builtIn && !m_server.appSecret.trimmed().isEmpty()) {
         parts.append(tr("App Secret: %1")
                          .arg(maskedSecret(m_server.appSecret)));
+    }
+    if (isDanmuApi && !m_server.accessToken.trimmed().isEmpty()) {
+        parts.append(tr("Token: %1")
+                         .arg(maskedSecret(m_server.accessToken)));
     }
 
     const QString text = parts.join(QStringLiteral("    "));

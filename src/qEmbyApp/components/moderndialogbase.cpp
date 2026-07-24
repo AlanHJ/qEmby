@@ -2,6 +2,7 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QSizePolicy>
 
 
 #include <QWKWidgets/widgetwindowagent.h>
@@ -59,6 +60,10 @@ ModernDialogBase::ModernDialogBase(QWidget *parent,
     
     m_titleBarWidget = new QWidget(this);
     m_titleBarWidget->setObjectName("dialog-titlebar");
+    
+    
+    m_titleBarWidget->setSizePolicy(QSizePolicy::Expanding,
+                                    QSizePolicy::Fixed);
 
     auto *titleBarLayout = new QHBoxLayout(m_titleBarWidget);
 #if defined(Q_OS_MACOS) || defined(Q_OS_MAC)

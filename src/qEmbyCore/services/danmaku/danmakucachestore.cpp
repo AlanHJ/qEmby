@@ -7,6 +7,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSaveFile>
 #include <QStandardPaths>
 
 namespace {
@@ -95,53 +96,154 @@ QString commentCacheKey(const QString &provider,
 
 bool DanmakuCacheStore::loadMatch(const DanmakuMediaContext &context,
                                   DanmakuMatchCandidate *candidate,
-                                  bool *manualOverride) const
+                                  bool *manualOverride,
+                                  int automaticMaxAgeHours) const
 {
     if (!candidate) {
         return false;
     }
 
-    QFile file(matchesFilePath(context.serverId));
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        return false;
+    QJsonObject entry;
+    bool loadedLegacyEntry = false;
+    QFile entryFile(matchEntryFilePath(context));
+    if (entryFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        entry = QJsonDocument::fromJson(entryFile.readAll()).object();
+    } else {
+        
+        QFile legacyFile(matchesFilePath(context.serverId));
+        if (!legacyFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            return false;
+        }
+        const QJsonObject legacyRoot =
+            QJsonDocument::fromJson(legacyFile.readAll()).object();
+        entry = legacyRoot.value(context.cacheKey()).toObject();
+        loadedLegacyEntry = !entry.isEmpty();
     }
-
-    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
-    const QJsonObject root = doc.object();
-    const QJsonObject entry = root.value(context.cacheKey()).toObject();
     if (entry.isEmpty()) {
         return false;
     }
 
+    const bool isManual = entry.value("manualOverride").toBool(false);
+    const qint64 cachedMediaFileSize =
+        entry.value("mediaFileSize").toVariant().toLongLong();
+    const QDateTime cachedMediaModifiedAt = QDateTime::fromString(
+        entry.value("mediaModifiedAt").toString(), Qt::ISODate);
+    if (context.fileSize > 0 && cachedMediaFileSize > 0 &&
+        context.fileSize != cachedMediaFileSize) {
+        return false;
+    }
+    if (context.mediaModifiedAt.isValid() && cachedMediaModifiedAt.isValid() &&
+        context.mediaModifiedAt != cachedMediaModifiedAt) {
+        return false;
+    }
+    if (!isManual) {
+        const int algorithmVersion = entry.value("algorithmVersion").toInt(0);
+        const QDateTime updatedAt = QDateTime::fromString(
+            entry.value("updatedAt").toString(), Qt::ISODate);
+        const qint64 maximumAgeSeconds =
+            static_cast<qint64>(automaticMaxAgeHours) * 3600;
+        if (algorithmVersion != CurrentMatchAlgorithmVersion ||
+            !updatedAt.isValid() || automaticMaxAgeHours <= 0 ||
+            updatedAt.secsTo(QDateTime::currentDateTimeUtc()) >
+                maximumAgeSeconds) {
+            return false;
+        }
+    }
+
     *candidate = candidateFromJson(entry.value("candidate").toObject());
     if (manualOverride) {
-        *manualOverride = entry.value("manualOverride").toBool(false);
+        *manualOverride = isManual;
     }
-    return candidate->isValid();
+    const bool valid = candidate->isValid();
+    if (valid && loadedLegacyEntry && isManual) {
+        saveMatch(context, *candidate, true);
+    }
+    return valid;
 }
 
 void DanmakuCacheStore::saveMatch(const DanmakuMediaContext &context,
                                   const DanmakuMatchCandidate &candidate,
                                   bool manualOverride) const
 {
-    const QString filePath = matchesFilePath(context.serverId);
+    const QString filePath = matchEntryFilePath(context);
     ensureParentDir(filePath);
-
-    QJsonObject root;
-    QFile file(filePath);
-    if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        root = QJsonDocument::fromJson(file.readAll()).object();
-        file.close();
-    }
-
     QJsonObject entry;
     entry["candidate"] = candidateToJson(candidate);
     entry["manualOverride"] = manualOverride;
+    entry["algorithmVersion"] = CurrentMatchAlgorithmVersion;
+    entry["mediaFileSize"] = QString::number(context.fileSize);
+    entry["mediaModifiedAt"] = context.mediaModifiedAt.toString(Qt::ISODate);
     entry["updatedAt"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
-    root[context.cacheKey()] = entry;
+    QSaveFile file(filePath);
+    if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        file.write(QJsonDocument(entry).toJson(QJsonDocument::Compact));
+        file.commit();
+    }
+}
 
-    if (file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
-        file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+void DanmakuCacheStore::removeMatch(const DanmakuMediaContext &context) const
+{
+    const QString filePath = matchEntryFilePath(context);
+    if (!filePath.isEmpty() && QFile::exists(filePath) &&
+        !QFile::remove(filePath)) {
+        qWarning().noquote()
+            << "[Danmaku][Cache] Failed to remove match entry"
+            << "| mediaId:" << context.mediaId
+            << "| sourceId:" << context.mediaSourceId;
+    }
+}
+
+bool DanmakuCacheStore::loadFingerprint(const DanmakuMediaContext &context,
+                                        QString *fileHash,
+                                        int maxAgeHours) const
+{
+    if (!fileHash || context.fileSize <= 0) {
+        return false;
+    }
+    QFile file(fingerprintEntryFilePath(context));
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return false;
+    }
+    const QJsonObject entry = QJsonDocument::fromJson(file.readAll()).object();
+    const QDateTime updatedAt = QDateTime::fromString(
+        entry.value("updatedAt").toString(), Qt::ISODate);
+    const qint64 cachedSize =
+        entry.value("fileSize").toVariant().toLongLong();
+    const QString cachedHash = entry.value("fileHash").toString().trimmed();
+    const QDateTime cachedMediaModifiedAt = QDateTime::fromString(
+        entry.value("mediaModifiedAt").toString(), Qt::ISODate);
+    if (cachedSize != context.fileSize || cachedHash.size() != 32 ||
+        !updatedAt.isValid() || maxAgeHours <= 0 ||
+        updatedAt.secsTo(QDateTime::currentDateTimeUtc()) >
+            static_cast<qint64>(maxAgeHours) * 3600) {
+        return false;
+    }
+    if (context.mediaModifiedAt.isValid() && cachedMediaModifiedAt.isValid() &&
+        context.mediaModifiedAt != cachedMediaModifiedAt) {
+        return false;
+    }
+    *fileHash = cachedHash;
+    return true;
+}
+
+void DanmakuCacheStore::saveFingerprint(const DanmakuMediaContext &context,
+                                        const QString &fileHash) const
+{
+    const QString normalizedHash = fileHash.trimmed().toLower();
+    if (context.fileSize <= 0 || normalizedHash.size() != 32) {
+        return;
+    }
+    const QString filePath = fingerprintEntryFilePath(context);
+    ensureParentDir(filePath);
+    QJsonObject entry;
+    entry["fileSize"] = QString::number(context.fileSize);
+    entry["fileHash"] = normalizedHash;
+    entry["updatedAt"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+    entry["mediaModifiedAt"] = context.mediaModifiedAt.toString(Qt::ISODate);
+    QSaveFile file(filePath);
+    if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        file.write(QJsonDocument(entry).toJson(QJsonDocument::Compact));
+        file.commit();
     }
 }
 
@@ -262,6 +364,30 @@ QString DanmakuCacheStore::baseDirPath() const
 QString DanmakuCacheStore::matchesFilePath(const QString &serverId) const
 {
     return baseDirPath() + QStringLiteral("/matches/%1.json").arg(serverId);
+}
+
+QString DanmakuCacheStore::matchEntryFilePath(
+    const DanmakuMediaContext &context) const
+{
+    const QByteArray rawKey =
+        QStringLiteral("%1|%2").arg(context.serverId, context.cacheKey()).toUtf8();
+    const QString hashedKey = QString::fromLatin1(
+        QCryptographicHash::hash(rawKey, QCryptographicHash::Sha1).toHex());
+    return baseDirPath() +
+           QStringLiteral("/matches-v2/%1/%2.json")
+               .arg(context.serverId, hashedKey);
+}
+
+QString DanmakuCacheStore::fingerprintEntryFilePath(
+    const DanmakuMediaContext &context) const
+{
+    const QByteArray rawKey =
+        QStringLiteral("%1|%2").arg(context.serverId, context.cacheKey()).toUtf8();
+    const QString hashedKey = QString::fromLatin1(
+        QCryptographicHash::hash(rawKey, QCryptographicHash::Sha1).toHex());
+    return baseDirPath() +
+           QStringLiteral("/fingerprints/%1/%2.json")
+               .arg(context.serverId, hashedKey);
 }
 
 QString DanmakuCacheStore::commentsFilePath(const QString &provider,

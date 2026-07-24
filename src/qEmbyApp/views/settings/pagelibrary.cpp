@@ -302,14 +302,8 @@ PageLibrary::PageLibrary(QEmbyCore *core, QWidget *parent)
                        tr("Remove all cached images from disk"),
                        imgClearWidget, QString(), this));
   connect(clearImgBtn, &QPushButton::clicked, this, [this]() {
-    
-    QString cachePath = QStandardPaths::writableLocation(
-                            QStandardPaths::CacheLocation)
-                        + "/qEmby_ImageCache";
-    QDir cacheDir(cachePath);
-    if (cacheDir.exists()) {
-      cacheDir.removeRecursively();
-      QDir().mkpath(cachePath); 
+    if (m_core && m_core->mediaService()) {
+      m_core->mediaService()->clearImageCaches();
     }
     updateCacheSizes();
     ModernToast::showMessage(tr("Image cache cleared"), 1500);

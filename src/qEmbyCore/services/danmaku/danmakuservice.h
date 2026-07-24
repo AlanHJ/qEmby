@@ -9,6 +9,7 @@
 class NetworkManager;
 class ServerManager;
 class DandanplayProvider;
+class DanmuApiProvider;
 class DanmakuCacheStore;
 
 class QEMBYCORE_EXPORT DanmakuService : public QObject
@@ -52,6 +53,12 @@ public:
     void clearCache();
 
 private:
+    struct ProviderSearchOutcome {
+        DanmakuProviderConfig config;
+        QList<DanmakuMatchCandidate> candidates;
+        QString errorMessage;
+    };
+
     bool autoMatchEnabled(const QString &serverId) const;
     QList<DanmakuProviderConfig> enabledProviderConfigs(
         QString serverId = QString()) const;
@@ -62,12 +69,21 @@ private:
         DanmakuMediaContext context,
         DanmakuProviderConfig config,
         QString manualKeyword = QString());
+    QCoro::Task<QList<ProviderSearchOutcome>> searchProvidersInParallel(
+        DanmakuMediaContext context,
+        QList<DanmakuProviderConfig> configs,
+        QString manualKeyword = QString());
+    QCoro::Task<ProviderSearchOutcome> searchProviderSafely(
+        DanmakuMediaContext context,
+        DanmakuProviderConfig config,
+        QString manualKeyword = QString());
     QString assCacheKey(const DanmakuMatchCandidate &candidate,
                         const DanmakuRenderOptions &options) const;
 
     NetworkManager *m_networkManager;
     ServerManager *m_serverManager;
     DandanplayProvider *m_dandanplayProvider;
+    DanmuApiProvider *m_danmuApiProvider;
     DanmakuCacheStore *m_cacheStore;
 };
 

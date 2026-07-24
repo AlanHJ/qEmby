@@ -128,7 +128,9 @@ void ManageView::setupUi() {
         page->setAttribute(Qt::WA_StyledBackground, true);
 
         auto *scroll = new QScrollArea();
-        scroll->setObjectName("SettingsScrollArea");
+        
+        
+        scroll->setObjectName("ManagePageScrollArea");
         scroll->setWidget(page);
         scroll->setWidgetResizable(true);
         scroll->setFrameShape(QFrame::NoFrame);
@@ -164,7 +166,13 @@ void ManageView::setupUi() {
     m_scrollAreas.append(transcodingPage->scrollArea());
     transcodingPage->scrollArea()->viewport()->installEventFilter(this);
 
-    m_stack->addWidget(wrapInScrollArea(new PageUsers(m_core, m_stack)));
+    
+    
+    auto *usersPage = new PageUsers(m_core, m_stack);
+    usersPage->setAttribute(Qt::WA_StyledBackground, true);
+    m_stack->addWidget(usersPage);
+    m_scrollAreas.append(usersPage->scrollArea());
+    usersPage->scrollArea()->viewport()->installEventFilter(this);
 
     auto *taskPage = new PageTasks(m_core, m_stack);
     taskPage->setAttribute(Qt::WA_StyledBackground, true);

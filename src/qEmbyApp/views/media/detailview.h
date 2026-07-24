@@ -30,7 +30,7 @@ public:
   
   
   
-  QCoro::Task<void> loadItem(const QString &itemId, const MediaItem &seedItem = {});
+  void loadItem(QString itemId, MediaItem seedItem = {});
 
 public Q_SLOTS:
   void onMediaItemUpdated(const MediaItem &item) override;
@@ -67,12 +67,18 @@ private:
   void rememberSeriesSelection(const MediaItem &episode,
                                const QString &reason = QString(),
                                bool persist = false);
+  void applyRememberedStreams(const MediaItem &item,
+                              const MediaSourceInfo &source);
   void applySeriesPlayableItemToUi(const MediaItem &playableItem,
                                    bool scrollToEpisode = false);
   QCoro::Task<void> applySeriesPlayableItem(MediaItem playableItem,
                                             bool scrollToEpisode = false);
 
   QCoro::Task<void> updateUi(MediaItem item, bool isSilentRefresh = false);
+
+  
+  
+  QCoro::Task<void> fetchAndApplyPlaybackInfo(QString itemId);
 
   
   
@@ -87,7 +93,7 @@ private:
   QCoro::Task<void> executePlay(MediaItem targetItem, long long startTicks);
   QCoro::Task<void> executePlaySeason(MediaItem seasonItem);
   QCoro::Task<void> executeExternalPlay(MediaItem targetItem, QString playerPath);
-  QCoro::Task<void> fetchSeriesNextUp(const QString &targetId,
+  QCoro::Task<void> fetchSeriesNextUp(QString targetId,
                                       bool applyToUi = true);
   void updateSeasonSwitcher(int currentIndex);
   void updateEpisodeHeaderControlsVisibility();
