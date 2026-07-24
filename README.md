@@ -38,37 +38,45 @@
 
 ## 📥 下载
 
-最新版本：**v0.0.5**
+最新版本：**v0.0.6**
 
 | 安装包 | 说明 |
 |---|---|
-| [qEmby-v0.0.5-Win-x64-Setup.exe](https://github.com/AlanHJ/qEmby/releases/download/v0.0.5/qEmby-v0.0.5-Win-x64-Setup.exe) | Windows 10/11 x64 安装包 |
-| [qEmby-v0.0.5-Win-x64.zip](https://github.com/AlanHJ/qEmby/releases/download/v0.0.5/qEmby-v0.0.5-Win-x64.zip) | Windows 10/11 x64 绿色便携版 |
-| [qemby-0.0.5-macos-arm64.dmg](https://github.com/AlanHJ/qEmby/releases/download/v0.0.5/qemby-0.0.5-macos-arm64.dmg) | macOS 26+ (Apple 芯片) |
+| [qEmby-0.0.6-Win-x64-Setup.exe](https://github.com/AlanHJ/qEmby/releases/download/v0.0.6/qEmby-0.0.6-Win-x64-Setup.exe) | Windows 10/11 x64 安装包 |
+| [qEmby-0.0.6-Win-x64.zip](https://github.com/AlanHJ/qEmby/releases/download/v0.0.6/qEmby-0.0.6-Win-x64.zip) | Windows 10/11 x64 绿色便携版 |
+| [qemby-0.0.6-macos-arm64.dmg](https://github.com/AlanHJ/qEmby/releases/download/v0.0.6/qemby-0.0.6-macos-arm64.dmg) | macOS 26+ (Apple 芯片) |
+| [qemby-0.0.6-x86_64.AppImage](https://github.com/AlanHJ/qEmby/releases/download/v0.0.6/qemby-0.0.6-x86_64.AppImage) | Linux x64 通用 AppImage |
+| [qemby_0.0.6-noble_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.6/qemby_0.0.6-noble_amd64.deb) | Ubuntu 24.04 (Noble) 安装包 |
+| [qemby_0.0.6-jammy_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.6/qemby_0.0.6-jammy_amd64.deb) | Ubuntu 22.04 (Jammy) 安装包 |
+| [qemby_0.0.6-bookworm_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.6/qemby_0.0.6-bookworm_amd64.deb) | Debian 12 (Bookworm) 安装包 |
+| [qemby_0.0.6-trixie_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.6/qemby_0.0.6-trixie_amd64.deb) | Debian 13 (Trixie) 安装包 |
 
-旧版 Windows、Linux 和 macOS 构建可以在 [Releases](https://github.com/AlanHJ/qEmby/releases) 页面下载。
+旧版本可以在 [Releases](https://github.com/AlanHJ/qEmby/releases) 页面下载。
 
-## 🚀 v0.0.5 更新内容
+## 🚀 v0.0.6 更新内容
 
-- 优化了剧集详情页展示，支持版本切换。
-- 支持播放状态展示和切换。
-- 增加了详情页的缓存，加快下一次载入速度。
-- 优化了播放界面 OSD，支持上一集和下一集，支持连续播放。
-- 优化了媒体库等上下滑动的流畅度，优化了加载图片的逻辑。
-- 新增播放完成画廊，默认关闭，可以在设置中打开。
+- 新增自动与手动检查更新；Windows 支持应用内下载安装包、SHA-256 校验和升级后重启。
+- 新增单例应用模式，再次启动 qEmby 时激活现有窗口。
+- 新增 LogVar / danmu_api 弹幕源，支持访问令牌和普通影视内容。
+- 改进弹弹Play季度、集数匹配以及弹幕搜索、评分、去重和缓存。
+- 详情页新增季度切换、集数跳转、播放状态操作和更准确的剧集续播。
+- 记住每个媒体项目选择的视频版本、音轨和字幕轨。
+- 改进详情页预取、图片缓存、继续观看、播放历史和推荐内容的加载逻辑。
 
 ## ✨ 功能特性
 
 - 🎬 浏览和管理你的 Emby / Jellyfin 媒体库
 - ▶️ 内置 **libmpv** 驱动的视频播放器
-- 💬 弹幕播放，支持搜索、匹配、缓存和原生覆盖层渲染
+- 💬 弹幕播放，支持弹弹Play与 LogVar / danmu_api、搜索、匹配、缓存和原生覆盖层渲染
 - 🧩 支持元数据编辑、媒体识别、图片更新和播放列表管理
 - 📥 下载管理器
+- 🔄 自动检查更新和 Windows 应用内升级
+- 🖥️ 可选单例应用模式
 - 🌗 深色 / 浅色主题切换
 - 🌐 国际化支持（中文 / 英文 / 法语）
 - 🔍 支持搜索历史的媒体搜索
 - 📺 当前支持电视剧、电影媒体类型
-- 📦 提供 Windows 安装包 / 绿色版，以及 Linux AppImage / deb 包
+- 📦 提供 Windows 安装包 / 绿色版、Linux AppImage / deb 包和 macOS DMG
 - ⚡ 基于 C++20 协程的异步操作（QCoro）
 - 🪟 原生风格的自定义窗口边框（QWindowKit）
 
@@ -94,6 +102,9 @@
 - [x] 支持修改元数据和图片
 - [x] 弹幕系统（搜索、匹配、设置、渲染）
 - [x] 下载管理器
+- [x] 自动检查更新和 Windows 应用内升级
+- [x] 单例应用模式
+- [x] 多弹幕源支持（弹弹Play / danmu_api）
 - [ ] AI 字幕生成
 - [x] Linux 平台适配
 - [x] macOS 平台适配
@@ -215,37 +226,45 @@ qEmby/
 
 ## 📥 Download
 
-Latest release: **v0.0.5**
+Latest release: **v0.0.6**
 
 | Package | Description |
 |---|---|
-| [qEmby-v0.0.5-Win-x64-Setup.exe](https://github.com/AlanHJ/qEmby/releases/download/v0.0.5/qEmby-v0.0.5-Win-x64-Setup.exe) | Windows 10/11 x64 installer |
-| [qEmby-v0.0.5-Win-x64.zip](https://github.com/AlanHJ/qEmby/releases/download/v0.0.5/qEmby-v0.0.5-Win-x64.zip) | Windows 10/11 x64 portable package |
-| [qemby-0.0.5-macos-arm64.dmg](https://github.com/AlanHJ/qEmby/releases/download/v0.0.5/qemby-0.0.5-macos-arm64.dmg) | macOS 26+ (Apple Silicon) |
+| [qEmby-0.0.6-Win-x64-Setup.exe](https://github.com/AlanHJ/qEmby/releases/download/v0.0.6/qEmby-0.0.6-Win-x64-Setup.exe) | Windows 10/11 x64 installer |
+| [qEmby-0.0.6-Win-x64.zip](https://github.com/AlanHJ/qEmby/releases/download/v0.0.6/qEmby-0.0.6-Win-x64.zip) | Windows 10/11 x64 portable package |
+| [qemby-0.0.6-macos-arm64.dmg](https://github.com/AlanHJ/qEmby/releases/download/v0.0.6/qemby-0.0.6-macos-arm64.dmg) | macOS 26+ (Apple Silicon) |
+| [qemby-0.0.6-x86_64.AppImage](https://github.com/AlanHJ/qEmby/releases/download/v0.0.6/qemby-0.0.6-x86_64.AppImage) | Universal Linux x64 AppImage |
+| [qemby_0.0.6-noble_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.6/qemby_0.0.6-noble_amd64.deb) | Ubuntu 24.04 (Noble) package |
+| [qemby_0.0.6-jammy_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.6/qemby_0.0.6-jammy_amd64.deb) | Ubuntu 22.04 (Jammy) package |
+| [qemby_0.0.6-bookworm_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.6/qemby_0.0.6-bookworm_amd64.deb) | Debian 12 (Bookworm) package |
+| [qemby_0.0.6-trixie_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.6/qemby_0.0.6-trixie_amd64.deb) | Debian 13 (Trixie) package |
 
-Older Windows, Linux and macOS builds are available on the [Releases](https://github.com/AlanHJ/qEmby/releases) page.
+Older releases are available on the [Releases](https://github.com/AlanHJ/qEmby/releases) page.
 
-## 🚀 What's New in v0.0.5
+## 🚀 What's New in v0.0.6
 
-- Optimized episode detail page display with version switching support.
-- Added playback status display and switching.
-- Added detail page caching for faster subsequent loading.
-- Enhanced player OSD with previous/next episode and continuous playback.
-- Improved scrolling smoothness in media library views and optimized image loading logic.
-- Added post-playback gallery (disabled by default, configurable in settings).
+- Added automatic and manual update checks; Windows supports in-app installer downloads, SHA-256 verification, and restart after updating.
+- Added optional single-application mode that activates the existing qEmby window when launched again.
+- Added LogVar / danmu_api as a danmaku provider with access-token support for general video content.
+- Improved DandanPlay season and episode matching, danmaku search, scoring, deduplication, and caching.
+- Added season switching, episode-number jumping, playback-status actions, and more accurate episode resume behavior to the detail page.
+- Remember the selected media version, audio track, and subtitle track for each item.
+- Improved detail prefetching, image caching, Continue Watching, playback history, and recommendation loading.
 
 ## ✨ Features
 
 - 🎬 Browse and manage your Emby / Jellyfin media library
 - ▶️ Built-in video player powered by **libmpv**
-- 💬 Danmaku playback with search, matching, cache and native overlay rendering
+- 💬 Danmaku playback with DandanPlay and LogVar / danmu_api, search, matching, cache and native overlay rendering
 - 🧩 Metadata editing, media identification, image updates and playlist tools
 - 📥 Download manager
+- 🔄 Automatic update checks and in-app Windows updates
+- 🖥️ Optional single-application mode
 - 🌗 Dark and Light theme support
-- 🌐 Internationalization support (Chinese / English)
+- 🌐 Internationalization support (Chinese / English / French)
 - 🔍 Media search with history
 - 📺 TV series and movies media types
-- 📦 Windows installer / portable packages and Linux AppImage / deb packages
+- 📦 Windows installer / portable packages, Linux AppImage / deb packages, and macOS DMG
 - ⚡ Asynchronous operations with C++20 coroutines (QCoro)
 - 🪟 Custom window frame with native look (QWindowKit)
 
@@ -271,6 +290,9 @@ Older Windows, Linux and macOS builds are available on the [Releases](https://gi
 - [x] Metadata and image editing
 - [x] Danmaku (bullet comments) system
 - [x] Download manager
+- [x] Automatic update checks and in-app Windows updates
+- [x] Single-application mode
+- [x] Multiple danmaku providers (DandanPlay / danmu_api)
 - [ ] AI-powered subtitle generation
 - [x] Linux platform support
 - [x] macOS platform support
