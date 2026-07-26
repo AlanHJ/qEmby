@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.19)
 
-project(qEmby VERSION 0.0.6 LANGUAGES CXX)
+project(qEmby VERSION 0.0.7 LANGUAGES CXX)
 
 if(APPLE)
     set(CMAKE_OSX_DEPLOYMENT_TARGET 13.0)

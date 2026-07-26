@@ -233,21 +233,6 @@ bool isOfficialDandanplayEndpoint(const DanmakuProviderConfig &config)
     return normalizedHost(config.baseUrl) == QStringLiteral("api.dandanplay.net");
 }
 
-bool supportsV2SearchEngine(const QString &apiPath)
-{
-    QString normalizedPath = apiPath.trimmed().toLower();
-    if (!normalizedPath.startsWith('/')) {
-        normalizedPath.prepend('/');
-    }
-    while (normalizedPath.endsWith('/') && normalizedPath.size() > 1) {
-        normalizedPath.chop(1);
-    }
-
-    return normalizedPath == QStringLiteral("/api/v2/search/anime") ||
-           normalizedPath == QStringLiteral("/api/v2/search/episodes") ||
-           normalizedPath == QStringLiteral("/api/v2/search/adv");
-}
-
 QString missingCredentialsMessage()
 {
     return QCoreApplication::translate(
@@ -324,22 +309,68 @@ QString buildUrl(const DanmakuProviderConfig &config,
     url.setPath(path);
 
     QUrlQuery query;
-    
-    
-    
-    if (supportsV2SearchEngine(apiPath)) {
-        query.addQueryItem(QStringLiteral("v2"), QStringLiteral("true"));
-    }
     for (const auto &item : queryItems) {
-        if (item.first.compare(QStringLiteral("v2"), Qt::CaseInsensitive) == 0) {
-            continue;
-        }
         if (!item.second.trimmed().isEmpty()) {
             query.addQueryItem(item.first, item.second.trimmed());
         }
     }
     url.setQuery(query);
     return url.toString();
+}
+
+QList<NetworkJsonGetRequest> buildEpisodeSearchRequests(
+    const DanmakuProviderConfig &config,
+    const QStringList &keywords,
+    const QString &episodeParameter,
+    const QString &tmdbId,
+    bool useV2Engine,
+    bool isEpisode)
+{
+    const QString apiPath = QStringLiteral("/api/v2/search/episodes");
+    QList<NetworkJsonGetRequest> requests;
+    requests.reserve(keywords.size());
+    for (const QString &keyword : keywords) {
+        QList<QPair<QString, QString>> queryItems = {
+            {QStringLiteral("anime"), keyword},
+            {QStringLiteral("v2"),
+             useV2Engine ? QStringLiteral("true")
+                         : QStringLiteral("false")}};
+        if (!episodeParameter.isEmpty()) {
+            queryItems.append(
+                {QStringLiteral("episode"), episodeParameter});
+        }
+        if (!tmdbId.isEmpty()) {
+            queryItems.append({QStringLiteral("tmdbId"), tmdbId});
+            queryItems.append(
+                {QStringLiteral("tmdbIdType"),
+                 isEpisode ? QStringLiteral("0") : QStringLiteral("1")});
+        }
+        requests.append({buildUrl(config, apiPath, queryItems),
+                         buildHeaders(config, apiPath),
+                         danmakuRequestOptions()});
+    }
+    return requests;
+}
+
+QList<NetworkJsonGetRequest> buildAnimeSearchRequests(
+    const DanmakuProviderConfig &config,
+    const QStringList &keywords,
+    bool useV2Engine)
+{
+    const QString apiPath = QStringLiteral("/api/v2/search/anime");
+    QList<NetworkJsonGetRequest> requests;
+    requests.reserve(keywords.size());
+    for (const QString &keyword : keywords) {
+        const QList<QPair<QString, QString>> queryItems = {
+            {QStringLiteral("keyword"), keyword},
+            {QStringLiteral("v2"),
+             useV2Engine ? QStringLiteral("true")
+                         : QStringLiteral("false")}};
+        requests.append({buildUrl(config, apiPath, queryItems),
+                         buildHeaders(config, apiPath),
+                         danmakuRequestOptions()});
+    }
+    return requests;
 }
 
 double titleScore(const QString &lhs, const QString &rhs)
@@ -858,6 +889,116 @@ QList<DanmakuMatchCandidate> parseSearchResponse(
     return candidates;
 }
 
+struct EpisodeSearchBatchOutcome {
+    QList<DanmakuMatchCandidate> candidates;
+    QString lastError;
+    bool hadSuccessfulResponse = false;
+};
+
+EpisodeSearchBatchOutcome processEpisodeSearchResponses(
+    const QList<NetworkJsonResult> &responses,
+    const QStringList &requestKeywords,
+    DanmakuMediaContext context,
+    int requestedEpisodeNumber,
+    QString stage,
+    bool tmdbConstrained,
+    bool excludeClearlyEpisodicWorks)
+{
+    EpisodeSearchBatchOutcome outcome;
+    for (int i = 0; i < responses.size(); ++i) {
+        const QString keyword = requestKeywords.value(i);
+        const NetworkJsonResult &response = responses.at(i);
+        if (!response.succeeded()) {
+            outcome.lastError = response.errorMessage;
+            qWarning().noquote()
+                << "[Danmaku][DandanPlay] Episode search failed"
+                << "| stage:" << stage
+                << "| keyword:" << keyword
+                << "| error:" << response.errorMessage;
+            continue;
+        }
+
+        outcome.hadSuccessfulResponse = true;
+        QList<DanmakuMatchCandidate> candidates =
+            parseSearchResponse(response.object, context, keyword,
+                                requestedEpisodeNumber,
+                                excludeClearlyEpisodicWorks);
+        if (context.isEpisode()) {
+            candidates.erase(
+                std::remove_if(
+                    candidates.begin(), candidates.end(),
+                    [&context](const DanmakuMatchCandidate &candidate) {
+                        if (context.episodeNumber > 0 &&
+                            candidate.episodeNumber > 0 &&
+                            candidate.episodeNumber != context.episodeNumber) {
+                            return true;
+                        }
+                        if (context.seasonNumber > 0 &&
+                            candidate.seasonNumber > 0 &&
+                            candidate.seasonNumber != context.seasonNumber) {
+                            return true;
+                        }
+                        return context.seasonNumber > 1 &&
+                               candidate.seasonNumber <= 0;
+                    }),
+                candidates.end());
+        }
+        if (tmdbConstrained) {
+            for (DanmakuMatchCandidate &candidate : candidates) {
+                candidate.matchReason = QStringLiteral("tmdb");
+                candidate.score = qMax(candidate.score, 160.0);
+            }
+        }
+        if (!candidates.isEmpty()) {
+            outcome.candidates.append(candidates);
+            qDebug().noquote()
+                << "[Danmaku][DandanPlay] Episode search hit"
+                << "| stage:" << stage
+                << "| keyword:" << keyword
+                << "| count:" << candidates.size();
+        }
+        if (response.object.value(QStringLiteral("hasMore")).toBool()) {
+            qWarning().noquote()
+                << "[Danmaku][DandanPlay] Search result truncated by server"
+                << "| stage:" << stage
+                << "| keyword:" << keyword
+                << "| returnedCount:" << candidates.size();
+        }
+    }
+    return outcome;
+}
+
+QStringList parseAnimeSearchTitles(const QJsonObject &response,
+                                   const QString &queryKeyword)
+{
+    QStringList titles;
+    auto parseArray = [&titles, &queryKeyword](const QJsonArray &animeArray) {
+        for (const QJsonValue &animeValue : animeArray) {
+            const QJsonObject animeObj = animeValue.toObject();
+            const QString title = firstNonEmpty(
+                {stringField(animeObj, {"animeTitle", "title", "name"}),
+                 stringField(animeObj, {"animeTitleCN", "animeTitleJP"})});
+            if (title.isEmpty() || titles.contains(title)) {
+                continue;
+            }
+
+            if (titleScore(queryKeyword, title) < 0.30) {
+                continue;
+            }
+            titles.append(title);
+            if (titles.size() >= 6) {
+                break;
+            }
+        }
+    };
+
+    parseArray(response.value(QStringLiteral("animes")).toArray());
+    if (titles.size() < 6) {
+        parseArray(response.value(QStringLiteral("data")).toArray());
+    }
+    return titles;
+}
+
 QList<DanmakuComment> parseCommentsResponse(const QJsonObject &response)
 {
     QList<DanmakuComment> comments;
@@ -1264,107 +1405,152 @@ QCoro::Task<QList<DanmakuMatchCandidate>> DandanplayProvider::searchCandidates(
 
     QString requestedEpisodeParameter;
     int requestedEpisodeNumber = -1;
-    if (searchContext.isEpisode() && searchContext.episodeNumber > 0) {
+    if ((searchContext.isEpisode() || manualHint.hasExplicitEpisode) &&
+        searchContext.episodeNumber > 0) {
         requestedEpisodeNumber = searchContext.episodeNumber;
         requestedEpisodeParameter =
             searchContext.seasonNumber == 0
                 ? QStringLiteral("S%1").arg(searchContext.episodeNumber)
                 : QString::number(searchContext.episodeNumber);
-    } else if (!searchContext.isEpisode()) {
+    } else if (!isManualSearch && !searchContext.isEpisode()) {
         requestedEpisodeNumber = 1;
         requestedEpisodeParameter = QStringLiteral("1");
     }
 
-    if (!keywords.isEmpty()) {
-        const QString apiPath = QStringLiteral("/api/v2/search/episodes");
-        ensureOfficialAuthentication(config, apiPath);
-        QList<NetworkJsonGetRequest> requests;
-        requests.reserve(keywords.size());
-        for (const QString &keyword : std::as_const(keywords)) {
-            QList<QPair<QString, QString>> queryItems = {
-                {QStringLiteral("anime"), keyword},
-                {QStringLiteral("v2"), QStringLiteral("true")}};
-            if (!requestedEpisodeParameter.isEmpty()) {
-                queryItems.append({QStringLiteral("episode"),
-                                   requestedEpisodeParameter});
-            }
-            if (!tmdbId.isEmpty()) {
-                queryItems.append({QStringLiteral("tmdbId"), tmdbId});
-                queryItems.append(
-                    {QStringLiteral("tmdbIdType"),
-                     context.isEpisode() ? QStringLiteral("0")
-                                         : QStringLiteral("1")});
-            }
-            requests.append({buildUrl(config, apiPath, queryItems),
-                             buildHeaders(config, apiPath),
-                             danmakuRequestOptions()});
-        }
+    const bool excludeClearlyEpisodicWorks =
+        !isManualSearch && !searchContext.isEpisode();
 
+    bool titleSearchFoundCandidates = false;
+
+    const QString episodeSearchPath =
+        QStringLiteral("/api/v2/search/episodes");
+    const QString animeSearchPath = QStringLiteral("/api/v2/search/anime");
+
+    if (!keywords.isEmpty()) {
+        ensureOfficialAuthentication(config, episodeSearchPath);
+        const QList<NetworkJsonGetRequest> requests =
+            buildEpisodeSearchRequests(
+                config, keywords, requestedEpisodeParameter, tmdbId, true,
+                context.isEpisode());
         qDebug().noquote()
             << "[Danmaku][DandanPlay] Parallel episode search"
+            << "| stage: v2-direct"
             << "| requestCount:" << requests.size()
             << "| episodeParameter:" << requestedEpisodeParameter
+            << "| tmdbConstraint:" << !tmdbId.isEmpty()
             << "| keywords:" << keywords.join(QStringLiteral(" | "));
         const QList<NetworkJsonResult> responses =
             co_await m_networkManager->getBatch(requests);
-        for (int i = 0; i < responses.size(); ++i) {
+        const EpisodeSearchBatchOutcome outcome =
+            processEpisodeSearchResponses(
+                responses, keywords, searchContext, requestedEpisodeNumber,
+                QStringLiteral("v2-direct"), !tmdbId.isEmpty(),
+                excludeClearlyEpisodicWorks);
+        hadSuccessfulSearchResponse |= outcome.hadSuccessfulResponse;
+        if (!outcome.lastError.isEmpty()) {
+            lastSearchError = outcome.lastError;
+        }
+        if (!outcome.candidates.isEmpty()) {
+            titleSearchFoundCandidates = true;
+            allCandidates.append(outcome.candidates);
+        }
+    }
+
+    QStringList canonicalTitles;
+    if (!titleSearchFoundCandidates && !keywords.isEmpty()) {
+        ensureOfficialAuthentication(config, animeSearchPath);
+        const QList<NetworkJsonGetRequest> animeRequests =
+            buildAnimeSearchRequests(config, keywords, true);
+        qDebug().noquote()
+            << "[Danmaku][DandanPlay] Anime title discovery"
+            << "| stage: v2-anime"
+            << "| requestCount:" << animeRequests.size()
+            << "| keywords:" << keywords.join(QStringLiteral(" | "));
+        const QList<NetworkJsonResult> animeResponses =
+            co_await m_networkManager->getBatch(animeRequests);
+        for (int i = 0; i < animeResponses.size(); ++i) {
+            const NetworkJsonResult &response = animeResponses.at(i);
             const QString keyword = keywords.value(i);
-            const NetworkJsonResult &response = responses.at(i);
             if (!response.succeeded()) {
                 lastSearchError = response.errorMessage;
                 qWarning().noquote()
-                    << "[Danmaku][DandanPlay] Episode search failed"
+                    << "[Danmaku][DandanPlay] Anime title discovery failed"
                     << "| keyword:" << keyword
                     << "| error:" << response.errorMessage;
                 continue;
             }
             hadSuccessfulSearchResponse = true;
-            QList<DanmakuMatchCandidate> candidates =
-                parseSearchResponse(
-                    response.object, searchContext, keyword,
+            canonicalTitles.append(
+                parseAnimeSearchTitles(response.object, keyword));
+        }
+        canonicalTitles.removeDuplicates();
+        if (canonicalTitles.size() > 8) {
+            canonicalTitles = canonicalTitles.mid(0, 8);
+        }
+
+        if (!canonicalTitles.isEmpty()) {
+            const QList<NetworkJsonGetRequest> canonicalRequests =
+                buildEpisodeSearchRequests(
+                    config, canonicalTitles, requestedEpisodeParameter, {},
+                    true, context.isEpisode());
+            qDebug().noquote()
+                << "[Danmaku][DandanPlay] Canonical title episode search"
+                << "| stage: v2-anime-episodes"
+                << "| requestCount:" << canonicalRequests.size()
+                << "| episodeParameter:" << requestedEpisodeParameter
+                << "| titles:"
+                << canonicalTitles.join(QStringLiteral(" | "));
+            const QList<NetworkJsonResult> canonicalResponses =
+                co_await m_networkManager->getBatch(canonicalRequests);
+            const EpisodeSearchBatchOutcome outcome =
+                processEpisodeSearchResponses(
+                    canonicalResponses, canonicalTitles, searchContext,
                     requestedEpisodeNumber,
-                    !searchContext.isEpisode());
-            if (searchContext.isEpisode()) {
-                candidates.erase(
-                    std::remove_if(
-                        candidates.begin(), candidates.end(),
-                        [&searchContext](const DanmakuMatchCandidate &candidate) {
-                            if (searchContext.episodeNumber > 0 &&
-                                candidate.episodeNumber > 0 &&
-                                candidate.episodeNumber !=
-                                    searchContext.episodeNumber) {
-                                return true;
-                            }
-                            if (searchContext.seasonNumber > 0 &&
-                                candidate.seasonNumber > 0 &&
-                                candidate.seasonNumber !=
-                                    searchContext.seasonNumber) {
-                                return true;
-                            }
-                            return searchContext.seasonNumber > 1 &&
-                                   candidate.seasonNumber <= 0;
-                        }),
-                    candidates.end());
+                    QStringLiteral("v2-anime-episodes"), false,
+                    excludeClearlyEpisodicWorks);
+            hadSuccessfulSearchResponse |= outcome.hadSuccessfulResponse;
+            if (!outcome.lastError.isEmpty()) {
+                lastSearchError = outcome.lastError;
             }
-            if (!tmdbId.isEmpty()) {
-                for (DanmakuMatchCandidate &candidate : candidates) {
-                    candidate.matchReason = QStringLiteral("tmdb");
-                    candidate.score = qMax(candidate.score, 160.0);
-                }
+            if (!outcome.candidates.isEmpty()) {
+                titleSearchFoundCandidates = true;
+                allCandidates.append(outcome.candidates);
             }
-            if (!candidates.isEmpty()) {
-                allCandidates.append(candidates);
-                qDebug().noquote()
-                    << "[Danmaku][DandanPlay] Episode search hit"
-                    << "| keyword:" << keyword
-                    << "| count:" << candidates.size();
-            }
-            if (response.object.value(QStringLiteral("hasMore")).toBool()) {
-                qWarning().noquote()
-                    << "[Danmaku][DandanPlay] Search result truncated by server"
-                    << "| keyword:" << keyword
-                    << "| returnedCount:" << candidates.size();
-            }
+        }
+    }
+
+    if (!titleSearchFoundCandidates && !keywords.isEmpty()) {
+        QStringList legacyKeywords = keywords;
+        legacyKeywords.append(canonicalTitles);
+        legacyKeywords.removeDuplicates();
+        if (legacyKeywords.size() > 8) {
+            legacyKeywords = legacyKeywords.mid(0, 8);
+        }
+        const QList<NetworkJsonGetRequest> legacyRequests =
+            buildEpisodeSearchRequests(
+                config, legacyKeywords, requestedEpisodeParameter, {}, false,
+                context.isEpisode());
+        qDebug().noquote()
+            << "[Danmaku][DandanPlay] Legacy episode search fallback"
+            << "| stage: legacy-episodes"
+            << "| requestCount:" << legacyRequests.size()
+            << "| episodeParameter:" << requestedEpisodeParameter
+            << "| keywords:"
+            << legacyKeywords.join(QStringLiteral(" | "));
+        const QList<NetworkJsonResult> legacyResponses =
+            co_await m_networkManager->getBatch(legacyRequests);
+        const EpisodeSearchBatchOutcome outcome =
+            processEpisodeSearchResponses(
+                legacyResponses, legacyKeywords, searchContext,
+                requestedEpisodeNumber, QStringLiteral("legacy-episodes"),
+                false, excludeClearlyEpisodicWorks);
+        hadSuccessfulSearchResponse |= outcome.hadSuccessfulResponse;
+        if (!outcome.lastError.isEmpty()) {
+            lastSearchError = outcome.lastError;
+        }
+        if (!outcome.candidates.isEmpty()) {
+            titleSearchFoundCandidates = true;
+            allCandidates.append(outcome.candidates);
         }
     }
 

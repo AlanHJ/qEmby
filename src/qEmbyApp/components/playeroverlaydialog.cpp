@@ -271,6 +271,14 @@ bool PlayerOverlayDialog::eventFilter(QObject *watched, QEvent *event)
     {
         switch (event->type())
         {
+        case QEvent::KeyPress:
+        case QEvent::KeyRelease:
+            if (isVisible())
+            {
+                event->accept();
+                return true;
+            }
+            break;
         case QEvent::Resize:
         case QEvent::Move:
         case QEvent::Show:

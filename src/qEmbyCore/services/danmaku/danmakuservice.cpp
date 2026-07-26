@@ -17,6 +17,7 @@
 #include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -31,6 +32,7 @@
 #include <QtConcurrent/QtConcurrent>
 #include <algorithm>
 #include <exception>
+#include <limits>
 #include <qcorofuture.h>
 #include <stdexcept>
 #include <utility>
@@ -430,7 +432,168 @@ double bestCandidateTitleScore(const DanmakuMediaContext &context, const Danmaku
     const QString subject = context.isEpisode() ? context.seriesName : context.title;
     const QString candidateSubject = candidate.subtitle.isEmpty() ? candidate.title : candidate.subtitle;
     return std::max({titleScore(subject, candidateSubject), titleScore(context.originalTitle, candidateSubject),
-                     titleScore(context.title, candidate.title)});
+                      titleScore(context.title, candidate.title)});
+}
+
+QString candidateWorkTitle(const DanmakuMatchCandidate &candidate)
+{
+    QString title = candidate.subtitle.trimmed().isEmpty()
+                        ? candidate.title.trimmed()
+                        : candidate.subtitle.trimmed();
+    if (!candidate.subtitle.trimmed().isEmpty())
+    {
+        return title;
+    }
+
+    static const QRegularExpression seasonEpisodeSuffix(
+        QStringLiteral(R"((?:\s|[-_.])S\s*\d{1,2}\s*E\s*\d{1,4}.*$)"),
+        QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression chineseEpisodeSuffix(
+        QStringLiteral(R"(\s*[-:：]?\s*第\s*\d{1,4}\s*[话話集期].*$)"));
+    title.remove(seasonEpisodeSuffix);
+    title.remove(chineseEpisodeSuffix);
+    return title.trimmed();
+}
+
+int candidateMatchPriority(const DanmakuMatchCandidate &candidate)
+{
+    if (candidate.isHashMatch())
+    {
+        return 0;
+    }
+    if (candidate.isProviderIdMatch())
+    {
+        return 1;
+    }
+    if (candidate.matchReason.compare(QStringLiteral("filename"), Qt::CaseInsensitive) == 0)
+    {
+        return 2;
+    }
+    return 3;
+}
+
+void sortDanmakuCandidates(QList<DanmakuMatchCandidate> &candidates,
+                           const DanmakuMediaContext &context,
+                           const QString &manualKeyword)
+{
+    const QString query = manualKeyword.trimmed();
+    const bool manualBrowsing = !query.isEmpty();
+    QHash<QString, double> workBestScores;
+    QHash<QString, int> workBestCommentCounts;
+    for (const DanmakuMatchCandidate &candidate : std::as_const(candidates))
+    {
+        const QString workKey =
+            candidateWorkTitle(candidate).simplified().toCaseFolded();
+        if (!workBestScores.contains(workKey))
+        {
+            workBestScores.insert(workKey, candidate.score);
+        }
+        else
+        {
+            workBestScores[workKey] =
+                std::max(workBestScores.value(workKey), candidate.score);
+        }
+        workBestCommentCounts.insert(
+            workKey, std::max(workBestCommentCounts.value(workKey),
+                              candidate.commentCount));
+    }
+
+    std::stable_sort(
+        candidates.begin(), candidates.end(),
+        [&context, query, manualBrowsing, workBestScores,
+         workBestCommentCounts](const DanmakuMatchCandidate &lhs,
+                                const DanmakuMatchCandidate &rhs)
+        {
+            const int lhsPriority = candidateMatchPriority(lhs);
+            const int rhsPriority = candidateMatchPriority(rhs);
+            if (lhsPriority != rhsPriority)
+            {
+                return lhsPriority < rhsPriority;
+            }
+
+            const QString lhsWorkTitle = candidateWorkTitle(lhs);
+            const QString rhsWorkTitle = candidateWorkTitle(rhs);
+            const QString lhsWorkKey =
+                lhsWorkTitle.simplified().toCaseFolded();
+            const QString rhsWorkKey =
+                rhsWorkTitle.simplified().toCaseFolded();
+            const double lhsRelevance = manualBrowsing
+                                            ? titleScore(query, lhsWorkTitle)
+                                            : bestCandidateTitleScore(context, lhs);
+            const double rhsRelevance = manualBrowsing
+                                            ? titleScore(query, rhsWorkTitle)
+                                            : bestCandidateTitleScore(context, rhs);
+            if (std::abs(lhsRelevance - rhsRelevance) > 0.0001)
+            {
+                return lhsRelevance > rhsRelevance;
+            }
+
+            const bool sameWork =
+                lhsWorkKey == rhsWorkKey;
+            if (!sameWork)
+            {
+                const double lhsWorkScore = workBestScores.value(lhsWorkKey);
+                const double rhsWorkScore = workBestScores.value(rhsWorkKey);
+                if (!qFuzzyCompare(lhsWorkScore, rhsWorkScore))
+                {
+                    return lhsWorkScore > rhsWorkScore;
+                }
+                const int lhsWorkComments =
+                    workBestCommentCounts.value(lhsWorkKey);
+                const int rhsWorkComments =
+                    workBestCommentCounts.value(rhsWorkKey);
+                if (lhsWorkComments != rhsWorkComments)
+                {
+                    return lhsWorkComments > rhsWorkComments;
+                }
+                return QString::compare(lhsWorkTitle, rhsWorkTitle,
+                                        Qt::CaseInsensitive) < 0;
+            }
+
+            if (manualBrowsing &&
+                (lhs.episodeNumber > 0 || rhs.episodeNumber > 0))
+            {
+                const int lhsSeason = lhs.seasonNumber > 0 ? lhs.seasonNumber : 1;
+                const int rhsSeason = rhs.seasonNumber > 0 ? rhs.seasonNumber : 1;
+                if (lhsSeason != rhsSeason)
+                {
+                    return lhsSeason < rhsSeason;
+                }
+
+                const int lhsEpisode = lhs.episodeNumber > 0
+                                           ? lhs.episodeNumber
+                                           : std::numeric_limits<int>::max();
+                const int rhsEpisode = rhs.episodeNumber > 0
+                                           ? rhs.episodeNumber
+                                           : std::numeric_limits<int>::max();
+                if (lhsEpisode != rhsEpisode)
+                {
+                    return lhsEpisode < rhsEpisode;
+                }
+            }
+
+            if (!qFuzzyCompare(lhs.score, rhs.score))
+            {
+                return lhs.score > rhs.score;
+            }
+            if (lhs.commentCount != rhs.commentCount)
+            {
+                return lhs.commentCount > rhs.commentCount;
+            }
+            const int titleComparison =
+                QString::compare(lhs.title, rhs.title, Qt::CaseInsensitive);
+            if (titleComparison != 0)
+            {
+                return titleComparison < 0;
+            }
+            const int endpointComparison = QString::compare(
+                lhs.endpointName, rhs.endpointName, Qt::CaseInsensitive);
+            if (endpointComparison != 0)
+            {
+                return endpointComparison < 0;
+            }
+            return lhs.targetId < rhs.targetId;
+        });
 }
 
 bool isPlausibleOnlineCandidate(const DanmakuMediaContext &context, const DanmakuMatchCandidate &candidate)
@@ -1640,20 +1803,8 @@ QCoro::Task<QList<DanmakuMatchCandidate>> DanmakuService::searchAllCandidates(Da
                              << "| mediaId:" << context.mediaId << "| candidateCount:" << aggregatedCandidates.size()
                              << "| error:" << remoteSearchError;
     }
-    
-    std::sort(aggregatedCandidates.begin(), aggregatedCandidates.end(),
-              [](const DanmakuMatchCandidate &lhs, const DanmakuMatchCandidate &rhs)
-              {
-                  if (!qFuzzyCompare(lhs.score, rhs.score))
-                  {
-                      return lhs.score > rhs.score;
-                  }
-                  if (lhs.commentCount != rhs.commentCount)
-                  {
-                      return lhs.commentCount > rhs.commentCount;
-                  }
-                  return lhs.endpointName < rhs.endpointName;
-              });
+    sortDanmakuCandidates(aggregatedCandidates, context,
+                          trimmedManualKeyword);
 
     co_return aggregatedCandidates;
 }
@@ -1895,19 +2046,8 @@ QCoro::Task<DanmakuMatchResult> DanmakuService::resolveMatch(DanmakuMediaContext
             }
         }
 
-        std::sort(onlineCandidates.begin(), onlineCandidates.end(),
-                  [](const DanmakuMatchCandidate &lhs, const DanmakuMatchCandidate &rhs)
-                  {
-                      if (!qFuzzyCompare(lhs.score, rhs.score))
-                      {
-                          return lhs.score > rhs.score;
-                      }
-                      if (lhs.commentCount != rhs.commentCount)
-                      {
-                          return lhs.commentCount > rhs.commentCount;
-                      }
-                      return lhs.endpointName < rhs.endpointName;
-                  });
+        sortDanmakuCandidates(onlineCandidates, context,
+                              trimmedManualKeyword);
         appendCandidates(onlineCandidates);
         if (trySelectOnlineCandidate(onlineCandidates))
         {
