@@ -4762,7 +4762,7 @@ QLineEdit#PlaylistSearchEdit {
     font-size: 12px;
     font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
     padding: 4px 10px;
-    min-height: 0px;
+    min-height: 28px;
     max-height: 28px;
     selection-background-color: rgba(59, 130, 246, 0.40);
     selection-color: #FFFFFF;
