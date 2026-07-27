@@ -38,30 +38,28 @@
 
 ## 📥 下载
 
-最新版本：**v0.0.6**
+最新版本：**v0.0.7**
 
 | 安装包 | 说明 |
 |---|---|
-| [qEmby-0.0.6-Win-x64-Setup.exe](https://github.com/AlanHJ/qEmby/releases/download/v0.0.6/qEmby-0.0.6-Win-x64-Setup.exe) | Windows 10/11 x64 安装包 |
-| [qEmby-0.0.6-Win-x64.zip](https://github.com/AlanHJ/qEmby/releases/download/v0.0.6/qEmby-0.0.6-Win-x64.zip) | Windows 10/11 x64 绿色便携版 |
-| [qemby-0.0.6-macos-arm64.dmg](https://github.com/AlanHJ/qEmby/releases/download/v0.0.6/qemby-0.0.6-macos-arm64.dmg) | macOS 26+ (Apple 芯片) |
-| [qemby-0.0.6-x86_64.AppImage](https://github.com/AlanHJ/qEmby/releases/download/v0.0.6/qemby-0.0.6-x86_64.AppImage) | Linux x64 通用 AppImage |
-| [qemby_0.0.6-noble_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.6/qemby_0.0.6-noble_amd64.deb) | Ubuntu 24.04 (Noble) 安装包 |
-| [qemby_0.0.6-jammy_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.6/qemby_0.0.6-jammy_amd64.deb) | Ubuntu 22.04 (Jammy) 安装包 |
-| [qemby_0.0.6-bookworm_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.6/qemby_0.0.6-bookworm_amd64.deb) | Debian 12 (Bookworm) 安装包 |
-| [qemby_0.0.6-trixie_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.6/qemby_0.0.6-trixie_amd64.deb) | Debian 13 (Trixie) 安装包 |
+| [qEmby-0.0.7-Win-x64-Setup.exe](https://github.com/AlanHJ/qEmby/releases/download/v0.0.7/qEmby-0.0.7-Win-x64-Setup.exe) | Windows 10/11 x64 安装包 |
+| [qEmby-0.0.7-Win-x64.zip](https://github.com/AlanHJ/qEmby/releases/download/v0.0.7/qEmby-0.0.7-Win-x64.zip) | Windows 10/11 x64 绿色便携版 |
+| [qemby-0.0.7-macos-arm64.dmg](https://github.com/AlanHJ/qEmby/releases/download/v0.0.7/qemby-0.0.7-macos-arm64.dmg) | macOS 26+ (Apple 芯片) |
+| [qemby-0.0.7-x86_64.AppImage](https://github.com/AlanHJ/qEmby/releases/download/v0.0.7/qemby-0.0.7-x86_64.AppImage) | Linux x64 通用 AppImage |
+| [qemby_0.0.7-noble_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.7/qemby_0.0.7-noble_amd64.deb) | Ubuntu 24.04 (Noble) 安装包 |
+| [qemby_0.0.7-jammy_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.7/qemby_0.0.7-jammy_amd64.deb) | Ubuntu 22.04 (Jammy) 安装包 |
+| [qemby_0.0.7-bookworm_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.7/qemby_0.0.7-bookworm_amd64.deb) | Debian 12 (Bookworm) 安装包 |
+| [qemby_0.0.7-trixie_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.7/qemby_0.0.7-trixie_amd64.deb) | Debian 13 (Trixie) 安装包 |
 
 旧版本可以在 [Releases](https://github.com/AlanHJ/qEmby/releases) 页面下载。
 
-## 🚀 v0.0.6 更新内容
+## 🚀 v0.0.7 更新内容
 
-- 新增自动与手动检查更新；Windows 支持应用内下载安装包、SHA-256 校验和升级后重启。
-- 新增单例应用模式，再次启动 qEmby 时激活现有窗口。
-- 新增 LogVar / danmu_api 弹幕源，支持访问令牌和普通影视内容。
-- 改进弹弹Play季度、集数匹配以及弹幕搜索、评分、去重和缓存。
-- 详情页新增季度切换、集数跳转、播放状态操作和更准确的剧集续播。
-- 记住每个媒体项目选择的视频版本、音轨和字幕轨。
-- 改进详情页预取、图片缓存、继续观看、播放历史和推荐内容的加载逻辑。
+- 弹弹Play新增 v2 直接搜索、标准动画标题发现和旧版接口回退的多阶段搜索流程。
+- 改进基于 TMDB 的季度和集数约束，以及手动搜索中的明确集数处理。
+- 改进弹幕候选排序，优先采用哈希、提供者 ID 和文件名匹配，并按作品、季度和集数组织结果。
+- 修复播放器覆盖对话框显示时按键事件穿透到播放器的问题。
+- 修复深色和浅色主题下播放列表搜索框的高度。
 
 ## ✨ 功能特性
 
@@ -226,30 +224,28 @@ qEmby/
 
 ## 📥 Download
 
-Latest release: **v0.0.6**
+Latest release: **v0.0.7**
 
 | Package | Description |
 |---|---|
-| [qEmby-0.0.6-Win-x64-Setup.exe](https://github.com/AlanHJ/qEmby/releases/download/v0.0.6/qEmby-0.0.6-Win-x64-Setup.exe) | Windows 10/11 x64 installer |
-| [qEmby-0.0.6-Win-x64.zip](https://github.com/AlanHJ/qEmby/releases/download/v0.0.6/qEmby-0.0.6-Win-x64.zip) | Windows 10/11 x64 portable package |
-| [qemby-0.0.6-macos-arm64.dmg](https://github.com/AlanHJ/qEmby/releases/download/v0.0.6/qemby-0.0.6-macos-arm64.dmg) | macOS 26+ (Apple Silicon) |
-| [qemby-0.0.6-x86_64.AppImage](https://github.com/AlanHJ/qEmby/releases/download/v0.0.6/qemby-0.0.6-x86_64.AppImage) | Universal Linux x64 AppImage |
-| [qemby_0.0.6-noble_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.6/qemby_0.0.6-noble_amd64.deb) | Ubuntu 24.04 (Noble) package |
-| [qemby_0.0.6-jammy_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.6/qemby_0.0.6-jammy_amd64.deb) | Ubuntu 22.04 (Jammy) package |
-| [qemby_0.0.6-bookworm_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.6/qemby_0.0.6-bookworm_amd64.deb) | Debian 12 (Bookworm) package |
-| [qemby_0.0.6-trixie_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.6/qemby_0.0.6-trixie_amd64.deb) | Debian 13 (Trixie) package |
+| [qEmby-0.0.7-Win-x64-Setup.exe](https://github.com/AlanHJ/qEmby/releases/download/v0.0.7/qEmby-0.0.7-Win-x64-Setup.exe) | Windows 10/11 x64 installer |
+| [qEmby-0.0.7-Win-x64.zip](https://github.com/AlanHJ/qEmby/releases/download/v0.0.7/qEmby-0.0.7-Win-x64.zip) | Windows 10/11 x64 portable package |
+| [qemby-0.0.7-macos-arm64.dmg](https://github.com/AlanHJ/qEmby/releases/download/v0.0.7/qemby-0.0.7-macos-arm64.dmg) | macOS 26+ (Apple Silicon) |
+| [qemby-0.0.7-x86_64.AppImage](https://github.com/AlanHJ/qEmby/releases/download/v0.0.7/qemby-0.0.7-x86_64.AppImage) | Universal Linux x64 AppImage |
+| [qemby_0.0.7-noble_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.7/qemby_0.0.7-noble_amd64.deb) | Ubuntu 24.04 (Noble) package |
+| [qemby_0.0.7-jammy_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.7/qemby_0.0.7-jammy_amd64.deb) | Ubuntu 22.04 (Jammy) package |
+| [qemby_0.0.7-bookworm_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.7/qemby_0.0.7-bookworm_amd64.deb) | Debian 12 (Bookworm) package |
+| [qemby_0.0.7-trixie_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.7/qemby_0.0.7-trixie_amd64.deb) | Debian 13 (Trixie) package |
 
 Older releases are available on the [Releases](https://github.com/AlanHJ/qEmby/releases) page.
 
-## 🚀 What's New in v0.0.6
+## 🚀 What's New in v0.0.7
 
-- Added automatic and manual update checks; Windows supports in-app installer downloads, SHA-256 verification, and restart after updating.
-- Added optional single-application mode that activates the existing qEmby window when launched again.
-- Added LogVar / danmu_api as a danmaku provider with access-token support for general video content.
-- Improved DandanPlay season and episode matching, danmaku search, scoring, deduplication, and caching.
-- Added season switching, episode-number jumping, playback-status actions, and more accurate episode resume behavior to the detail page.
-- Remember the selected media version, audio track, and subtitle track for each item.
-- Improved detail prefetching, image caching, Continue Watching, playback history, and recommendation loading.
+- Added a multi-stage DandanPlay search flow with direct v2 search, canonical anime-title discovery, and legacy fallback.
+- Improved TMDB-constrained season and episode matching and explicit episode handling in manual searches.
+- Improved danmaku candidate ordering by prioritizing hash, provider-ID, and filename matches and organizing results by work, season, and episode.
+- Prevented keyboard events from passing through to the player while an overlay dialog is visible.
+- Fixed the playlist search input height in both Dark and Light themes.
 
 ## ✨ Features
 
