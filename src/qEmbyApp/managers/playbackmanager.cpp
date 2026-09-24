@@ -45,12 +45,6 @@ void PlaybackManager::startPlayback(const QString& mediaId, const QString& title
 {
     if (!m_core) return;
 
-    
-    if (m_independentWindow) {
-        m_independentWindow->close();
-        
-    }
-
     qDebug() << "[PlaybackManager] ===== startPlayback =====";
     qDebug() << "[PlaybackManager] mediaId:" << mediaId;
     qDebug() << "[PlaybackManager] title:" << title;
@@ -76,20 +70,7 @@ void PlaybackManager::startPlayback(const QString& mediaId, const QString& title
     }
 
     
-    
-    
-    bool independent = ConfigStore::instance()->get<bool>(ConfigKeys::PlayerIndependentWindow, false);
-    if (independent) {
-        qDebug() << "[PlaybackManager] → Mode: Independent window";
-        launchIndependentWindow(mediaId, title, streamUrl, startPositionTicks, extraData);
-        return;
-    }
-
-    
-    
-    
-    qDebug() << "[PlaybackManager] → Mode: Embedded player";
-    Q_EMIT requestEmbeddedPlay(mediaId, title, streamUrl, startPositionTicks, extraData);
+    startInternalPlayback(mediaId, title, streamUrl, startPositionTicks, extraData);
 }
 
 void PlaybackManager::startInternalPlayback(const QString& mediaId, const QString& title,
@@ -97,11 +78,6 @@ void PlaybackManager::startInternalPlayback(const QString& mediaId, const QStrin
                                              const QVariant& extraData)
 {
     if (!m_core) return;
-
-    
-    if (m_independentWindow) {
-        m_independentWindow->close();
-    }
 
     qDebug() << "[PlaybackManager] ===== startInternalPlayback =====";
     qDebug() << "[PlaybackManager] mediaId:" << mediaId << "title:" << title;
@@ -115,7 +91,19 @@ void PlaybackManager::startInternalPlayback(const QString& mediaId, const QStrin
         return;
     }
     qDebug() << "[PlaybackManager] → Mode: Embedded player (internal)";
+    closeIndependentWindow();
     Q_EMIT requestEmbeddedPlay(mediaId, title, streamUrl, startPositionTicks, extraData);
+}
+
+void PlaybackManager::closeIndependentWindow()
+{
+    if (!m_independentWindow) return;
+
+    qDebug() << "[PlaybackManager] Closing independent window for playback mode change";
+    
+    auto window = m_independentWindow;
+    m_independentWindow.clear();
+    window->close();
 }
 
 void PlaybackManager::stopExternalPlayer()
@@ -337,6 +325,8 @@ void PlaybackManager::launchExternalPlayer(const QString& mediaId, const QString
                                             const QVariant& extraData,
                                             const QString& playerPathOverride)
 {
+    closeIndependentWindow();
+
     
     stopExternalPlayer();
 
@@ -715,7 +705,7 @@ void PlaybackManager::launchIndependentWindow(const QString& mediaId, const QStr
 
     
     connect(playerWindow, &QObject::destroyed, this, [this]() {
-        m_independentWindow = nullptr;
+        
         qDebug() << "[PlaybackManager] Independent window destroyed";
         Q_EMIT playbackFinished();
     });

@@ -170,6 +170,11 @@ MediaItem MediaItem::fromJson(const QJsonObject& obj) {
     item.communityRating = obj["CommunityRating"].toDouble();
     item.canDownload = obj["CanDownload"].toBool(false);
 
+    for (const QJsonValue& location : obj["ProductionLocations"].toArray()) {
+        if (location.isString()) item.productionLocations.append(location.toString());
+    }
+    item.endDate = obj["EndDate"].toString().section('T', 0, 0);
+
     
     if (obj.contains("PremiereDate")) {
         item.premiereDate = obj["PremiereDate"].toString();

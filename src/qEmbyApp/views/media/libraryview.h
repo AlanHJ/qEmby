@@ -28,7 +28,7 @@ public:
     
     
     QCoro::Task<void> loadLibrary(const QString& libraryId, const QString& libraryName);
-    QCoro::Task<void> loadPerson(const QString& personId, const QString& personName);
+    QCoro::Task<void> loadPerson(QString personId, QString personName);
     QCoro::Task<void> loadFiltered(const QString& filterType, const QString& filterValue);
 
 protected:
@@ -60,6 +60,8 @@ private:
     void setupTopBar(class QHBoxLayout* headerLayout);
     
     void updateFavBtnState();
+    void updatePersonOverview();
+    QCoro::Task<void> openPersonOverview();
     QCoro::Task<QList<MediaItem>> enrichPlaylistItemsForRemoval(QList<MediaItem> items);
     QueryState buildCurrentQueryState(const QString& sortBy, const QString& sortOrder) const;
     bool isQueryValid(const QueryState& query) const;
@@ -73,6 +75,8 @@ private:
     void restoreSortPreference();
     void saveViewPreference();
     void restoreViewPreference();
+    void saveTabPreference();
+    void restoreTabPreference();
 
     ViewMode m_currentMode;        
     QString m_currentLibraryId;
@@ -83,6 +87,9 @@ private:
     bool m_isFavorite = false;     
 
     ElidedLabel* m_titleLabel;
+    QWidget* m_personOverviewWidget = nullptr;
+    ElidedLabel* m_personOverviewLabel = nullptr;
+    QPushButton* m_personOverviewMoreBtn = nullptr;
     QPushButton* m_favBtn;         
     
     QWidget* m_tabBarWidget;       

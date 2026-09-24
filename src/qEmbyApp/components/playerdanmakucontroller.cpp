@@ -16,8 +16,10 @@
 #include <QDebug>
 #include <QFileInfo>
 #include <QTimer>
+#include <QScopedValueRollback>
 #include <QUrl>
 #include <exception>
+#include <utility>
 
 namespace {
 
@@ -110,8 +112,13 @@ PlayerDanmakuController::PlayerDanmakuController(QEmbyCore *core,
             });
 
     connect(m_mpvWidget->controller(), &MpvController::propertyChanged, this,
-            [this](const QString &property, const QVariant &) {
+            [this](const QString &property, const QVariant &value) {
                 if (property == QLatin1String("track-list")) {
+                    
+                    
+                    
+                    QScopedValueRollback<QVariant> notification(m_trackListNotification,
+                        prefersNativeRenderer() ? value : QVariant());
                     onTrackListChanged();
                 }
             });
@@ -127,6 +134,12 @@ PlayerDanmakuController::PlayerDanmakuController(QEmbyCore *core,
                                    DanmakuRendererUtils::defaultRendererId()));
                     updateDanmakuPresentation();
                     emit stateChanged();
+                } else if (key == QLatin1String(ConfigKeys::PlayerHideSubtitles)) {
+                    qDebug() << "[Subtitle][Player] Persistent visibility changed"
+                             << "| hidden:" << ConfigStore::instance()->get<bool>(
+                                    ConfigKeys::PlayerHideSubtitles, false);
+                    applyTrackSelection();
+                    emit stateChanged();
                 } else if (key ==
                            QLatin1String(ConfigKeys::PlayerDanmakuDualSubtitle)) {
                     applyTrackSelection();
@@ -135,14 +148,22 @@ PlayerDanmakuController::PlayerDanmakuController(QEmbyCore *core,
             });
 }
 
+void PlayerDanmakuController::setCommentPayload(QList<DanmakuComment> comments)
+{
+    m_commentPayload = std::move(comments);
+    emit commentPayloadChanged(m_commentPayload);
+}
+
 void PlayerDanmakuController::setPlaybackContext(const PlayerLaunchContext &context)
 {
+    m_assRenderSettingsDirty = false;
+    m_activeCandidate = {};
     ++m_requestSerial;
     removeDanmakuTrack();
     m_launchContext = context;
     m_mediaContext = buildMediaContext(context);
     m_assFilePath.clear();
-    m_commentPayload.clear();
+    setCommentPayload({});
     m_sourceTitle.clear();
     m_sourceProvider.clear();
     m_sourceServerId.clear();
@@ -156,7 +177,7 @@ void PlayerDanmakuController::setPlaybackContext(const PlayerLaunchContext &cont
     m_loading = false;
     m_nativePayloadDirty = false;
     if (m_nativeDanmakuOverlay) {
-        m_nativeDanmakuOverlay->clearDanmaku();
+        m_nativeDanmakuOverlay->clearDanmaku(true);
     }
 
     qDebug().noquote()
@@ -187,12 +208,14 @@ void PlayerDanmakuController::setPlaybackContext(const PlayerLaunchContext &cont
 
 void PlayerDanmakuController::clearPlaybackContext()
 {
+    m_assRenderSettingsDirty = false;
+    m_activeCandidate = {};
     ++m_requestSerial;
     removeDanmakuTrack();
     m_launchContext = {};
     m_mediaContext = {};
     m_assFilePath.clear();
-    m_commentPayload.clear();
+    setCommentPayload({});
     m_sourceTitle.clear();
     m_sourceProvider.clear();
     m_sourceServerId.clear();
@@ -206,7 +229,7 @@ void PlayerDanmakuController::clearPlaybackContext()
     m_loading = false;
     m_nativePayloadDirty = false;
     if (m_nativeDanmakuOverlay) {
-        m_nativeDanmakuOverlay->clearDanmaku();
+        m_nativeDanmakuOverlay->clearDanmaku(true);
     }
     qDebug() << "[Danmaku][Player] Cleared playback context";
     emit stateChanged();
@@ -317,8 +340,9 @@ QList<QVariantMap> PlayerDanmakuController::contentSubtitleTracks() const
         return tracks;
     }
 
-    const QVariantList trackList =
-        m_mpvWidget->controller()->getProperty(QStringLiteral("track-list")).toList();
+    const QVariantList trackList = (m_trackListNotification.isValid()
+        ? m_trackListNotification
+        : m_mpvWidget->controller()->getProperty(QStringLiteral("track-list"))).toList();
     for (const QVariant &value : trackList) {
         QVariantMap trackMap = value.toMap();
         if (trackMap.value(QStringLiteral("type")).toString() !=
@@ -331,6 +355,9 @@ QList<QVariantMap> PlayerDanmakuController::contentSubtitleTracks() const
         if (m_selectedSubtitleTrackId > 0 &&
             trackMap.value(QStringLiteral("id")).toInt() == m_selectedSubtitleTrackId) {
             trackMap.insert(QStringLiteral("selected"), true);
+        }
+        if (ConfigStore::instance()->get<bool>(ConfigKeys::PlayerHideSubtitles, false)) {
+            trackMap.insert(QStringLiteral("selected"), false);
         }
         tracks.append(trackMap);
     }
@@ -404,13 +431,36 @@ void PlayerDanmakuController::setDanmakuVisible(bool visible)
     emit stateChanged();
 }
 
+void PlayerDanmakuController::applyRenderSettings()
+{
+    if (prefersNativeRenderer() && (!m_commentPayload.isEmpty() || m_loading)) {
+        
+        
+        qDebug() << "[Danmaku][Player] Apply native render settings | comments:"
+                 << m_commentPayload.size() << "| loading:" << m_loading;
+        m_assRenderSettingsDirty = true;
+        updateDanmakuPresentation();
+        emit stateChanged();
+        return;
+    }
+    
+    
+    if (m_activeCandidate.isValid()) {
+        loadFromCandidate(m_activeCandidate, false);
+    } else {
+        reload();
+    }
+}
+
 void PlayerDanmakuController::reload(const QString &manualKeyword)
 {
     if (m_mediaContext.mediaId.isEmpty()) {
         return;
     }
+    m_assRenderSettingsDirty = false;
 
     const QString trimmedKeyword = manualKeyword.trimmed();
+    m_activeCandidate = {};
     if (!trimmedKeyword.isEmpty() && !isDanmakuEnabled()) {
         ConfigStore::instance()->set(danmakuEnabledConfigKey(m_mediaContext), true);
     }
@@ -418,7 +468,7 @@ void PlayerDanmakuController::reload(const QString &manualKeyword)
     ++m_requestSerial;
     removeDanmakuTrack();
     m_assFilePath.clear();
-    m_commentPayload.clear();
+    setCommentPayload({});
     m_sourceTitle.clear();
     m_sourceProvider.clear();
     m_sourceServerId.clear();
@@ -446,6 +496,8 @@ void PlayerDanmakuController::loadFromCandidate(
     if (m_mediaContext.mediaId.isEmpty() || !candidate.isValid()) {
         return;
     }
+    m_assRenderSettingsDirty = false;
+    m_activeCandidate = candidate;
 
     if (!isDanmakuEnabled()) {
         ConfigStore::instance()->set(danmakuEnabledConfigKey(m_mediaContext), true);
@@ -454,7 +506,7 @@ void PlayerDanmakuController::loadFromCandidate(
     ++m_requestSerial;
     removeDanmakuTrack();
     m_assFilePath.clear();
-    m_commentPayload.clear();
+    setCommentPayload({});
     m_sourceTitle.clear();
     m_sourceProvider.clear();
     m_sourceServerId.clear();
@@ -565,6 +617,24 @@ bool PlayerDanmakuController::isDanmakuTrackMap(const QVariantMap &trackMap) con
 
 void PlayerDanmakuController::onTrackListChanged()
 {
+    
+    if (ConfigStore::instance()->get<bool>(ConfigKeys::PlayerHideSubtitles, false)) {
+        if (m_danmakuTrackId <= 0) {
+            refreshDanmakuTrackId(0);
+        }
+        const QVariantList tracks = (m_trackListNotification.isValid()
+            ? m_trackListNotification
+            : m_mpvWidget->controller()->getProperty(QStringLiteral("track-list"))).toList();
+        for (const QVariant &value : tracks) {
+            const QVariantMap track = value.toMap();
+            if (track.value(QStringLiteral("type")).toString() == QLatin1String("sub") &&
+                !isDanmakuTrackMap(track) && trackSelected(track)) {
+                applyTrackSelection();
+                break;
+            }
+        }
+        return;
+    }
     syncSubtitleSelectionFromTrackList();
     refreshDanmakuTrackId(0);
     if ((isDanmakuVisible() && m_danmakuTrackId > 0) || shouldUseNativeRenderer()) {
@@ -574,6 +644,9 @@ void PlayerDanmakuController::onTrackListChanged()
 
 void PlayerDanmakuController::syncSubtitleSelectionFromTrackList()
 {
+    if (ConfigStore::instance()->get<bool>(ConfigKeys::PlayerHideSubtitles, false)) {
+        return;
+    }
     const QList<QVariantMap> tracks = contentSubtitleTracks();
     const int previousTrackId = m_selectedSubtitleTrackId;
     m_selectedSubtitleTrackId = -1;
@@ -625,8 +698,9 @@ void PlayerDanmakuController::refreshDanmakuTrackId(int remainingRetries)
         return;
     }
 
-    const QVariantList trackList =
-        m_mpvWidget->controller()->getProperty(QStringLiteral("track-list")).toList();
+    const QVariantList trackList = (m_trackListNotification.isValid()
+        ? m_trackListNotification
+        : m_mpvWidget->controller()->getProperty(QStringLiteral("track-list"))).toList();
     for (const QVariant &value : trackList) {
         const QVariantMap trackMap = value.toMap();
         if (trackMap.value(QStringLiteral("type")).toString() !=
@@ -693,6 +767,11 @@ bool PlayerDanmakuController::shouldUseNativeRenderer() const
 void PlayerDanmakuController::updateDanmakuPresentation()
 {
     const bool nativeRendererPreferred = prefersNativeRenderer();
+    if (!nativeRendererPreferred && m_assRenderSettingsDirty) {
+        qDebug() << "[Danmaku][Player] Rebuild ASS after native render settings changed";
+        applyRenderSettings();
+        return;
+    }
     if (nativeRendererPreferred && m_nativeDanmakuOverlay && m_core &&
         m_core->danmakuService()) {
         m_nativeDanmakuOverlay->setRenderOptions(
@@ -823,6 +902,8 @@ void PlayerDanmakuController::applyTrackSelection()
         return;
     }
 
+    const int selectedSubtitleTrackId = ConfigStore::instance()->get<bool>(
+        ConfigKeys::PlayerHideSubtitles, false) ? -1 : m_selectedSubtitleTrackId;
     const bool dualSubtitle = ConfigStore::instance()->get<bool>(
         ConfigKeys::PlayerDanmakuDualSubtitle, true);
     const bool useNativeRenderer =
@@ -830,21 +911,21 @@ void PlayerDanmakuController::applyTrackSelection()
 
     if (m_nativeDanmakuOverlay) {
         m_nativeDanmakuOverlay->setBottomSubtitleProtected(
-            useNativeRenderer && dualSubtitle && m_selectedSubtitleTrackId > 0);
+            useNativeRenderer && dualSubtitle && selectedSubtitleTrackId > 0);
         m_nativeDanmakuOverlay->setDanmakuVisible(useNativeRenderer);
     }
 
     if (useNativeRenderer) {
         qDebug().noquote()
             << "[Danmaku][Player] Apply native renderer selection"
-            << "| contentSubtitleTrackId:" << m_selectedSubtitleTrackId
+            << "| contentSubtitleTrackId:" << selectedSubtitleTrackId
             << "| dualSubtitle:" << dualSubtitle
             << "| commentCount:" << m_commentPayload.size();
         m_mpvWidget->controller()->setProperty(QStringLiteral("secondary-sid"),
                                                QStringLiteral("no"));
-        if (dualSubtitle && m_selectedSubtitleTrackId > 0) {
+        if (dualSubtitle && selectedSubtitleTrackId > 0) {
             m_mpvWidget->controller()->setProperty(QStringLiteral("sid"),
-                                                   m_selectedSubtitleTrackId);
+                                                   selectedSubtitleTrackId);
         } else {
             m_mpvWidget->controller()->setProperty(QStringLiteral("sid"),
                                                    QStringLiteral("no"));
@@ -858,15 +939,15 @@ void PlayerDanmakuController::applyTrackSelection()
         qDebug().noquote()
             << "[Danmaku][Player] Apply dual subtitle selection"
             << "| danmakuTrackId:" << m_danmakuTrackId
-            << "| contentSubtitleTrackId:" << m_selectedSubtitleTrackId
+            << "| contentSubtitleTrackId:" << selectedSubtitleTrackId
             << "| dualSubtitle:" << dualSubtitle;
         m_mpvWidget->controller()->setProperty(QStringLiteral("sid"),
                                                m_danmakuTrackId);
-        if (dualSubtitle && m_selectedSubtitleTrackId > 0) {
+        if (dualSubtitle && selectedSubtitleTrackId > 0) {
             m_mpvWidget->controller()->setProperty(QStringLiteral("secondary-sub-pos"),
                                                    92);
             m_mpvWidget->controller()->setProperty(QStringLiteral("secondary-sid"),
-                                                   m_selectedSubtitleTrackId);
+                                                   selectedSubtitleTrackId);
         } else {
             m_mpvWidget->controller()->setProperty(QStringLiteral("secondary-sid"),
                                                    QStringLiteral("no"));
@@ -878,12 +959,12 @@ void PlayerDanmakuController::applyTrackSelection()
 
     qDebug().noquote()
         << "[Danmaku][Player] Apply regular subtitle selection"
-        << "| contentSubtitleTrackId:" << m_selectedSubtitleTrackId;
+        << "| contentSubtitleTrackId:" << selectedSubtitleTrackId;
     m_mpvWidget->controller()->setProperty(QStringLiteral("secondary-sid"),
                                            QStringLiteral("no"));
-    if (m_selectedSubtitleTrackId > 0) {
+    if (selectedSubtitleTrackId > 0) {
         m_mpvWidget->controller()->setProperty(QStringLiteral("sid"),
-                                               m_selectedSubtitleTrackId);
+                                               selectedSubtitleTrackId);
     } else {
         m_mpvWidget->controller()->setProperty(QStringLiteral("sid"),
                                                QStringLiteral("no"));
@@ -921,13 +1002,14 @@ QCoro::Task<void> PlayerDanmakuController::loadDanmakuTask(quint64 requestId,
 
         safeThis->m_loading = false;
         safeThis->m_assFilePath = result.assFilePath;
-        safeThis->m_commentPayload = result.comments;
+        safeThis->setCommentPayload(result.comments);
         safeThis->m_nativePayloadDirty = !result.comments.isEmpty();
         safeThis->m_sourceTitle = result.sourceTitle;
         safeThis->m_sourceProvider = result.provider;
         safeThis->m_sourceServerId = result.sourceServerId;
         safeThis->m_sourceServerName = result.sourceServerName;
         safeThis->m_activeTargetId = result.matchResult.selected.targetId;
+        safeThis->m_activeCandidate = result.matchResult.selected;
         safeThis->m_activeEndpointId =
             result.sourceServerId.trimmed().isEmpty()
                 ? result.matchResult.selected.endpointId
@@ -1025,7 +1107,7 @@ QCoro::Task<void> PlayerDanmakuController::loadDanmakuCandidateTask(
 
         safeThis->m_loading = false;
         safeThis->m_assFilePath = result.assFilePath;
-        safeThis->m_commentPayload = result.comments;
+        safeThis->setCommentPayload(result.comments);
         safeThis->m_nativePayloadDirty = !result.comments.isEmpty();
         safeThis->m_sourceTitle = result.sourceTitle;
         safeThis->m_sourceProvider = result.provider;

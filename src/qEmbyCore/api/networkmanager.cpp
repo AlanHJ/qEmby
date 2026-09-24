@@ -1,4 +1,5 @@
 #include "networkmanager.h"
+#include "useragentmanager.h"
 #include <QJsonArray>
 #include <QJsonParseError>
 #include <QJsonValue>
@@ -143,6 +144,12 @@ void NetworkManager::applyRequestOptions(QNetworkRequest& request,
                                          const NetworkRequestOptions& options) {
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                          QNetworkRequest::NoLessSafeRedirectPolicy);
+    if (!options.userAgentServerId.isEmpty()) {
+        UserAgentManager::instance()->applyToRequest(
+            request, options.userAgentServerId);
+    } else {
+        UserAgentManager::instance()->applyToRequest(request);
+    }
 
     if (options.timeoutMs > 0) {
         request.setTransferTimeout(options.timeoutMs);

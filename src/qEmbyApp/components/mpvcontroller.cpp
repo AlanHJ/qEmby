@@ -34,6 +34,8 @@ MpvController::~MpvController() {
 }
 
 void MpvController::forceCleanup() {
+    m_propertyRequests.clear();
+    m_latestPropertyRequests.clear();
     if (m_mpv) {
         
         this->blockSignals(true);
@@ -264,17 +266,48 @@ void MpvController::eventHandler() {
         mpv_event *event = mpv_wait_event(m_mpv, 0);
         if (event->event_id == MPV_EVENT_NONE) break;
 
+        const mpv_event_id eventId = event->event_id;
+        QElapsedTimer dispatchTime;
+        dispatchTime.start();
+
         switch (event->event_id) {
+        case MPV_EVENT_START_FILE:
+            m_propertyRequests.clear();
+            m_latestPropertyRequests.clear();
+            emit playbackStarting();
+            break;
+        case MPV_EVENT_VIDEO_RECONFIG:
+            emit videoOutputChanged();
+            break;
         case MPV_EVENT_FILE_LOADED:
             emit fileLoaded();
             break;
         case MPV_EVENT_END_FILE: {
+            m_propertyRequests.clear();
+            m_latestPropertyRequests.clear();
+            
+            emit playbackStopped();
             auto *prop = static_cast<mpv_event_end_file *>(event->data);
             if (prop && prop->reason == MPV_END_FILE_REASON_EOF) {
                 emit endOfFile("eof");
             } else if (prop && prop->reason == MPV_END_FILE_REASON_ERROR) {
                 emit endOfFile("error");
             }
+            break;
+        }
+        case MPV_EVENT_GET_PROPERTY_REPLY: {
+            const QString property = m_propertyRequests.take(event->reply_userdata);
+            if (property.isEmpty() ||
+                m_latestPropertyRequests.value(property) != event->reply_userdata) {
+                break;
+            }
+            m_latestPropertyRequests.remove(property);
+            const auto *prop = static_cast<mpv_event_property *>(event->data);
+            QVariant value;
+            if (event->error >= 0 && prop && prop->data && prop->format == MPV_FORMAT_NODE) {
+                value = nodeToVariant(static_cast<mpv_node *>(prop->data));
+            }
+            emit propertyRead(property, value);
             break;
         }
         case MPV_EVENT_PROPERTY_CHANGE: {
@@ -316,6 +349,13 @@ void MpvController::eventHandler() {
         default:
             break;
         }
+        const qreal dispatchMs = dispatchTime.nsecsElapsed() / 1000000.0;
+        if (dispatchMs >= 25.0) {
+            
+            
+            qDebug() << "[MpvController][Timing] Slow event dispatch | event:"
+                     << mpv_event_name(eventId) << "| elapsedMs:" << dispatchMs;
+        }
     }
 }
 
@@ -346,11 +386,34 @@ int MpvController::setProperty(const QString &property, const QVariant &value) {
     return err;
 }
 
+void MpvController::requestProperty(const QString &property) {
+    if (!m_mpv) return;
+    const quint64 id = ++m_propertyRequestSerial;
+    m_propertyRequests.insert(id, property);
+    m_latestPropertyRequests.insert(property, id);
+    const int error = mpv_get_property_async(m_mpv, id, property.toUtf8().constData(), MPV_FORMAT_NODE);
+    if (error < 0) {
+        m_propertyRequests.remove(id);
+        m_latestPropertyRequests.remove(property);
+        qDebug() << "[MpvController] Async property request failed | property:"
+                 << property << "| error:" << error;
+        emit propertyRead(property, QVariant());
+    }
+}
+
 QVariant MpvController::getProperty(const QString &property) {
     if (!m_mpv) return QVariant();
     mpv_node node;
     memset(&node, 0, sizeof(mpv_node)); 
+    QElapsedTimer readTime;
+    readTime.start();
     int err = mpv_get_property(m_mpv, property.toUtf8().constData(), MPV_FORMAT_NODE, &node);
+    const qreal readMs = readTime.nsecsElapsed() / 1000000.0;
+    if (readMs >= 25.0) {
+        
+        qDebug() << "[MpvController][Timing] Slow property read | property:"
+                 << property << "| elapsedMs:" << readMs << "| result:" << err;
+    }
     if (err < 0) return QVariant();
     node_autofree f(&node);
     return nodeToVariant(&node);

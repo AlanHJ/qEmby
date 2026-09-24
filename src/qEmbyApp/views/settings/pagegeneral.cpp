@@ -5,10 +5,12 @@
 #include "../../components/modernswitch.h"
 #include "../../components/moderntoast.h"
 #include "../../components/proxysettingsdialog.h"
+#include "../../components/useragentsettingsdialog.h"
 #include "../../components/settingscard.h"
 #include "../../components/settingssubpanel.h"
 #include "../../managers/logmanager.h"
 #include "api/proxymanager.h"
+#include "api/useragentmanager.h"
 #include "config/config_keys.h"
 #include "config/configstore.h"
 #include "models/profile/proxyconfig.h"
@@ -146,6 +148,79 @@ PageGeneral::PageGeneral(QEmbyCore *core, QWidget *parent)
     refreshProxyDesc();
     dlg->deleteLater();
   });
+
+  
+  auto *userAgentBtn = new QPushButton(tr("Configure..."), this);
+  userAgentBtn->setObjectName("SettingsCardButton");
+  userAgentBtn->setCursor(Qt::PointingHandCursor);
+  userAgentBtn->setFixedHeight(30);
+
+  auto *userAgentCard = new SettingsCard(
+      ":/svg/dark/server.svg", tr("Custom User-Agent"),
+      tr("User-Agent for network requests (global or server-specific)"),
+      userAgentBtn, QString(), this);
+  m_mainLayout->addWidget(userAgentCard);
+
+  auto userAgentStateText = [](const UserAgentConfig &config) {
+    return config.isEffective()
+               ? PageGeneral::tr("enabled: %1").arg(config.value.trimmed())
+               : PageGeneral::tr("disabled");
+  };
+  auto buildUserAgentSummary = [this, userAgentStateText]() {
+    if (m_core && m_core->serverManager()) {
+      const ServerProfile profile = m_core->serverManager()->activeProfile();
+      if (profile.isValid()) {
+        if (profile.useGlobalUserAgent) {
+          return PageGeneral::tr(
+                     "User-Agent for the current server — using global: %1")
+              .arg(userAgentStateText(
+                  UserAgentManager::instance()->globalConfig()));
+        }
+        return PageGeneral::tr(
+                   "User-Agent for the current server — currently: %1")
+            .arg(userAgentStateText(profile.userAgent));
+      }
+    }
+    return PageGeneral::tr(
+               "Default User-Agent for all requests — currently: %1")
+        .arg(userAgentStateText(
+            UserAgentManager::instance()->globalConfig()));
+  };
+  auto refreshUserAgentDesc = [userAgentCard, buildUserAgentSummary]() {
+    const auto labels =
+        userAgentCard->findChildren<ElidedLabel *>("SettingsCardDesc");
+    for (ElidedLabel *label : labels) {
+      label->setFullText(buildUserAgentSummary());
+    }
+  };
+  refreshUserAgentDesc();
+  connect(UserAgentManager::instance(),
+          &UserAgentManager::userAgentChanged, userAgentCard,
+          refreshUserAgentDesc);
+  if (m_core && m_core->serverManager()) {
+    connect(m_core->serverManager(), &ServerManager::activeServerChanged,
+            userAgentCard, [refreshUserAgentDesc](const ServerProfile &) {
+              refreshUserAgentDesc();
+            });
+  }
+  connect(userAgentBtn, &QPushButton::clicked, this,
+          [this, refreshUserAgentDesc]() {
+            UserAgentSettingsDialog *dialog = nullptr;
+            if (m_core && m_core->serverManager()) {
+              const ServerProfile profile =
+                  m_core->serverManager()->activeProfile();
+              if (profile.isValid()) {
+                dialog = UserAgentSettingsDialog::createForServer(
+                    m_core->serverManager(), profile.id, this);
+              }
+            }
+            if (!dialog) {
+              dialog = UserAgentSettingsDialog::createForGlobal(this);
+            }
+            dialog->exec();
+            refreshUserAgentDesc();
+            dialog->deleteLater();
+          });
 
   
   auto *logSwitch = new ModernSwitch(this);

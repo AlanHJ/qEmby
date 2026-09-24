@@ -4,6 +4,7 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QFontMetrics>
 #include <QPushButton>
 #include <QPixmap>
 #include <QShowEvent>
@@ -203,14 +204,22 @@ void ModernMessageBox::updateTextLabelHeight() {
     }
     targetWidth = qBound(kMessageTextMinWidth, targetWidth, kMessageTextMaxWidth);
 
-    const int labelHeight = m_textLabel->heightForWidth(targetWidth);
-    const int fallbackHeight = m_textLabel->sizeHint().height();
-    const int targetHeight =
-        qMax(labelHeight, fallbackHeight) + kMessageTextVerticalSlack;
+    
+    
+    const QMargins margins = m_textLabel->contentsMargins();
+    const int padding = 2 * m_textLabel->margin();
+    const int textWidth = qMax(1, targetWidth - margins.left() - margins.right() - padding);
+    const int textHeight = m_textLabel->fontMetrics().boundingRect(
+        QRect(0, 0, textWidth, 0), Qt::TextWordWrap | Qt::AlignLeft | Qt::AlignTop,
+        m_textLabel->text()).height();
+    const int targetHeight = textHeight + margins.top() + margins.bottom()
+                             + padding + kMessageTextVerticalSlack;
 
     if (m_textLabel->minimumHeight() != targetHeight) {
         m_textLabel->setMinimumHeight(targetHeight);
     }
     m_textLabel->updateGeometry();
-    adjustSize();
+    if (!isVisible()) {
+        adjustSize();
+    }
 }

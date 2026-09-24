@@ -9,7 +9,7 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
-#include <QPixmapCache>
+#include "../../utils/imageutils.h"
 #include <QStyle>
 
 namespace
@@ -157,32 +157,6 @@ HoverButtonLayout buildHoverButtonLayout(const QRect &targetImgRect, bool showPl
     }
 
     return layout;
-}
-
-QPixmap scaledCardPixmap(const MediaItem &item, const QPixmap &source, const QSize &targetSize,
-                         MediaCardDelegate::CardStyle style)
-{
-    if (source.isNull() || targetSize.isEmpty())
-    {
-        return {};
-    }
-
-    const QString cacheKey = QStringLiteral("MediaCardDelegate:%1:%2:%3x%4:%5")
-                                 .arg(item.id)
-                                 .arg(source.cacheKey())
-                                 .arg(targetSize.width())
-                                 .arg(targetSize.height())
-                                 .arg(static_cast<int>(style));
-
-    QPixmap cached;
-    if (QPixmapCache::find(cacheKey, &cached))
-    {
-        return cached;
-    }
-
-    QPixmap scaled = source.scaled(targetSize, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
-    QPixmapCache::insert(cacheKey, scaled);
-    return scaled;
 }
 
 void drawPlayedBadge(QPainter *painter, const QRect &targetImgRect, bool alignLeft)
@@ -430,10 +404,10 @@ void MediaCardDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opt
             QPainterPath path;
             path.addRoundedRect(baseImgRect, imgRadius, imgRadius);
             painter->setClipPath(path);
-            QPixmap scaled = scaledCardPixmap(item, poster, baseImgRect.size(), m_style);
-            int px = baseImgRect.x() + (baseImgRect.width() - scaled.width()) / 2;
-            int py = baseImgRect.y() + (baseImgRect.height() - scaled.height()) / 2;
-            painter->drawPixmap(px, py, scaled);
+            QPixmap scaled = ImageUtils::scaledCoverPixmap(poster, baseImgRect.size(), painter->device()->devicePixelRatioF());
+            qreal px = baseImgRect.x() + (baseImgRect.width() - scaled.deviceIndependentSize().width()) / 2;
+            qreal py = baseImgRect.y() + (baseImgRect.height() - scaled.deviceIndependentSize().height()) / 2;
+            painter->drawPixmap(QPointF(px, py), scaled);
             painter->setClipping(false);
         }
         else
@@ -625,11 +599,11 @@ void MediaCardDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opt
         painter->setClipPath(path);
 
         
-        QPixmap scaled = scaledCardPixmap(item, poster, targetImgRect.size(), m_style);
-        int px = targetImgRect.x() + (targetImgRect.width() - scaled.width()) / 2;
-        int py = targetImgRect.y() + (targetImgRect.height() - scaled.height()) / 2;
+        QPixmap scaled = ImageUtils::scaledCoverPixmap(poster, targetImgRect.size(), painter->device()->devicePixelRatioF());
+        qreal px = targetImgRect.x() + (targetImgRect.width() - scaled.deviceIndependentSize().width()) / 2;
+        qreal py = targetImgRect.y() + (targetImgRect.height() - scaled.deviceIndependentSize().height()) / 2;
 
-        painter->drawPixmap(px, py, scaled);
+        painter->drawPixmap(QPointF(px, py), scaled);
         painter->setClipping(false);
     }
     else

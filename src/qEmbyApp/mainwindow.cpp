@@ -47,6 +47,8 @@
 #include <QtMath>
 #include <QKeyEvent>
 #include <QMouseEvent>
+#include <QOpenGLWidget>
+#include <QWindow>
 #include <QDialog>
 
 #include <QWKWidgets/widgetwindowagent.h>
@@ -89,6 +91,20 @@ static inline void emulateLeaveEvent(QWidget *widget) {
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
+#if defined(Q_OS_WIN) && (QT_VERSION >= QT_VERSION_CHECK(6, 4, 0))
+    
+    
+    
+    
+    auto *compositionAnchor = new QOpenGLWidget(this);
+    compositionAnchor->setObjectName(QStringLiteral("playerCompositionAnchor"));
+    compositionAnchor->setFixedSize(1, 1);
+    compositionAnchor->setFocusPolicy(Qt::NoFocus);
+    compositionAnchor->setAttribute(Qt::WA_TransparentForMouseEvents);
+    compositionAnchor->hide();
+    qInfo() << "[MainWindow] OpenGL composition prepared before native window creation"
+            << "| nativeWindowCreated:" << testAttribute(Qt::WA_WState_Created);
+#endif
     m_core = new QEmbyCore(this);
 
     
@@ -1228,6 +1244,14 @@ void MainWindow::navigateToLogin() {
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 {
+    if (watched == this && (event->type() == QEvent::WinIdChange ||
+                            event->type() == QEvent::Show || event->type() == QEvent::Hide)) {
+        
+        qInfo() << "[MainWindow] Window lifecycle | event:" << event->type()
+                << "| nativeId:" << static_cast<quintptr>(internalWinId())
+                << "| visible:" << isVisible() << "| state:" << windowState()
+                << "| surfaceType:" << (windowHandle() ? static_cast<int>(windowHandle()->surfaceType()) : -1);
+    }
     if (watched == qApp && event->type() == QEvent::ApplicationStateChange) {
         if (QGuiApplication::applicationState() != Qt::ApplicationActive) {
             hideGlobalSearchTransientUi();

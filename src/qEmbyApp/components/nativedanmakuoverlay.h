@@ -1,110 +1,135 @@
 #ifndef NATIVEDANMAKUOVERLAY_H
 #define NATIVEDANMAKUOVERLAY_H
 
+#include <QCache>
 #include <QElapsedTimer>
-#include <QHash>
+#include <QFutureWatcher>
+#include <QObject>
 #include <QPixmap>
 #include <QPointer>
-#include <QSize>
-#include <QVector>
-#include <QWidget>
-
-#include <models/danmaku/danmakumodels.h>
+#include <QSet>
+#include <QTimer>
+#include "../utils/danmakuclock.h"
+#include "../utils/danmakuframeclock.h"
+#include "../utils/nativedanmakulayout.h"
 
 class MpvController;
-class QPaintEvent;
-class QResizeEvent;
-class QTimer;
-class QVariant;
-class QRectF;
+class MpvWidget;
+class QPainter;
 
-class NativeDanmakuOverlay : public QWidget
+
+class NativeDanmakuOverlay : public QObject
 {
 public:
-    explicit NativeDanmakuOverlay(MpvController *controller,
-                                  QWidget *parent = nullptr);
+    explicit NativeDanmakuOverlay(MpvWidget *widget, QObject *parent = nullptr);
+    ~NativeDanmakuOverlay() override;
 
     void setRenderOptions(DanmakuRenderOptions options);
     void setComments(QList<DanmakuComment> comments);
-    void clearDanmaku();
+    void clearDanmaku(bool resetMotionReference = false);
     bool hasComments() const;
-
     void setDanmakuVisible(bool visible);
     void setBottomSubtitleProtected(bool enabled);
+    bool isActive() const;
+    qreal beginFrame();
+    void paint(QPainter &painter, qreal positionMs);
+    void invalidateGraphicsCache();
+    void setGraphicsAvailable(bool available);
 
 protected:
-    void paintEvent(QPaintEvent *event) override;
-    void resizeEvent(QResizeEvent *event) override;
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
-    enum class ItemType {
-        Scroll,
-        Top,
-        Bottom
+    struct PreparedSprite {
+        int id = -1;
+        QImage image;
     };
-
-    struct ScheduledItem {
-        ItemType type = ItemType::Scroll;
-        qint64 startMs = 0;
-        qint64 endMs = 0;
-        int laneIndex = 0;
-        int fontSize = 0;
-        int fontWeight = 400;
-        QColor color = QColor(Qt::white);
-        QString text;
-        qreal textWidth = 0.0;
-        qreal visualWidth = 0.0;
-    };
-
-    void rebuildSchedule();
-    void requestScheduleRebuild(bool immediate = false,
-                                bool clearSpriteCache = false);
-    void rebuildScheduleNow();
-    void warmSpriteCacheAround(qreal positionMs);
-    void rebuildActiveItems(qint64 positionMs);
-    void updateActiveItems(qint64 positionMs);
-    void clearScheduledState(bool clearSpriteCache = false);
-    void syncFrameTimer();
-    int targetFrameIntervalMs() const;
-    void refreshBasePosition(qint64 positionMs);
-    qreal currentPositionMsPrecise() const;
-    qint64 currentPositionMs() const;
+    void requestScheduleRebuild();
+    void requestGeometryReflow(bool resetTimeline = false);
+    void startScheduleBuild();
+    void invalidateWork();
+    void updatePresentation();
+    void updateActiveItems(qreal positionMs, bool rebuild = false);
+    void prepareSprites();
+    void syncPlaybackClock(bool anchor = false);
+    void synchronizePosition(double seconds, bool discontinuity = false);
+    void handleControllerPropertyChanged(const QString &property, const QVariant &value);
+    void refreshVideoGeometry(const QString &property, const QVariant &value);
     QRectF effectiveSurfaceRect() const;
-    qreal laneTop(const ScheduledItem &item) const;
-    qreal spriteLogicalWidth(const QPixmap &sprite) const;
-    QString spriteCacheKey(const ScheduledItem &item) const;
-    const QPixmap *spriteForItem(const ScheduledItem &item);
-    void handleControllerPropertyChanged(const QString &property,
-                                         const QVariant &value);
+    void syncFramePump();
+    void resetFrameTiming();
+    void requestNextFrame();
+    bool shouldAnimate() const;
+    qreal refreshIntervalMs() const;
+    void update();
+    bool isVisible() const;
+    qreal devicePixelRatioF() const;
 
+    QPointer<MpvWidget> m_widget;
     QPointer<MpvController> m_controller;
-    QTimer *m_frameTimer = nullptr;
-    QTimer *m_scheduleRebuildTimer = nullptr;
-    QElapsedTimer m_positionClock;
-    QList<DanmakuComment> m_comments;
-    QList<DanmakuComment> m_sortedComments;
+    DanmakuClock m_clock;
+    DanmakuFrameClock m_frameClock;
     DanmakuRenderOptions m_options;
-    QVector<ScheduledItem> m_schedule;
+    QList<DanmakuComment> m_comments;
+    NativeDanmakuLayout::Schedule m_schedule;
+    
+    QSizeF m_motionReferenceSize;
+    NativeDanmakuLayout::Cancellation m_cancelled;
+    QFutureWatcher<NativeDanmakuLayout::Schedule> m_layoutWatcher;
+    QFutureWatcher<QVector<PreparedSprite>> m_spriteWatcher;
+    QCache<int, QPixmap> m_spriteCache{64 * 1024}; 
+    QSet<int> m_failedSprites;
     QVector<int> m_activeIndexes;
-    QHash<QString, QPixmap> m_spriteCache;
-    qint64 m_basePositionMs = 0;
-    qint64 m_lastResolvedPositionMs = -1;
-    int m_nextScheduleIndex = 0;
-    double m_playbackSpeed = 1.0;
-    qreal m_lineHeight = 0.0;
-    qreal m_topMargin = 0.0;
-    qreal m_bottomMargin = 0.0;
-    qreal m_scrollStartPadding = 0.0;
-    qreal m_scrollEndPadding = 0.0;
-    qreal m_scrollLaneGapPadding = 0.0;
-    qreal m_outlineSize = 0.0;
-    qreal m_shadowOffset = 0.0;
-    qreal m_spritePadding = 0.0;
+    QTimer m_rebuildTimer;
+    QTimer m_frameWatchdog;
+    QTimer m_prefetchTimer;
+    QElapsedTimer m_lastPaint;
+    QElapsedTimer m_statisticsClock;
+    QElapsedTimer m_swapClock;
+    QElapsedTimer m_prefetchTickClock;
+    QElapsedTimer m_spriteBatchClock;
+    QElapsedTimer m_layoutClock;
+    int m_swapCount = 0;
+    qreal m_maxSwapGapMs = 0.0;
+    qreal m_maxGuiTickGapMs = 0.0;
+    qreal m_maxSpriteInstallMs = 0.0;
+    qreal m_maxSpriteBatchMs = 0.0;
+    QSizeF m_videoSize;
+    qreal m_panscan = 0.0;
+    bool m_keepAspect = true;
+    bool m_videoUnscaled = false;
+    quint64 m_generation = 0;
+    quint64 m_layoutGeneration = 0;
+    quint64 m_spriteGeneration = 0;
+    qreal m_spriteDpr = 1.0;
+    qreal m_lastPositionMs = -1.0;
+    int m_nextIndex = 0;
+    int m_frameCount = 0;
+    int m_lateFrames = 0;
+    int m_spriteMisses = 0;
+    qreal m_maxFrameGapMs = 0.0;
+    qreal m_lastFramePositionMs = -1.0;
+    qreal m_frozenFramePositionMs = -1.0;
+    qreal m_minFrameStepMs = -1.0;
+    qreal m_maxFrameStepMs = 0.0;
+    qreal m_maxPhaseErrorMs = 0.0;
     bool m_visibleRequested = false;
-    bool m_playbackPaused = true;
+    bool m_paused = true;
+    bool m_buffering = false;
+    bool m_seeking = false;
+    bool m_ended = false;
     bool m_bottomSubtitleProtected = false;
     bool m_scheduleDirty = false;
-    bool m_clearSpriteCacheOnNextRebuild = false;
+    bool m_layoutInFlight = false;
+    bool m_geometryOnly = false;
+    bool m_layoutIsReflow = false;
+    bool m_layoutResetsTimeline = false;
+    bool m_resetReflowTimeline = false;
+    QFont m_layoutBaseFont;
+    bool m_spriteInFlight = false;
+    bool m_graphicsAvailable = true;
+    bool m_videoPresented = false;
+    bool m_anchorOnNextPosition = true;
 };
 
 #endif 

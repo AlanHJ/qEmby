@@ -17,7 +17,9 @@ public:
     explicit ServerManager(NetworkManager* nm, QObject* parent = nullptr);
 
     
-    void addServer(const ServerProfile& profile);
+    
+    
+    ServerProfile addServer(const ServerProfile& profile);
     void removeServer(const QString& id);
     void setActiveServer(const QString& id);
 
@@ -27,6 +29,9 @@ public:
     
     void updateServerProxy(const QString& id, const ProxyConfig& proxy,
                            bool useGlobalProxy);
+    void updateServerUserAgent(const QString &id,
+                               const UserAgentConfig &userAgent,
+                               bool useGlobalUserAgent);
 
     
     QList<ServerProfile> servers() const { return m_servers; }
@@ -49,6 +54,7 @@ Q_SIGNALS:
 
     
     void serverProxyChanged(const QString& serverId);
+    void serverUserAgentChanged(const QString &serverId);
 
 private:
     NetworkManager* m_network;

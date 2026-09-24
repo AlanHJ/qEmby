@@ -1,4 +1,7 @@
 #include "libraryview.h"
+#include "overviewdialog.h"
+#include "../../utils/mediaitemutils.h"
+#include <QTextDocument>
 #include "../../components/elidedlabel.h"
 #include "../../components/mediagridwidget.h"
 #include "../../components/modernsortbutton.h"
@@ -15,6 +18,7 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QStyle>
+#include <QTimer>
 #include <QVBoxLayout>
 #include <config/config_keys.h>
 #include <config/configstore.h>
@@ -135,7 +139,31 @@ void LibraryView::setupTopBar(QHBoxLayout *headerLayout)
 
     titleLayout->addWidget(m_titleLabel);
     titleLayout->addWidget(m_favBtn);
-    headerLayout->addLayout(titleLayout);
+    headerLayout->addLayout(titleLayout, 1);
+
+    m_personOverviewWidget = new QWidget(this);
+    auto* overviewLayout = new QHBoxLayout(m_personOverviewWidget);
+    overviewLayout->setContentsMargins(0, 0, 0, 0);
+    overviewLayout->setSpacing(8);
+    m_personOverviewLabel = new ElidedLabel(m_personOverviewWidget);
+    m_personOverviewLabel->setObjectName("detail-overview");
+    m_personOverviewLabel->setTextFormat(Qt::PlainText);
+    m_personOverviewMoreBtn = new QPushButton(tr("More"), m_personOverviewWidget);
+    m_personOverviewMoreBtn->setObjectName("library-tab-btn");
+    m_personOverviewMoreBtn->setCursor(Qt::PointingHandCursor);
+    auto morePolicy = m_personOverviewMoreBtn->sizePolicy();
+    
+    morePolicy.setRetainSizeWhenHidden(true);
+    m_personOverviewMoreBtn->setSizePolicy(morePolicy);
+    m_personOverviewMoreBtn->hide();
+    overviewLayout->addWidget(m_personOverviewLabel, 1);
+    overviewLayout->addWidget(m_personOverviewMoreBtn);
+    connect(m_personOverviewLabel, &ElidedLabel::elisionChanged,
+            m_personOverviewMoreBtn, &QWidget::setVisible);
+    connect(m_personOverviewMoreBtn, &QPushButton::clicked,
+            this, &LibraryView::openPersonOverview);
+    headerLayout->addWidget(m_personOverviewWidget, 1);
+    m_personOverviewWidget->hide();
 
     
     m_tabBarWidget = new QWidget(this); 
@@ -157,6 +185,7 @@ void LibraryView::setupTopBar(QHBoxLayout *headerLayout)
         tabLayout->addWidget(btn);
     }
     m_tabGroup->button(0)->setChecked(true);
+    connect(m_tabGroup, &QButtonGroup::idClicked, this, &LibraryView::saveTabPreference);
     connect(m_tabGroup, &QButtonGroup::idClicked, this, &LibraryView::onFilterChanged);
 
     headerLayout->addWidget(m_tabBarWidget);
@@ -210,6 +239,73 @@ void LibraryView::updateFavBtnState()
     m_favBtn->style()->polish(m_favBtn);
 }
 
+void LibraryView::updatePersonOverview()
+{
+    if (m_currentMode != PersonMode) {
+        m_personOverviewWidget->hide();
+        return;
+    }
+    QString overview = m_currentMediaItem.overview;
+    if (Qt::mightBeRichText(overview)) {
+        QTextDocument document;
+        document.setHtml(overview);
+        overview = document.toPlainText();
+    }
+    QStringList details = MediaItemUtils::personBiographicalDetails(m_currentMediaItem);
+    if (!overview.trimmed().isEmpty()) details.append(overview.trimmed());
+    const QString fullDescription = details.join(QStringLiteral("\n\n"));
+    overview = overview.simplified();
+    if (overview.isEmpty()) overview = fullDescription.simplified();
+    m_personOverviewLabel->setFullText(overview);
+    
+    QString tooltip = fullDescription.toHtmlEscaped();
+    tooltip.replace(QLatin1Char('\n'), QStringLiteral("<br>"));
+    m_personOverviewLabel->setToolTip(QStringLiteral("<qt>%1</qt>").arg(tooltip));
+    m_personOverviewWidget->setVisible(!overview.isEmpty());
+    qDebug() << "[LibraryView] person overview applied"
+             << "| personId=" << m_currentPersonId
+             << "| characters=" << overview.size();
+    const QString personId = m_currentPersonId;
+    QTimer::singleShot(100, this, [this, personId]() {
+        if (m_currentMode != PersonMode || m_currentPersonId != personId) return;
+        qDebug() << "[LibraryView] person overview layout"
+                 << "| personId=" << personId
+                 << "| viewVisible=" << isVisible()
+                 << "| overviewHidden=" << m_personOverviewWidget->isHidden()
+                 << "| overviewVisible=" << m_personOverviewWidget->isVisible()
+                 << "| overviewSize=" << m_personOverviewWidget->size()
+                 << "| labelVisible=" << m_personOverviewLabel->isVisible()
+                 << "| labelSize=" << m_personOverviewLabel->size()
+                 << "| displayedCharacters=" << m_personOverviewLabel->text().size()
+                 << "| moreVisible=" << m_personOverviewMoreBtn->isVisible();
+    });
+}
+
+QCoro::Task<void> LibraryView::openPersonOverview()
+{
+    if (m_currentMode != PersonMode || m_currentMediaItem.id.isEmpty()) co_return;
+    const MediaItem item = m_currentMediaItem;
+    auto* dialog = new OverviewDialog(this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->setMediaItem(item, QPixmap());
+    dialog->setTitle(tr("Biography"));
+    const int imageWidth = qRound(220 * dialog->devicePixelRatioF());
+    QPointer<OverviewDialog> safeDialog(dialog);
+    auto* service = m_core->mediaService();
+    dialog->open();
+    try {
+        const QPixmap portrait = co_await service->fetchImage(
+            item.id, QStringLiteral("Primary"), item.primaryImageTag(), imageWidth,
+            -1, ImageRequestPriority::Normal, dialog);
+        if (!safeDialog) co_return;
+        if (!portrait.isNull()) safeDialog->setMediaItem(item, portrait);
+        qDebug() << "[LibraryView] person portrait loaded"
+                 << "| personId=" << item.id << "| imageSize=" << portrait.size();
+    } catch (const std::exception&) {
+        qWarning() << "[LibraryView] person portrait load failed" << "| personId=" << item.id;
+    }
+}
+
 
 QCoro::Task<void> LibraryView::loadLibrary(const QString &libraryId, const QString &libraryName)
 {
@@ -220,6 +316,7 @@ QCoro::Task<void> LibraryView::loadLibrary(const QString &libraryId, const QStri
     perfTimer.start();
     qDebug() << "[LibraryView] loadLibrary START" << "| id=" << libraryId << "| name=" << libraryName;
 
+    m_personOverviewWidget->hide();
     m_currentMode = LibraryMode;
     m_currentLibraryId = libraryId;
     m_currentMediaItem = MediaItem(); 
@@ -251,6 +348,7 @@ QCoro::Task<void> LibraryView::loadLibrary(const QString &libraryId, const QStri
     restoreSortPreference();
 
     restoreViewPreference();
+    restoreTabPreference();
 
     
     
@@ -341,13 +439,15 @@ QCoro::Task<void> LibraryView::loadLibrary(const QString &libraryId, const QStri
 }
 
 
-QCoro::Task<void> LibraryView::loadPerson(const QString &personId, const QString &personName)
+QCoro::Task<void> LibraryView::loadPerson(QString personId, QString personName)
 {
     
     QPointer<LibraryView> guard(this);
 
+    m_personOverviewWidget->hide();
     m_currentMode = PersonMode;
     m_currentPersonId = personId;
+    qDebug() << "[LibraryView] loadPerson request" << "| personId=" << personId;
     m_currentMediaItem = MediaItem(); 
 
     m_titleLabel->setFullText(personName);
@@ -387,12 +487,24 @@ QCoro::Task<void> LibraryView::loadPerson(const QString &personId, const QString
             if (!guard)
                 co_return; 
 
+            if (m_currentMode != PersonMode || personId != m_currentPersonId)
+                co_return;
+
+            qDebug() << "[LibraryView] person detail received"
+                     << "| requestedId=" << personId << "| returnedId=" << detail.id
+                     << "| type=" << detail.type
+                     << "| overviewCharacters=" << detail.overview.size();
             if (detail.id == m_currentPersonId)
             {
                 m_currentMediaItem = detail; 
                 m_isFavorite = detail.isFavorite();
                 updateFavBtnState();
                 m_favBtn->show();
+                if (!detail.name.isEmpty()) {
+                    m_titleLabel->setFullText(detail.name);
+                    m_titleLabel->setMaximumWidth(QFontMetrics(m_titleLabel->font()).horizontalAdvance(detail.name) + 15);
+                }
+                updatePersonOverview();
             }
         }
         catch (const std::exception &e)
@@ -403,6 +515,8 @@ QCoro::Task<void> LibraryView::loadPerson(const QString &personId, const QString
         }
     }
 
+    if (m_currentMode != PersonMode || personId != m_currentPersonId)
+        co_return;
     co_await onFilterChanged();
 }
 
@@ -411,6 +525,7 @@ QCoro::Task<void> LibraryView::loadFiltered(const QString &filterType, const QSt
 {
     QPointer<LibraryView> guard(this);
 
+    m_personOverviewWidget->hide();
     m_currentMode = FilteredMode;
     m_filterType = filterType;
     m_filterValue = filterValue;
@@ -631,7 +746,7 @@ QCoro::Task<void> LibraryView::loadInitialItems()
     const int generation = m_requestGeneration;
     const QueryState query = m_activeQuery;
 
-    auto fetchPage = [this](const QueryState &pageQuery, int startIndex, int limit)
+    auto fetchPage = [this](QueryState pageQuery, int startIndex, int limit)
         -> QCoro::Task<MediaQueryPage>
     {
         switch (pageQuery.mode)
@@ -769,7 +884,7 @@ QCoro::Task<void> LibraryView::onLoadMoreRequested()
     }
 
     const int limit = qMin(m_pageSize, remainingCount);
-    auto fetchPage = [this](const QueryState &pageQuery, int pageStartIndex,
+    auto fetchPage = [this](QueryState pageQuery, int pageStartIndex,
                             int pageLimit) -> QCoro::Task<MediaQueryPage>
     {
         switch (pageQuery.mode)
@@ -867,6 +982,7 @@ void LibraryView::onMediaItemUpdated(const MediaItem &item)
         m_currentMediaItem = item; 
         m_isFavorite = item.isFavorite();
         updateFavBtnState();
+        updatePersonOverview();
     }
 
     for (MediaItem &loadedItem : m_loadedItems)
@@ -1099,4 +1215,49 @@ void LibraryView::restoreViewPreference()
     }
 
     applyViewMode(viewMode == QLatin1String("tile"));
+}
+
+void LibraryView::saveTabPreference()
+{
+    if (m_currentMode != LibraryMode || !m_tabGroup)
+        return;
+
+    const QString sid = m_core->serverManager()->activeProfile().id;
+    const QString targetId = currentPreferenceTargetId();
+    const int tabIndex = m_tabGroup->checkedId();
+    if (sid.isEmpty() || targetId.isEmpty() || tabIndex < 0)
+        return;
+
+    ConfigStore::instance()->set(
+        ConfigKeys::forLibrary(sid, targetId, ConfigKeys::LibraryTabIndex), tabIndex);
+
+    qDebug() << "[LibraryView] Tab preference saved:"
+             << "server=" << sid << "target=" << targetId << "index=" << tabIndex;
+}
+
+void LibraryView::restoreTabPreference()
+{
+    if (m_currentMode != LibraryMode || !m_tabGroup)
+        return;
+
+    const QString sid = m_core->serverManager()->activeProfile().id;
+    const QString targetId = currentPreferenceTargetId();
+    if (sid.isEmpty() || targetId.isEmpty())
+        return;
+
+    const int savedIndex = ConfigStore::instance()->get<int>(
+        ConfigKeys::forLibrary(sid, targetId, ConfigKeys::LibraryTabIndex), 0);
+    QAbstractButton *savedButton = m_tabGroup->button(savedIndex);
+    const int restoredIndex = savedButton ? savedIndex : 0;
+    if (!savedButton)
+        savedButton = m_tabGroup->button(0);
+
+    m_tabGroup->blockSignals(true);
+    if (savedButton)
+        savedButton->setChecked(true);
+    m_tabGroup->blockSignals(false);
+
+    qDebug() << "[LibraryView] Tab preference restored:"
+             << "server=" << sid << "target=" << targetId
+             << "savedIndex=" << savedIndex << "restoredIndex=" << restoredIndex;
 }

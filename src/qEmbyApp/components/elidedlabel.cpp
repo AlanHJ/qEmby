@@ -37,12 +37,14 @@ void ElidedLabel::updateElidedText()
 {
     if (m_fullText.isEmpty()) {
         if (text() != "") setText("");
+        Q_EMIT elisionChanged(false);
         return;
     }
 
     QFontMetrics fm(font());
     QString elided = fm.elidedText(m_fullText, Qt::ElideRight, width() - 2);
 
+    Q_EMIT elisionChanged(elided != m_fullText);
     if (text() != elided) {
         setText(elided);
     }

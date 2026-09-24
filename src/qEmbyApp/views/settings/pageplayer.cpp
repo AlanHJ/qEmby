@@ -117,6 +117,12 @@ PagePlayer::PagePlayer(QEmbyCore *core, QWidget *parent)
       tr("Rules are matched in order; choose presets or type custom keywords and press Enter"),
       subLangInput, ConfigKeys::PlayerSubLang, this, QVariant("auto")));
 
+  m_mainLayout->addWidget(new SettingsCard(
+      ":/svg/dark/subtitle-lang.svg", tr("Hide Subtitles"),
+      tr("Keep subtitles hidden for all videos until this option is turned off"),
+      new ModernSwitch(this), ConfigKeys::PlayerHideSubtitles, this,
+      QVariant(false)));
+
   
   auto *versionInput = new ModernTagInput(this);
   versionInput->addPreset(tr("Original"), "original");
@@ -530,11 +536,11 @@ PagePlayer::PagePlayer(QEmbyCore *core, QWidget *parent)
       };
 
   auto *danmakuRendererCombo = new ModernComboBox(this);
-  danmakuRendererCombo->addItem(tr("ASS Subtitle Track"),
-                                DanmakuRendererUtils::assTrackRendererId());
   danmakuRendererCombo->addItem(
       tr("Native Smooth Renderer"),
       DanmakuRendererUtils::nativeSmoothRendererId());
+  danmakuRendererCombo->addItem(tr("ASS Subtitle Track (Not Recommended)"),
+                                DanmakuRendererUtils::assTrackRendererId());
   addDanmakuSubPanel(
       ":/svg/dark/danmaku.svg", tr("Danmaku Renderer"),
       tr("Choose whether danmaku is rendered through the ASS subtitle track or qEmby's adaptive native renderer"),

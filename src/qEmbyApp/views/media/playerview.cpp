@@ -1,4 +1,5 @@
 #include "playerview.h"
+#include "../../components/danmakuprogressslider.h"
 #include "../../components/modernscrollpanel.h"
 #include "../../components/nativedanmakuoverlay.h"
 #include "../../components/playerdanmakuidentifydialog.h"
@@ -22,6 +23,7 @@
 #include <QDir>
 #include <QEasingCurve>
 #include <QElapsedTimer>
+#include <algorithm>
 #include <QEvent>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -390,37 +392,7 @@ PlayerView::PlayerView(QEmbyCore *core, QWidget *parent)
             {
                 if (m_totalDuration > 0 && m_mpvWidget && m_mpvWidget->controller())
                 {
-                    double bufferedPos = m_currentPosition;
-
-                    
-                    QVariant stateVar = m_mpvWidget->controller()->getProperty("demuxer-cache-state");
-                    if (stateVar.isValid() && stateVar.metaType().id() == QMetaType::QVariantMap)
-                    {
-                        auto ranges = stateVar.toMap()["seekable-ranges"].toList();
-                        if (!ranges.isEmpty())
-                        {
-                            
-                            bufferedPos = ranges.last().toMap()["end"].toDouble();
-                        }
-                    }
-                    else
-                    {
-                        
-                        double cacheDuration =
-                            m_mpvWidget->controller()->getProperty("demuxer-cache-duration").toDouble();
-                        if (cacheDuration > 0)
-                        {
-                            bufferedPos = m_currentPosition + cacheDuration;
-                        }
-                    }
-
-                    if (bufferedPos > m_totalDuration)
-                    {
-                        bufferedPos = m_totalDuration;
-                    }
-
-                    
-                    m_progressSlider->setBufferValue(static_cast<int>(bufferedPos));
+                    m_mpvWidget->controller()->requestProperty(QStringLiteral("demuxer-cache-state"));
                 }
 
                 if (m_showStatisticsOverlay && m_statisticsOverlay)
@@ -435,15 +407,6 @@ PlayerView::PlayerView(QEmbyCore *core, QWidget *parent)
     connect(m_mousePollTimer, &QTimer::timeout, this,
             [this]()
             {
-                if (!m_isPlaying)
-                {
-                    if (m_topOpacity->opacity() < 1.0)
-                    {
-                        showControls();
-                    }
-                    return;
-                }
-
                 if (areControlsFullyVisible() && this->cursor().shape() != Qt::BlankCursor &&
                     (!m_mpvWidget || m_mpvWidget->cursor().shape() != Qt::BlankCursor))
                 {
@@ -500,6 +463,10 @@ PlayerView::PlayerView(QEmbyCore *core, QWidget *parent)
                 if (SubtitleStyleUtils::isSubtitleStyleKey(key))
                 {
                     applySubtitleStyleSettings();
+                }
+                if (key == QLatin1String(ConfigKeys::PlayerDanmakuOffsetMs))
+                {
+                    m_progressSlider->setDanmakuOffset(value.toInt());
                 }
             });
     applyMediaSwitcherMode();
@@ -1146,7 +1113,7 @@ void PlayerView::setupUi()
     m_mpvWidget->setAutoFillBackground(true);
     m_mpvWidget->installEventFilter(this); 
     m_mpvWidget->setMouseTracking(true);
-    m_nativeDanmakuOverlay = new NativeDanmakuOverlay(m_mpvWidget->controller(), this);
+    m_nativeDanmakuOverlay = new NativeDanmakuOverlay(m_mpvWidget, this);
     m_danmakuController = new PlayerDanmakuController(m_core, m_mpvWidget, m_nativeDanmakuOverlay, this);
     connect(m_danmakuController, &PlayerDanmakuController::toastRequested, this,
             [this](const QString &message) { showToast(message); });
@@ -1362,20 +1329,29 @@ void PlayerView::setupUi()
     m_currentTimeLabel = new QLabel("00:00", m_bottomHUD);
     m_currentTimeLabel->setObjectName("playerTimeLabel");
 
-    m_progressSlider = new ModernSlider(Qt::Horizontal, m_bottomHUD);
+    m_progressSlider = new DanmakuProgressSlider(m_bottomHUD);
     m_progressSlider->setObjectName("playerSlider");
     m_progressSlider->setFocusPolicy(Qt::NoFocus); 
     m_progressSlider->setCursor(Qt::PointingHandCursor);
     m_progressSlider->setSingleStep(1); 
     m_progressSlider->setPageStep(10);
     m_progressSlider->setRange(0, 1000);
+    connect(m_progressSlider, &DanmakuProgressSlider::heatmapChanged,
+            m_osdLayer, &PlayerOsdLayer::setSeekHeatmap);
+    m_osdLayer->setSeekHeatmap(m_progressSlider->heatmapPath());
+    m_progressSlider->setDanmakuOffset(
+        ConfigStore::instance()->get<int>(ConfigKeys::PlayerDanmakuOffsetMs, 0));
+    connect(m_danmakuController, &PlayerDanmakuController::commentPayloadChanged,
+            m_progressSlider, &DanmakuProgressSlider::setComments);
+    connect(m_mpvWidget->controller(), &MpvController::playbackStarting, m_progressSlider,
+            [this]() { m_progressSlider->setMediaDuration(0.0); });
 
     m_totalTimeLabel = new QLabel("00:00", m_bottomHUD);
     m_totalTimeLabel->setObjectName("playerTimeLabel");
 
-    progressLayout->addWidget(m_currentTimeLabel);
+    progressLayout->addWidget(m_currentTimeLabel, 0, Qt::AlignBottom);
     progressLayout->addWidget(m_progressSlider, 1);
-    progressLayout->addWidget(m_totalTimeLabel);
+    progressLayout->addWidget(m_totalTimeLabel, 0, Qt::AlignBottom);
 
     
     auto *controlLayout = new QHBoxLayout();
@@ -1463,8 +1439,13 @@ void PlayerView::setupUi()
     controlLayout->addWidget(m_scaleBtn);
     controlLayout->addWidget(m_fullscreenBtn);
 
-    bottomLayout->addLayout(progressLayout);
-    bottomLayout->addLayout(controlLayout);
+    
+    m_bottomControlsLayout = new QVBoxLayout();
+    m_bottomControlsLayout->setContentsMargins(0, 0, 0, 0);
+    m_bottomControlsLayout->setSpacing(8);
+    m_bottomControlsLayout->addLayout(progressLayout);
+    m_bottomControlsLayout->addLayout(controlLayout);
+    bottomLayout->addLayout(m_bottomControlsLayout);
 
     
     m_statisticsOverlay = new PlayerStatisticsOverlay(this);
@@ -1631,6 +1612,27 @@ void PlayerView::setupUi()
             });
     
     connect(m_mpvWidget->controller(), &MpvController::propertyChanged, this, &PlayerView::onMpvPropertyChanged);
+    
+    
+    connect(m_mpvWidget->controller(), &MpvController::propertyRead, this,
+            [this](const QString &property, const QVariant &value) {
+        if (m_isViewTearingDown || m_hasReportedStop || m_totalDuration <= 0.0) return;
+        double bufferedPos = m_currentPosition;
+        if (property == QLatin1String("demuxer-cache-state")) {
+            if (!value.isValid() || value.metaType().id() != QMetaType::QVariantMap) {
+                m_mpvWidget->controller()->requestProperty(QStringLiteral("demuxer-cache-duration"));
+                return;
+            }
+            const QVariantList ranges = value.toMap().value(QStringLiteral("seekable-ranges")).toList();
+            if (!ranges.isEmpty()) bufferedPos = ranges.last().toMap().value(QStringLiteral("end")).toDouble();
+        } else if (property == QLatin1String("demuxer-cache-duration")) {
+            const double duration = value.toDouble();
+            if (duration > 0.0) bufferedPos += duration;
+        } else {
+            return;
+        }
+        m_progressSlider->setBufferValue(static_cast<int>(std::clamp(bufferedPos, 0.0, m_totalDuration)));
+    });
     connect(m_mpvWidget->controller(), &MpvController::endOfFile, this,
             [this](const QString &reason)
             {
@@ -2793,17 +2795,26 @@ void PlayerView::updateOverlayLayout()
     const int drawerHeight = (m_mediaSwitchDrawer && m_mediaSwitchDrawer->isVisible() && useHudMediaSwitcher())
                                  ? m_mediaSwitchDrawer->preferredDrawerHeight()
                                  : 0;
-    const int targetBottomHudHeight = m_bottomHudBaseHeight + (drawerHeight > 0 ? drawerHeight + 8 : 0);
+    
+    
+    
+    m_bottomHUD->ensurePolished();
+    QLayout *bottomLayout = m_bottomHUD->layout();
+    const QMargins margins = bottomLayout->contentsMargins();
+    const int controlsHeight = m_bottomControlsLayout
+                                   ? qMax(m_bottomControlsLayout->minimumSize().height(),
+                                          m_bottomControlsLayout->sizeHint().height())
+                                   : 0;
+    const int baseHeight = qMax(m_bottomHudBaseHeight, controlsHeight + margins.top() + margins.bottom());
+    const int targetBottomHudHeight = baseHeight +
+                                     (drawerHeight > 0 ? drawerHeight + bottomLayout->spacing() : 0);
 
     m_mpvWidget->setGeometry(0, 0, width(), height());
-    if (m_nativeDanmakuOverlay)
-    {
-        m_nativeDanmakuOverlay->setGeometry(0, 0, width(), height());
-    }
     m_loadingOverlay->setGeometry(0, 0, width(), height());
     m_topHUD->setGeometry(0, 0, width(), m_topHUD->height());
     m_bottomHUD->setFixedHeight(targetBottomHudHeight);
     m_bottomHUD->setGeometry(0, height() - m_bottomHUD->height(), width(), m_bottomHUD->height());
+    bottomLayout->activate();
 
     if (m_mediaSwitchDrawer)
     {
@@ -3121,14 +3132,7 @@ void PlayerView::handlePointerActivity(const QPoint &globalPos)
         m_osdLayer->forceHide();
     }
 
-    if (m_isPlaying)
-    {
-        m_hideTimer->start(kHudAutoHideDelayMs);
-    }
-    else
-    {
-        m_hideTimer->stop();
-    }
+    m_hideTimer->start(kHudAutoHideDelayMs);
 
     if (areControlsFullyVisible())
     {
@@ -3187,14 +3191,7 @@ void PlayerView::showControls()
         m_osdLayer->forceHide();
     }
 
-    if (m_isPlaying)
-    {
-        m_hideTimer->start(kHudAutoHideDelayMs);
-    }
-    else
-    {
-        m_hideTimer->stop(); 
-    }
+    m_hideTimer->start(kHudAutoHideDelayMs);
 
     if (m_topOpacity->opacity() >= 1.0 && m_fadeGroup->state() != QAbstractAnimation::Running)
     {
@@ -3238,11 +3235,6 @@ void PlayerView::showControls()
 void PlayerView::hideControls()
 {
     if (m_isViewTearingDown || m_hasReportedStop)
-    {
-        return;
-    }
-
-    if (!m_isPlaying)
     {
         return;
     }
@@ -3707,7 +3699,10 @@ void PlayerView::showSubtitleMenu()
         panel->addItem(text, id, selected);
     }
 
-    panel->addItem(tr("Disable Subtitles"), "no", !anySubSelected);
+    const bool hideSubtitles = ConfigStore::instance()->get<bool>(
+        ConfigKeys::PlayerHideSubtitles, false);
+    panel->addItem(tr("Disable Subtitles"), "no", !anySubSelected && !hideSubtitles);
+    panel->addItem(tr("Hide Subtitles"), QStringLiteral("hide_subtitles"), hideSubtitles);
     panel->addItem(tr("Load Local Subtitle File"), QStringLiteral("load_local"), false);
     panel->addItem(tr("Subtitle Settings"), QStringLiteral("settings"), false);
 
@@ -3733,6 +3728,20 @@ void PlayerView::showSubtitleMenu()
                 {
                     dismissPopup();
                     openSubtitleSettingsDialog();
+                    return;
+                }
+                if (action == QLatin1String("hide_subtitles"))
+                {
+                    auto *store = ConfigStore::instance();
+                    store->set(ConfigKeys::PlayerHideSubtitles,
+                               !store->get<bool>(ConfigKeys::PlayerHideSubtitles, false));
+                    dismissPopup();
+                    return;
+                }
+                if (ConfigStore::instance()->get<bool>(ConfigKeys::PlayerHideSubtitles, false))
+                {
+                    showToast(tr("Turn off Hide Subtitles to select a subtitle"));
+                    dismissPopup();
                     return;
                 }
                 if (action == QLatin1String("load_local"))
@@ -3906,6 +3915,12 @@ void PlayerView::loadLocalDanmakuFile()
 
 void PlayerView::loadExternalSubtitleFile()
 {
+    if (ConfigStore::instance()->get<bool>(ConfigKeys::PlayerHideSubtitles, false))
+    {
+        showToast(tr("Turn off Hide Subtitles to select a subtitle"));
+        return;
+    }
+
     if (!m_mpvWidget || !m_mpvWidget->controller())
     {
         showToast(tr("Player is not ready"));
@@ -4024,6 +4039,11 @@ void PlayerView::clearPersistedExternalSubtitle()
 
 void PlayerView::applyPersistedExternalSubtitleIfAny()
 {
+    if (ConfigStore::instance()->get<bool>(ConfigKeys::PlayerHideSubtitles, false))
+    {
+        return;
+    }
+
     if (!m_mpvWidget || !m_mpvWidget->controller())
     {
         return;
@@ -4160,7 +4180,7 @@ void PlayerView::openDanmakuSettingsDialog()
                 {
                     return;
                 }
-                m_danmakuController->reload();
+                m_danmakuController->applyRenderSettings();
             });
     connect(dialog, &PlayerDanmakuSettingsDialog::finished, this,
             [this, dialog](int)
@@ -4173,7 +4193,7 @@ void PlayerView::openDanmakuSettingsDialog()
                 if (dialog->requiresReload() && m_danmakuController->hasPlaybackContext() &&
                     m_danmakuController->isDanmakuEnabled())
                 {
-                    m_danmakuController->reload();
+                    m_danmakuController->applyRenderSettings();
                 }
             });
     trackPlayerDialog(dialog);
@@ -4740,6 +4760,14 @@ QCoro::Task<void> PlayerView::resolveDanmakuPlaybackContext(
 void PlayerView::playMedia(const QString &mediaId, const QString &title, const QString &streamUrl,
                            long long startPositionTicks, const QVariant &sourceInfoVar)
 {
+    
+    
+    if (!m_currentMediaId.isEmpty())
+    {
+        stopAndReport();
+    }
+    m_longPressHandler->setTeardown(false);
+
     PlayerLaunchContext launchContext;
     MediaSourceInfo resolvedSourceInfo;
     MediaItem resolvedItem;
@@ -5339,6 +5367,7 @@ void PlayerView::onDurationChanged(double duration)
         duration = 0.0;
     }
     m_totalDuration = duration;
+    m_progressSlider->setMediaDuration(duration);
     m_progressSlider->setMaximum(static_cast<int>(duration));
     m_totalTimeLabel->setText(formatTime(duration, duration));
 
@@ -5399,6 +5428,12 @@ void PlayerView::onDurationChanged(double duration)
         
         
         
+        const bool hideSubtitles = ConfigStore::instance()->get<bool>(
+            ConfigKeys::PlayerHideSubtitles, false);
+        if (hideSubtitles)
+        {
+            m_targetSubStreamIndex = -1;
+        }
         if (m_targetAudioStreamIndex != -2 || m_targetSubStreamIndex != -2)
         {
             QVariantList tracks = m_mpvWidget->controller()->getProperty("track-list").toList();
@@ -5436,7 +5471,7 @@ void PlayerView::onDurationChanged(double duration)
         for (const QVariant &v : pendingSubs)
         {
             QVariantMap map = v.toMap();
-            m_mpvWidget->controller()->command(QVariantList{"sub-add", map["url"].toString(), map["flag"].toString(),
+            m_mpvWidget->controller()->command(QVariantList{"sub-add", map["url"].toString(), hideSubtitles ? QStringLiteral("auto") : map["flag"].toString(),
                                                             map["title"].toString(), map["lang"].toString()});
         }
         setProperty("pendingSubtitles", QVariantList()); 

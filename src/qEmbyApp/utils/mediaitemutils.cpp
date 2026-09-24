@@ -20,6 +20,19 @@ void copyResumeContext(MediaItem &target, const MediaItem &source)
 
 } 
 
+QStringList MediaItemUtils::personBiographicalDetails(const MediaItem& item)
+{
+    QStringList details;
+    if (item.type != QStringLiteral("Person")) return details;
+    if (!item.premiereDate.trimmed().isEmpty())
+        details.append(tr("Born: %1").arg(item.premiereDate));
+    if (!item.productionLocations.isEmpty())
+        details.append(tr("Birthplace: %1").arg(item.productionLocations.join(QStringLiteral(", "))));
+    if (!item.endDate.trimmed().isEmpty())
+        details.append(tr("Died: %1").arg(item.endDate));
+    return details;
+}
+
 QString MediaItemUtils::effectiveSeriesTitle(const MediaItem &item, const QString &fallbackSeriesName)
 {
     const QString seriesTitle = item.seriesName.trimmed();

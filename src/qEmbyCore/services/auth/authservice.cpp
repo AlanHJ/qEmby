@@ -20,18 +20,36 @@ AuthService::AuthService(NetworkManager* networkManager, ServerManager* serverMa
 {
 }
 
-QCoro::Task<ServerProfile> AuthService::login(const QString& serverUrl,
-                                              const QString& username,
-                                              const QString& password,
+QCoro::Task<ServerProfile> AuthService::login(QString serverUrl,
+                                              QString username,
+                                              QString password,
                                               bool ignoreSslVerification)
 {
     QString cleanUrl = serverUrl;
-    if (cleanUrl.endsWith('/')) {
+    while (cleanUrl.endsWith('/')) {
         cleanUrl.chop(1);
     }
 
     NetworkRequestOptions requestOptions;
     requestOptions.ignoreSslErrors = ignoreSslVerification;
+
+    
+    
+    ServerProfile existingProfile;
+    bool hasExistingProfile = false;
+    for (const ServerProfile &savedProfile : m_serverManager->servers()) {
+        QString savedUrl = savedProfile.url;
+        while (savedUrl.endsWith(QLatin1Char('/'))) {
+            savedUrl.chop(1);
+        }
+        if (savedUrl == cleanUrl &&
+            savedProfile.userName.compare(username, Qt::CaseInsensitive) == 0) {
+            existingProfile = savedProfile;
+            hasExistingProfile = true;
+            requestOptions.userAgentServerId = savedProfile.id;
+            break;
+        }
+    }
 
     qDebug() << "[AuthService] Login start"
              << "| url:" << cleanUrl
@@ -45,8 +63,15 @@ QCoro::Task<ServerProfile> AuthService::login(const QString& serverUrl,
 
     
     ServerProfile tempProfile;
+    if (hasExistingProfile) {
+        tempProfile.id = existingProfile.id;
+        tempProfile.deviceId = existingProfile.deviceId;
+    }
     tempProfile.url = cleanUrl;
-    tempProfile.deviceId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    if (tempProfile.deviceId.isEmpty()) {
+        tempProfile.deviceId =
+            QUuid::createUuid().toString(QUuid::WithoutBraces);
+    }
     tempProfile.ignoreSslVerification = ignoreSslVerification;
 
     
@@ -143,7 +168,7 @@ QCoro::Task<ServerProfile> AuthService::login(const QString& serverUrl,
     }
 
     
-    m_serverManager->addServer(tempProfile);
+    tempProfile = m_serverManager->addServer(tempProfile);
     m_serverManager->setActiveServer(tempProfile.id);
 
     

@@ -1,5 +1,6 @@
 #include "danmakuoptionutils.h"
 
+#include <models/danmaku/danmakumodels.h>
 #include <QtGlobal>
 
 namespace DanmakuOptionUtils {
@@ -30,25 +31,26 @@ QString formatDecimalTenths(int value)
 
 SliderSpec sliderSpec(SliderKind kind)
 {
+    const DanmakuRenderOptions defaults;
     switch (kind) {
     case SliderKind::Opacity:
-        return {5, 100, 1, 10, 72};
+        return {5, 100, 1, 10, qRound(defaults.opacity * 100)};
     case SliderKind::FontScale:
-        return {60, 240, 1, 10, 100};
+        return {60, 240, 1, 10, qRound(defaults.fontScale * 100)};
     case SliderKind::FontWeight:
-        return {100, 900, 10, 100, 400};
+        return {100, 900, 10, 100, defaults.fontWeight};
     case SliderKind::OutlineSize:
-        return {0, 60, 1, 5, 30};
+        return {0, 60, 1, 5, qRound(defaults.outlineSize * 10)};
     case SliderKind::ShadowOffset:
-        return {0, 30, 1, 5, 10};
+        return {0, 30, 1, 5, qRound(defaults.shadowOffset * 10)};
     case SliderKind::Area:
-        return {10, 100, 1, 10, 70};
+        return {10, 100, 1, 10, defaults.areaPercent};
     case SliderKind::Density:
-        return {20, 100, 1, 10, 100};
+        return {20, 100, 1, 10, defaults.density};
     case SliderKind::SpeedScale:
-        return {50, 300, 1, 10, 50};
+        return {50, 300, 1, 10, qRound(defaults.speedScale * 100)};
     case SliderKind::OffsetMs:
-        return {-3000, 3000, 25, 250, 0};
+        return {-3000, 3000, 25, 250, defaults.offsetMs};
     }
 
     return {};

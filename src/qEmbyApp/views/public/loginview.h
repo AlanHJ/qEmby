@@ -5,6 +5,7 @@
 #include <qcorotask.h>
 #include "../../managers/thememanager.h" 
 #include "models/profile/proxyconfig.h"  
+#include "models/profile/useragentconfig.h"
 
 class QLineEdit;
 class QPushButton;
@@ -92,8 +93,7 @@ private:
     bool m_autoLoginAttempted = false;
 
     
-    
-    QPushButton* m_serverProxyBtn = nullptr;
+    QPushButton* m_networkSettingsBtn = nullptr;
 
     
     QPushButton* m_cloudSyncBtn = nullptr;
@@ -102,16 +102,19 @@ private:
     WebdavProfileStore* m_webdavStore = nullptr;
 
     
-    
     ProxyConfig m_pendingProxy;
     bool        m_pendingUseGlobalProxy = false;
+    UserAgentConfig m_pendingUserAgent;
+    bool m_pendingUseGlobalUserAgent = false;
 
     void setupUi();
     void setupListPage();
     void setupAddPage();
     void refreshServerList();
-    void refreshServerProxyTooltip();
+    void refreshNetworkSettingsTooltip();
+    void openNetworkSettingsMenu();
     void openProxyDialogForCurrentEntry();
+    void openUserAgentDialogForCurrentEntry();
     
     
     QString getThemeSvgPath(const QString& iconName) const;

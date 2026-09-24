@@ -47,6 +47,7 @@ protected:
 
 private:
   void polishPopupView();
+  void adjustPopupGeometry();
   void showEmbeddedPopup();
   void closeEmbeddedPopup();
   int m_maxTextWidth = 0;

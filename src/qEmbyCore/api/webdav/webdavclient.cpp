@@ -1,4 +1,5 @@
 #include "webdavclient.h"
+#include "../useragentmanager.h"
 
 #include <algorithm>
 #include <stdexcept>
@@ -405,6 +406,7 @@ void WebdavClient::applyAuthHeader(QNetworkRequest &request) const
                          QByteArrayLiteral("qEmby-Webdav/1.0"));
     request.setRawHeader(QByteArrayLiteral("Accept"),
                          QByteArrayLiteral("application/xml, text/xml, */*"));
+    UserAgentManager::instance()->applyToRequest(request);
 }
 
 

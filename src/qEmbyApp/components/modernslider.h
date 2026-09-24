@@ -7,6 +7,9 @@
 #include <QEvent>
 #include <QColor>
 #include <QtGlobal>
+#include <QRectF>
+
+class QPainter;
 
 class ModernSlider : public QSlider {
     Q_OBJECT
@@ -63,6 +66,8 @@ public:
     }
 
 protected:
+    virtual qreal horizontalTrackCenter() const;
+    virtual void paintTrackBackground(QPainter &painter, const QRectF &trackRect);
     void mousePressEvent(QMouseEvent *ev) override;
     void mouseReleaseEvent(QMouseEvent *ev) override;
     void mouseMoveEvent(QMouseEvent *ev) override;

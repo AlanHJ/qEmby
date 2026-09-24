@@ -5,6 +5,7 @@
 #include <QVariant>
 #include <QString>
 #include <QAtomicInt>
+#include <QHash>
 #include <mpv/client.h>
 
 class MpvController : public QObject {
@@ -44,17 +45,24 @@ public:
     void observeProperty(const QString &property, mpv_format format, uint64_t id = 0);
     int setProperty(const QString &property, const QVariant &value);
     QVariant getProperty(const QString &property);
+    
+    
+    void requestProperty(const QString &property);
     int command(const QVariant &params, QVariant *resultOut);
     QVariant command(const QVariant &params);
 
 signals:
     
     void propertyChanged(const QString &property, const QVariant &value);
+    void propertyRead(const QString &property, const QVariant &value);
 
     
     void positionChanged(double position);
     void durationChanged(double duration);
     void playbackStateChanged(bool isPaused);
+    void playbackStarting();
+    void playbackStopped();
+    void videoOutputChanged();
     void fileLoaded();
     void endOfFile(const QString &reason);
     void errorOccurred(const QString &errorMsg);
@@ -72,6 +80,9 @@ private:
     mpv_node_list *createList(mpv_node *dst, bool is_map, int num);
 
     mpv_handle *m_mpv;
+    quint64 m_propertyRequestSerial = 0;
+    QHash<quint64, QString> m_propertyRequests;
+    QHash<QString, quint64> m_latestPropertyRequests;
 
     
     

@@ -310,6 +310,7 @@ namespace
         {
             return options;
         }
+        options.userAgentServerId = profile.id;
 
         const QUrl profileUrl(profile.url);
         if (profile.ignoreSslVerification &&
@@ -469,6 +470,20 @@ MediaService::MediaService(ServerManager *serverManager, QObject *parent)
     diskCache->setMaximumCacheSize(500 * 1024 * 1024);
     m_imageManager->setCache(diskCache);
     m_decodedImageCache.setMaxCost(kDecodedImageCacheCostKb);
+
+    if (m_serverManager)
+    {
+        connect(m_serverManager, &ServerManager::activeServerChanged, this,
+                [this](const ServerProfile &profile)
+                {
+                    qDebug() << "[MediaService] active session changed, "
+                                "resetting user views cache"
+                             << "| hasActiveSession=" << profile.isValid()
+                             << "| cachedViewCount="
+                             << m_userViewsCache.views.size();
+                    clearUserViewsCache();
+                });
+    }
 }
 
 void MediaService::ensureValidProfile() const
@@ -499,9 +514,26 @@ QCoro::Task<QList<MediaItem>> MediaService::getUserViews(bool includeHidden)
         path += QStringLiteral("?IncludeHidden=true");
     }
 
+    const quint64 cacheGeneration = m_userViewsCacheGeneration;
     QJsonObject response = co_await m_serverManager->activeClient()->get(path);
     const QList<MediaItem> views = parseJsonArray<MediaItem>(response["Items"].toArray());
-    updateUserViewsCache(views, profile.id, profile.userId, includeHidden);
+    const ServerProfile activeProfile = m_serverManager->activeProfile();
+    const bool requestStillCurrent =
+        cacheGeneration == m_userViewsCacheGeneration &&
+        activeProfile.id == profile.id &&
+        activeProfile.userId == profile.userId;
+    if (requestStillCurrent)
+    {
+        updateUserViewsCache(views, profile.id, profile.userId, includeHidden);
+    }
+    else
+    {
+        qDebug() << "[MediaService] ignored stale user views cache update"
+                 << "| includeHidden=" << includeHidden
+                 << "| count=" << views.size()
+                 << "| generation=" << cacheGeneration
+                 << "| currentGeneration=" << m_userViewsCacheGeneration;
+    }
 
     qDebug() << "[MediaService] getUserViews fetched"
              << "| includeHidden=" << includeHidden
@@ -513,6 +545,7 @@ QCoro::Task<QList<MediaItem>> MediaService::getUserViews(bool includeHidden)
 
 void MediaService::clearUserViewsCache()
 {
+    ++m_userViewsCacheGeneration;
     m_userViewsCache.clear();
 }
 
@@ -1058,7 +1091,16 @@ QCoro::Task<QPixmap> MediaService::fetchImage(QString itemId,
                        << "| itemId=" << trimmedItemId
                        << "| imageType=" << trimmedImageType
                        << "| imageIndex=" << imageIndex
-                       << "| bytes=" << imageBytes;
+                       << "| bytes=" << imageBytes
+                       << "| fromDiskCache=" << loadedFromDiskCache;
+            
+            
+            
+            
+            if (m_imageManager && m_imageManager->cache())
+            {
+                m_imageManager->cache()->remove(request.url());
+            }
         }
     }
     else
@@ -2128,8 +2170,9 @@ QCoro::Task<QList<MediaItem>> MediaService::getFavoritePeople(int limit, const Q
 }
 
 
-QCoro::Task<MediaItem> MediaService::getItemDetail(const QString &itemId)
+QCoro::Task<MediaItem> MediaService::getItemDetail(QString itemId)
 {
+    QPointer<MediaService> guard(this);
     ensureValidProfile();
     const ServerProfile profile = m_serverManager->activeProfile();
     QString path = QString("/Users/%1/Items/"
@@ -2137,9 +2180,20 @@ QCoro::Task<MediaItem> MediaService::getItemDetail(const QString &itemId)
                            "ProductionYear,OfficialRating,Tags,Studios,ExternalUrls,ProviderIds,CanDownload")
                        .arg(profile.userId, itemId);
 
+    qDebug() << "[MediaService] getItemDetail request"
+             << "| itemId=" << itemId << "| requestsOverview=true";
     QJsonObject response = co_await m_serverManager->activeClient()->get(path);
     MediaItem item = MediaItem::fromJson(response);
-    updateUserViewsCache(item, profile.id, profile.userId);
+    qDebug() << "[MediaService] getItemDetail response"
+             << "| requestedId=" << itemId << "| returnedId=" << item.id
+             << "| type=" << item.type
+             << "| hasOverview=" << response.contains("Overview")
+             << "| overviewIsString=" << response.value("Overview").isString()
+             << "| rawOverviewCharacters=" << response.value("Overview").toString().size()
+             << "| parsedOverviewCharacters=" << item.overview.size();
+    if (guard) {
+        guard->updateUserViewsCache(item, profile.id, profile.userId);
+    }
     co_return item;
 }
 
@@ -2266,23 +2320,23 @@ QCoro::Task<QList<MediaItem>> MediaService::getAdditionalParts(const QString &it
     co_return parts;
 }
 
-QCoro::Task<QList<MediaItem>> MediaService::getItemsByPerson(const QString &personId, const QString &sortBy,
-                                                             const QString &sortOrder)
+QCoro::Task<QList<MediaItem>> MediaService::getItemsByPerson(QString personId, QString sortBy,
+                                                             QString sortOrder)
 {
     const MediaQueryPage page =
         co_await getItemsByPersonPage(personId, sortBy, sortOrder);
     co_return page.items;
 }
 
-QCoro::Task<MediaQueryPage> MediaService::getItemsByPersonPage(const QString &personId, const QString &sortBy,
-                                                               const QString &sortOrder, int startIndex, int limit)
+QCoro::Task<MediaQueryPage> MediaService::getItemsByPersonPage(QString personId, QString sortBy,
+                                                               QString sortOrder, int startIndex, int limit)
 {
     ensureValidProfile();
     const QString fieldQuery = appendMediaCardTooltipFields(
         QStringLiteral("PrimaryImageAspectRatio,ProductionYear,RecursiveItemCount,CanDownload"));
     QString path = QString("/Users/%1/"
                            "Items?Recursive=true&PersonIds=%2&IncludeItemTypes="
-                           "Movie,Series,Episode&Fields=%3")
+                           "Movie,Series&Fields=%3")
                        .arg(m_serverManager->activeProfile().userId, personId,
                             fieldQuery);
 
@@ -2298,6 +2352,7 @@ QCoro::Task<MediaQueryPage> MediaService::getItemsByPersonPage(const QString &pe
     QJsonObject response = co_await m_serverManager->activeClient()->get(path);
     const MediaQueryPage page = parseMediaQueryPage(response, startIndex, limit);
     qDebug() << "[MediaService] getItemsByPersonPage"
+             << "| includeTypes=Movie,Series"
              << "| personId=" << personId
              << "| startIndex=" << startIndex
              << "| limit=" << limit

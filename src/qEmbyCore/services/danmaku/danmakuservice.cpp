@@ -24,6 +24,7 @@
 #include <QMutex>
 #include <QMutexLocker>
 #include <QPromise>
+#include <QPointer>
 #include <QRegularExpression>
 #include <QSet>
 #include <QSharedPointer>
@@ -45,7 +46,7 @@ constexpr auto kDanmakuSourceModePreferOnline = "prefer-online";
 constexpr auto kDanmakuSourceModePreferLocal = "prefer-local";
 constexpr auto kDanmakuSourceModeOnlineOnly = "online-only";
 constexpr auto kDanmakuSourceModeLocalOnly = "local-only";
-constexpr int kDanmakuAssRenderVersion = 6;
+constexpr int kDanmakuAssRenderVersion = 7;
 
 QStringList parseBlockedKeywords(const QString &value)
 {
@@ -1115,24 +1116,24 @@ DanmakuRenderOptions DanmakuService::renderOptions() const
 {
     DanmakuRenderOptions options;
     auto *store = ConfigStore::instance();
-    options.enabled = store->get<bool>(ConfigKeys::PlayerDanmakuEnabled, true);
-    options.opacity = store->get<QString>(ConfigKeys::PlayerDanmakuOpacity, QStringLiteral("72")).toDouble() / 100.0;
+    options.enabled = store->get<bool>(ConfigKeys::PlayerDanmakuEnabled, options.enabled);
+    options.opacity = store->get<QString>(ConfigKeys::PlayerDanmakuOpacity, QString::number(options.opacity * 100)).toDouble() / 100.0;
     options.fontScale =
-        store->get<QString>(ConfigKeys::PlayerDanmakuFontScale, QStringLiteral("100")).toDouble() / 100.0;
-    options.fontWeight = store->get<QString>(ConfigKeys::PlayerDanmakuFontWeight, QStringLiteral("400")).toInt();
+        store->get<QString>(ConfigKeys::PlayerDanmakuFontScale, QString::number(options.fontScale * 100)).toDouble() / 100.0;
+    options.fontWeight = store->get<QString>(ConfigKeys::PlayerDanmakuFontWeight, QString::number(options.fontWeight)).toInt();
     options.outlineSize =
-        store->get<QString>(ConfigKeys::PlayerDanmakuOutlineSize, QStringLiteral("30")).toDouble() / 10.0;
+        store->get<QString>(ConfigKeys::PlayerDanmakuOutlineSize, QString::number(options.outlineSize * 10)).toDouble() / 10.0;
     options.shadowOffset =
-        store->get<QString>(ConfigKeys::PlayerDanmakuShadowOffset, QStringLiteral("10")).toDouble() / 10.0;
-    options.areaPercent = store->get<QString>(ConfigKeys::PlayerDanmakuAreaPercent, QStringLiteral("70")).toInt();
-    options.density = store->get<QString>(ConfigKeys::PlayerDanmakuDensity, QStringLiteral("100")).toInt();
+        store->get<QString>(ConfigKeys::PlayerDanmakuShadowOffset, QString::number(options.shadowOffset * 10)).toDouble() / 10.0;
+    options.areaPercent = store->get<QString>(ConfigKeys::PlayerDanmakuAreaPercent, QString::number(options.areaPercent)).toInt();
+    options.density = store->get<QString>(ConfigKeys::PlayerDanmakuDensity, QString::number(options.density)).toInt();
     options.speedScale =
-        store->get<QString>(ConfigKeys::PlayerDanmakuSpeedScale, QStringLiteral("50")).toDouble() / 100.0;
-    options.offsetMs = store->get<QString>(ConfigKeys::PlayerDanmakuOffsetMs, QStringLiteral("0")).toInt();
-    options.hideScroll = store->get<bool>(ConfigKeys::PlayerDanmakuHideScroll, false);
-    options.hideTop = store->get<bool>(ConfigKeys::PlayerDanmakuHideTop, false);
-    options.hideBottom = store->get<bool>(ConfigKeys::PlayerDanmakuHideBottom, false);
-    options.dualSubtitle = store->get<bool>(ConfigKeys::PlayerDanmakuDualSubtitle, true);
+        store->get<QString>(ConfigKeys::PlayerDanmakuSpeedScale, QString::number(options.speedScale * 100)).toDouble() / 100.0;
+    options.offsetMs = store->get<QString>(ConfigKeys::PlayerDanmakuOffsetMs, QString::number(options.offsetMs)).toInt();
+    options.hideScroll = store->get<bool>(ConfigKeys::PlayerDanmakuHideScroll, options.hideScroll);
+    options.hideTop = store->get<bool>(ConfigKeys::PlayerDanmakuHideTop, options.hideTop);
+    options.hideBottom = store->get<bool>(ConfigKeys::PlayerDanmakuHideBottom, options.hideBottom);
+    options.dualSubtitle = store->get<bool>(ConfigKeys::PlayerDanmakuDualSubtitle, options.dualSubtitle);
     options.blockedKeywords = parseBlockedKeywords(store->get<QString>(ConfigKeys::PlayerDanmakuBlockedKeywords));
     return options;
 }
@@ -1225,6 +1226,7 @@ bool DanmakuService::autoMatchEnabled(const QString &serverId) const
 
 QCoro::Task<DanmakuLoadResult> DanmakuService::prepareDanmaku(DanmakuMediaContext context, QString manualKeyword)
 {
+    QPointer<DanmakuService> guard(this);
     DanmakuLoadResult loadResult;
     const DanmakuRenderOptions options = renderOptions();
     qDebug().noquote() << "[Danmaku][Service] Prepare start"
@@ -1250,6 +1252,7 @@ QCoro::Task<DanmakuLoadResult> DanmakuService::prepareDanmaku(DanmakuMediaContex
                        << "| hasAccessToken:" << !config.accessToken.trimmed().isEmpty();
 
     DanmakuMatchResult matchResult = co_await resolveMatch(context, manualKeyword);
+    if (!guard) co_return DanmakuLoadResult{};
     loadResult.matchResult = matchResult;
     loadResult.needManualMatch = !matchResult.matched;
     if (!matchResult.matched)
@@ -1289,10 +1292,12 @@ QCoro::Task<DanmakuLoadResult> DanmakuService::prepareDanmaku(DanmakuMediaContex
 
     
     
+    if (!guard) co_return DanmakuLoadResult{};
     if (staleTargetException)
     {
         m_cacheStore->removeMatch(context);
         DanmakuMatchResult refreshedMatch = co_await resolveMatch(context, context.displayTitle());
+        if (!guard) co_return DanmakuLoadResult{};
         if (!refreshedMatch.matched || !refreshedMatch.selected.isValid())
         {
             std::rethrow_exception(staleTargetException);
@@ -1312,6 +1317,7 @@ QCoro::Task<DanmakuLoadResult> DanmakuService::prepareDanmaku(DanmakuMediaContex
 QCoro::Task<DanmakuLoadResult> DanmakuService::prepareDanmakuForCandidate(DanmakuMediaContext context,
                                                                           DanmakuMatchCandidate candidate)
 {
+    QPointer<DanmakuService> guard(this);
     DanmakuLoadResult loadResult;
     const DanmakuRenderOptions options = renderOptions();
     if (!candidate.isValid() || !options.enabled)
@@ -1323,6 +1329,12 @@ QCoro::Task<DanmakuLoadResult> DanmakuService::prepareDanmakuForCandidate(Danmak
     if (candidate.provider != QLatin1String(kLocalDanmakuProvider))
     {
         applyEndpointMetadata(&candidate, config);
+        if (candidate.provider == QLatin1String("dandanplay")) {
+            
+            
+            candidate.cacheScope = QStringLiteral("%1|withRelated=%2")
+                .arg(cacheScopeForConfig(config)).arg(config.withRelated ? 1 : 0);
+        }
     }
     loadResult.provider = candidate.provider;
     loadResult.sourceServerId = candidate.endpointId;
@@ -1367,7 +1379,8 @@ QCoro::Task<DanmakuLoadResult> DanmakuService::prepareDanmakuForCandidate(Danmak
             qDebug().noquote() << "[Danmaku][Service] Local ASS cache hit"
                                << "| assKey:" << assKey << "| path:" << cachedAssPath
                                << "| commentCount:" << loadResult.commentCount;
-            co_return loadResult;
+            
+            
         }
 
         
@@ -1379,9 +1392,10 @@ QCoro::Task<DanmakuLoadResult> DanmakuService::prepareDanmakuForCandidate(Danmak
         };
 
         auto localParseFuture = QtConcurrent::run(
-            [localFilePath, suffix, options, assKey]() -> LocalParseResult
+            [localFilePath, suffix, options, assKey, cachedAssPath]() -> LocalParseResult
             {
                 LocalParseResult result;
+                result.assPath = cachedAssPath;
                 QFile localFile(localFilePath);
                 if (!localFile.open(QIODevice::ReadOnly | QIODevice::Text))
                 {
@@ -1399,7 +1413,7 @@ QCoro::Task<DanmakuLoadResult> DanmakuService::prepareDanmakuForCandidate(Danmak
                     result.comments = parseLocalXmlComments(rawData);
                 }
 
-                if (!result.comments.isEmpty())
+                if (!result.comments.isEmpty() && result.assPath.isEmpty())
                 {
                     const QString assContent = DanmakuAssComposer::composeAss(result.comments, options);
                     DanmakuCacheStore store;
@@ -1408,6 +1422,7 @@ QCoro::Task<DanmakuLoadResult> DanmakuService::prepareDanmakuForCandidate(Danmak
                 return result;
             });
         LocalParseResult parseResult = co_await localParseFuture;
+        if (!guard) co_return DanmakuLoadResult{};
 
         if (!parseResult.errorMessage.isEmpty())
         {
@@ -1433,8 +1448,9 @@ QCoro::Task<DanmakuLoadResult> DanmakuService::prepareDanmakuForCandidate(Danmak
         {
             loadResult.assFilePath = parseResult.assPath;
             loadResult.success = true;
-            qDebug().noquote() << "[Danmaku][Service] Generated ASS file from local danmaku"
+            qDebug().noquote() << "[Danmaku][Service] Prepared ASS file from local danmaku"
                                << "| assKey:" << assKey << "| commentCount:" << parseResult.comments.size()
+                               << "| reusedAss:" << !cachedAssPath.isEmpty()
                                << "| path:" << parseResult.assPath;
         }
         else
@@ -1480,6 +1496,7 @@ QCoro::Task<DanmakuLoadResult> DanmakuService::prepareDanmakuForCandidate(Danmak
             return store.loadComments(cProvider, cCacheScope, cTargetId, cCacheHours);
         });
     QList<DanmakuComment> comments = co_await commentCacheFuture;
+    if (!guard) co_return DanmakuLoadResult{};
     qDebug().noquote() << "[Danmaku][Service] Comment cache"
                        << "| provider:" << candidate.provider << "| cacheScope:" << candidate.cacheScope
                        << "| targetId:" << candidate.targetId << "| count:" << comments.size();
@@ -1494,6 +1511,7 @@ QCoro::Task<DanmakuLoadResult> DanmakuService::prepareDanmakuForCandidate(Danmak
                                    << "| provider:" << config.provider << "| endpointId:" << config.endpointId
                                    << "| endpointName:" << config.endpointName << "| targetId:" << candidate.targetId;
                 comments = co_await m_dandanplayProvider->fetchComments(candidate, config);
+                if (!guard) co_return DanmakuLoadResult{};
             }
             else if (config.provider == QStringLiteral("danmu_api"))
             {
@@ -1501,6 +1519,7 @@ QCoro::Task<DanmakuLoadResult> DanmakuService::prepareDanmakuForCandidate(Danmak
                                    << "| provider:" << config.provider << "| endpointId:" << config.endpointId
                                    << "| endpointName:" << config.endpointName << "| targetId:" << candidate.targetId;
                 comments = co_await m_danmuApiProvider->fetchComments(candidate, config);
+                if (!guard) co_return DanmakuLoadResult{};
             }
             if (!comments.isEmpty())
             {
@@ -1566,6 +1585,7 @@ QCoro::Task<DanmakuLoadResult> DanmakuService::prepareDanmakuForCandidate(Danmak
                 return store.saveAssFile(assKey, assContent);
             });
         const QString assPath = co_await assComposeFuture;
+        if (!guard) co_return DanmakuLoadResult{};
         if (assPath.isEmpty())
         {
             qWarning().noquote() << "[Danmaku][Service] Failed to save ASS file"
@@ -1644,6 +1664,7 @@ QCoro::Task<QList<DanmakuService::ProviderSearchOutcome>>
 DanmakuService::searchProvidersInParallel(DanmakuMediaContext context, QList<DanmakuProviderConfig> configs,
                                           QString manualKeyword)
 {
+    QPointer<DanmakuService> guard(this);
     if (configs.isEmpty())
     {
         co_return QList<ProviderSearchOutcome>{};
@@ -1666,6 +1687,7 @@ DanmakuService::searchProvidersInParallel(DanmakuMediaContext context, QList<Dan
         else
         {
             context = co_await m_dandanplayProvider->enrichMediaFingerprint(context);
+            if (!guard) co_return QList<ProviderSearchOutcome>{};
             if (m_cacheStore && !context.fileHash.isEmpty())
             {
                 m_cacheStore->saveFingerprint(context, context.fileHash);
@@ -1683,12 +1705,22 @@ DanmakuService::searchProvidersInParallel(DanmakuMediaContext context, QList<Dan
     state->remaining = configs.size();
     QFuture<QList<ProviderSearchOutcome>> completionFuture = state->promise.future();
     state->promise.start();
+    const auto destructionConnection = connect(this, &QObject::destroyed, [state]() {
+        
+        
+        if (state->remaining > 0) {
+            state->remaining = 0;
+            state->promise.addResult(QList<ProviderSearchOutcome>{});
+            state->promise.finish();
+        }
+    });
 
     for (const DanmakuProviderConfig &config : std::as_const(configs))
     {
         QCoro::connect(searchProviderSafely(context, config, manualKeyword), this,
                        [state](ProviderSearchOutcome outcome)
                        {
+                           if (state->remaining <= 0) return;
                            state->outcomes.append(std::move(outcome));
                            --state->remaining;
                            if (state->remaining == 0)
@@ -1700,6 +1732,7 @@ DanmakuService::searchProvidersInParallel(DanmakuMediaContext context, QList<Dan
     }
 
     const QList<ProviderSearchOutcome> outcomes = co_await completionFuture;
+    QObject::disconnect(destructionConnection);
     co_return outcomes;
 }
 
@@ -1722,6 +1755,7 @@ DanmakuService::searchProviderSafely(DanmakuMediaContext context, DanmakuProvide
 QCoro::Task<QList<DanmakuMatchCandidate>> DanmakuService::searchAllCandidates(DanmakuMediaContext context,
                                                                               QString manualKeyword)
 {
+    QPointer<DanmakuService> guard(this);
     QList<DanmakuMatchCandidate> aggregatedCandidates;
     const QString trimmedManualKeyword = manualKeyword.trimmed();
     const QList<DanmakuProviderConfig> onlineProviders = enabledProviderConfigs(context.serverId);
@@ -1743,7 +1777,7 @@ QCoro::Task<QList<DanmakuMatchCandidate>> DanmakuService::searchAllCandidates(Da
                        << "| manualKeyword:" << trimmedManualKeyword << "| allowLocal:" << allowLocal
                        << "| allowOnline:" << allowOnline << "| enabledProviderCount:" << onlineProviders.size();
 
-    for (const QString &source : sourceOrder)
+    for (const QString source : sourceOrder)
     {
         if (source == QLatin1String("local"))
         {
@@ -1757,6 +1791,7 @@ QCoro::Task<QList<DanmakuMatchCandidate>> DanmakuService::searchAllCandidates(Da
                 [localDirectory, context, trimmedManualKeyword]()
                 { return searchLocalDanmakuCandidates(localDirectory, context, trimmedManualKeyword); });
             const QList<DanmakuMatchCandidate> localCandidates = co_await localSearchFuture;
+            if (!guard) co_return QList<DanmakuMatchCandidate>{};
             aggregatedCandidates.append(localCandidates);
             qDebug().noquote() << "[Danmaku][Service] Search all local candidates"
                                << "| mediaId:" << context.mediaId << "| count:" << localCandidates.size();
@@ -1770,6 +1805,7 @@ QCoro::Task<QList<DanmakuMatchCandidate>> DanmakuService::searchAllCandidates(Da
 
         const QList<ProviderSearchOutcome> outcomes =
             co_await searchProvidersInParallel(context, onlineProviders, trimmedManualKeyword);
+        if (!guard) co_return QList<DanmakuMatchCandidate>{};
         for (const ProviderSearchOutcome &outcome : outcomes)
         {
             if (outcome.errorMessage.isEmpty())
@@ -1811,6 +1847,7 @@ QCoro::Task<QList<DanmakuMatchCandidate>> DanmakuService::searchAllCandidates(Da
 
 QCoro::Task<DanmakuMatchResult> DanmakuService::resolveMatch(DanmakuMediaContext context, QString manualKeyword)
 {
+    QPointer<DanmakuService> guard(this);
     DanmakuMatchResult result;
     const QString trimmedManualKeyword = manualKeyword.trimmed();
     const QList<DanmakuProviderConfig> onlineProviders = enabledProviderConfigs(context.serverId);
@@ -1993,7 +2030,7 @@ QCoro::Task<DanmakuMatchResult> DanmakuService::resolveMatch(DanmakuMediaContext
         return true;
     };
 
-    for (const QString &source : sourceOrder)
+    for (const QString source : sourceOrder)
     {
         if (source == QLatin1String("local"))
         {
@@ -2007,6 +2044,7 @@ QCoro::Task<DanmakuMatchResult> DanmakuService::resolveMatch(DanmakuMediaContext
                 [localDirectory, context, trimmedManualKeyword]()
                 { return searchLocalDanmakuCandidates(localDirectory, context, trimmedManualKeyword); });
             const QList<DanmakuMatchCandidate> localCandidates = co_await localSearchFuture;
+            if (!guard) co_return DanmakuMatchResult{};
             appendCandidates(localCandidates);
             if (trySelectLocalCandidate(localCandidates))
             {
@@ -2024,6 +2062,7 @@ QCoro::Task<DanmakuMatchResult> DanmakuService::resolveMatch(DanmakuMediaContext
         QList<DanmakuMatchCandidate> onlineCandidates;
         const QList<ProviderSearchOutcome> outcomes =
             co_await searchProvidersInParallel(context, onlineProviders, trimmedManualKeyword);
+        if (!guard) co_return DanmakuMatchResult{};
         for (const ProviderSearchOutcome &outcome : outcomes)
         {
             if (outcome.errorMessage.isEmpty())
@@ -2102,6 +2141,9 @@ QString DanmakuService::assCacheKey(const DanmakuMatchCandidate &candidate, cons
     obj["targetId"] = candidate.targetId;
     obj["opacity"] = options.opacity;
     obj["fontScale"] = options.fontScale;
+    obj["fontWeight"] = options.fontWeight;
+    obj["outlineSize"] = options.outlineSize;
+    obj["shadowOffset"] = options.shadowOffset;
     obj["areaPercent"] = options.areaPercent;
     obj["density"] = options.density;
     obj["speedScale"] = options.speedScale;

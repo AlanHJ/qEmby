@@ -1,6 +1,7 @@
 #include "qembycore.h"
 #include "api/networkmanager.h"
 #include "api/proxymanager.h"
+#include "api/useragentmanager.h"
 #include "services/manager/servermanager.h"
 #include "services/auth/authservice.h"
 #include "services/media/mediaservice.h" 
@@ -24,6 +25,7 @@ QEmbyCore::QEmbyCore(QObject *parent)
     
     
     ProxyManager::instance()->attachServerManager(m_serverManager);
+    UserAgentManager::instance()->attachServerManager(m_serverManager);
 
     
     m_authService = new AuthService(m_networkManager, m_serverManager, this);

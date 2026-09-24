@@ -148,6 +148,8 @@ struct QEMBYCORE_EXPORT MediaItem {
     Q_PROPERTY(QString overview MEMBER overview)
     Q_PROPERTY(QString officialRating MEMBER officialRating)
     Q_PROPERTY(QString premiereDate MEMBER premiereDate)
+    Q_PROPERTY(QString endDate MEMBER endDate)
+    Q_PROPERTY(QStringList productionLocations MEMBER productionLocations)
     Q_PROPERTY(QString dateCreated MEMBER dateCreated)
     Q_PROPERTY(QString dateCreatedRaw MEMBER dateCreatedRaw)
     Q_PROPERTY(int criticRating MEMBER criticRating)
@@ -188,6 +190,8 @@ public:
     QString overview;
     QString officialRating;
     QString premiereDate;
+    QString endDate;
+    QStringList productionLocations;
     QString dateCreated;   
     QString dateCreatedRaw; 
     long long runTimeTicks = 0;

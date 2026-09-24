@@ -3,6 +3,12 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QSizePolicy>
+#include <QApplication>
+#include <QDebug>
+#include <QPointer>
+#include <QShowEvent>
+#include <QTimer>
+#include <QWindow>
 
 
 #include <QWKWidgets/widgetwindowagent.h>
@@ -46,6 +52,7 @@ void setWindowTransitionsDisabled(WId windowId, bool disabled)
 ModernDialogBase::ModernDialogBase(QWidget *parent,
                                    bool disableNativeTransitions)
     : QDialog(parent) {
+    qInfo() << "[ModernDialogBase] construction begin" << "| dialog=" << this;
     
     setWindowFlag(Qt::WindowContextHelpButtonHint, false);
 
@@ -59,7 +66,9 @@ ModernDialogBase::ModernDialogBase(QWidget *parent,
 
     
     m_titleBarWidget = new QWidget(this);
+    m_titleBarWidget->setAttribute(Qt::WA_StyledBackground, true);
     m_titleBarWidget->setObjectName("dialog-titlebar");
+    m_titleBarWidget->setProperty("standaloneDialogTitleBar", true);
     
     
     m_titleBarWidget->setSizePolicy(QSizePolicy::Expanding,
@@ -78,9 +87,12 @@ ModernDialogBase::ModernDialogBase(QWidget *parent,
     m_titleLabel = new QLabel(m_titleBarWidget);
     m_titleLabel->setObjectName("dialog-title");
 
-    
+    qInfo() << "[ModernDialogBase] window backend=qwindowkit" << "| dialog=" << this;
     auto *agent = new QWK::WidgetWindowAgent(this);
-    agent->setup(this);
+    qInfo() << "[ModernDialogBase] window agent setup begin" << "| dialog=" << this;
+    const bool agentReady = agent->setup(this);
+    qInfo() << "[ModernDialogBase] window agent setup complete"
+            << "| dialog=" << this << "| ready=" << agentReady;
 #if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
     agent->setWindowAttribute("no-system-buttons", false);
     agent->setWindowAttribute("macos-close-button-only", true);
@@ -91,6 +103,9 @@ ModernDialogBase::ModernDialogBase(QWidget *parent,
     auto *closeBtn = new QWK::WindowButton(m_titleBarWidget);
     closeBtn->setObjectName("dialog-close-btn");
     closeBtn->setProperty("system-button", true); 
+    closeBtn->setToolTip(tr("Close"));
+    closeBtn->setAccessibleName(tr("Close"));
+    closeBtn->setFocusPolicy(Qt::NoFocus);
     connect(closeBtn, &QWK::WindowButton::clicked, this, &QDialog::reject);
 #endif
 
@@ -120,8 +135,42 @@ ModernDialogBase::ModernDialogBase(QWidget *parent,
 
     mainLayout->addWidget(m_titleBarWidget);
     mainLayout->addLayout(m_contentLayout);
+    qInfo() << "[ModernDialogBase] construction complete" << "| dialog=" << this;
+}
+
+int ModernDialogBase::exec() {
+    QPointer<ModernDialogBase> guard(this);
+    qInfo() << "[ModernDialogBase] exec begin"
+            << "| dialog=" << this << "| size=" << size()
+            << "| parentVisible=" << (parentWidget() && parentWidget()->isVisible());
+    const int dialogResult = QDialog::exec();
+    qInfo() << "[ModernDialogBase] exec complete"
+            << "| alive=" << !guard.isNull() << "| result=" << dialogResult;
+    return dialogResult;
+}
+
+void ModernDialogBase::showEvent(QShowEvent *event) {
+    qInfo() << "[ModernDialogBase] show event begin" << "| dialog=" << this;
+    QDialog::showEvent(event);
+    qInfo() << "[ModernDialogBase] show event complete"
+            << "| dialog=" << this << "| geometry=" << geometry()
+            << "| modality=" << windowModality();
+    QTimer::singleShot(0, this, [this]() {
+        qInfo() << "[ModernDialogBase] event loop responsive"
+                << "| dialog=" << this << "| visible=" << isVisible()
+                << "| exposed=" << (windowHandle() && windowHandle()->isExposed())
+                << "| active=" << isActiveWindow()
+                << "| activeModal=" << (QApplication::activeModalWidget() == this);
+    });
+    QTimer::singleShot(250, this, [this]() {
+        qInfo() << "[ModernDialogBase] post-show state"
+                << "| dialog=" << this << "| visible=" << isVisible()
+                << "| exposed=" << (windowHandle() && windowHandle()->isExposed())
+                << "| geometry=" << geometry();
+    });
 }
 
 void ModernDialogBase::setTitle(const QString &title) {
+    setWindowTitle(title);
     m_titleLabel->setText(title);
 }

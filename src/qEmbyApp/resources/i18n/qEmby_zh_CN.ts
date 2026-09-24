@@ -153,6 +153,30 @@ Release notes:
         <translation>服务器代理 — %1</translation>
     </message>
     <message>
+        <source>Network Settings
+Proxy: %1
+User-Agent: %2</source>
+        <translation>网络设置
+代理：%1
+User-Agent：%2</translation>
+    </message>
+    <message>
+        <source>Using global User-Agent</source>
+        <translation>使用全局 User-Agent</translation>
+    </message>
+    <message>
+        <source>Custom User-Agent</source>
+        <translation>自定义 User-Agent</translation>
+    </message>
+    <message>
+        <source>Default User-Agent</source>
+        <translation>默认 User-Agent</translation>
+    </message>
+    <message>
+        <source>User-Agent</source>
+        <translation>User-Agent</translation>
+    </message>
+    <message>
         <source>Use this only for trusted self-signed or private CA HTTPS servers.</source>
         <translation>仅对可信任的自签名或私有 CA HTTPS 服务器使用此选项。</translation>
     </message>
@@ -273,6 +297,28 @@ Error: </source>
 <context>
     <name>HomeView</name>
     <message>
+        <source>MEDIA (%1 total)</source>
+        <translation>媒体库（共 %1）</translation>
+    </message>
+    <message>
+        <source>MEDIA %1</source>
+        <translation>媒体库 %1</translation>
+    </message>
+    <message>
+        <source>MEDIA %1 (-%2)</source>
+        <translation>媒体库 %1 (-%2)</translation>
+    </message>
+    <message>
+        <source>Hidden libraries:
+%1</source>
+        <translation>已隐藏的媒体库：
+%1</translation>
+    </message>
+    <message>
+        <source>MEDIA (%1 total, %2 hidden)</source>
+        <translation>媒体库（共 %1，隐藏 %2）</translation>
+    </message>
+    <message>
         <source>Search...</source>
         <translation>搜索...</translation>
     </message>
@@ -344,6 +390,14 @@ Error: </source>
 
 <context>
     <name>LibraryView</name>
+    <message>
+        <source>More</source>
+        <translation>更多</translation>
+    </message>
+    <message>
+        <source>Biography</source>
+        <translation>人物简介</translation>
+    </message>
     <message>
         <source>All</source>
         <translation>全部</translation>
@@ -1679,6 +1733,14 @@ Choose a file, paste an image URL, or drag one onto the preview.</source>
 <context>
     <name>PlayerView</name>
     <message>
+        <source>Hide Subtitles</source>
+        <translation>不显示字幕</translation>
+    </message>
+    <message>
+        <source>Turn off Hide Subtitles to select a subtitle</source>
+        <translation>请先取消“不显示字幕”，再选择字幕</translation>
+    </message>
+    <message>
         <source>Continue Watching</source>
         <translation>继续观看</translation>
     </message>
@@ -2190,6 +2252,98 @@ This will remove the current log and rotated backups. This action cannot be undo
         <source>Default proxy for all servers (per-server settings override this) — currently: %1 %2:%3</source>
         <translation>所有服务器的默认代理（服务器级设置可覆盖） — 当前：%1 %2:%3</translation>
     </message>
+    <message>
+        <source>Custom User-Agent</source>
+        <translation>自定义 User-Agent</translation>
+    </message>
+    <message>
+        <source>User-Agent for network requests (global or server-specific)</source>
+        <translation>网络请求使用的 User-Agent（全局或服务器专用）</translation>
+    </message>
+    <message>
+        <source>enabled: %1</source>
+        <translation>已启用：%1</translation>
+    </message>
+    <message>
+        <source>disabled</source>
+        <translation>已禁用</translation>
+    </message>
+    <message>
+        <source>User-Agent for the current server — using global: %1</source>
+        <translation>当前服务器 User-Agent — 使用全局：%1</translation>
+    </message>
+    <message>
+        <source>User-Agent for the current server — currently: %1</source>
+        <translation>当前服务器 User-Agent — 当前：%1</translation>
+    </message>
+    <message>
+        <source>Default User-Agent for all requests — currently: %1</source>
+        <translation>所有请求的默认 User-Agent — 当前：%1</translation>
+    </message>
+</context>
+
+<context>
+    <name>UserAgentSettingsDialog</name>
+    <message>
+        <source>User-Agent Settings</source>
+        <translation>User-Agent 设置</translation>
+    </message>
+    <message>
+        <source>Server User-Agent Settings</source>
+        <translation>服务器 User-Agent 设置</translation>
+    </message>
+    <message>
+        <source>Use Global User-Agent</source>
+        <translation>使用全局 User-Agent</translation>
+    </message>
+    <message>
+        <source>When enabled, this server uses the global User-Agent. Disable to configure a User-Agent specific to this server.</source>
+        <translation>启用后，此服务器使用全局 User-Agent。关闭后可为此服务器单独配置 User-Agent。</translation>
+    </message>
+    <message>
+        <source>These settings apply as the default User-Agent for all requests, unless a server overrides them.</source>
+        <translation>这些设置作为所有请求的默认 User-Agent，服务器专用设置可覆盖它们。</translation>
+    </message>
+    <message>
+        <source>Enable Custom User-Agent</source>
+        <translation>启用自定义 User-Agent</translation>
+    </message>
+    <message>
+        <source>User-Agent</source>
+        <translation>User-Agent</translation>
+    </message>
+    <message>
+        <source>Enter the User-Agent sent with network requests</source>
+        <translation>输入随网络请求发送的 User-Agent</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <source>Save</source>
+        <translation>保存</translation>
+    </message>
+    <message>
+        <source>Editing the global User-Agent settings below.</source>
+        <translation>正在编辑下方的全局 User-Agent 设置。</translation>
+    </message>
+    <message>
+        <source>Editing this server's User-Agent settings below.</source>
+        <translation>正在编辑下方的当前服务器 User-Agent 设置。</translation>
+    </message>
+    <message>
+        <source>Invalid User-Agent</source>
+        <translation>无效的 User-Agent</translation>
+    </message>
+    <message>
+        <source>Please enter a User-Agent value or disable the setting.</source>
+        <translation>请输入 User-Agent 值，或关闭此设置。</translation>
+    </message>
+    <message>
+        <source>User-Agent cannot contain line breaks.</source>
+        <translation>User-Agent 不能包含换行符。</translation>
+    </message>
 </context>
 
 <context>
@@ -2362,6 +2516,14 @@ This will remove the current log and rotated backups. This action cannot be undo
 
 <context>
     <name>PagePlayer</name>
+    <message>
+        <source>Hide Subtitles</source>
+        <translation>不显示字幕</translation>
+    </message>
+    <message>
+        <source>Keep subtitles hidden for all videos until this option is turned off</source>
+        <translation>所有视频始终不显示字幕，直到关闭此选项</translation>
+    </message>
     <message>
         <source>D3D11VA (Windows)</source>
         <translation>D3D11VA (Windows)</translation>
@@ -3478,8 +3640,8 @@ This action cannot be undone.</source>
         <translation>URL路径替换 每行一条规则：源路径 =&gt; 目标路径</translation>
     </message>
     <message>
-        <source>e.g., http:
-        <translation>例如 http:
+        <source>e.g., http://192.168.2.1:19798/path/ =&gt; W:/mount/</source>
+        <translation>例如 http://192.168.2.1:19798/path/ =&gt; W:/mount/</translation>
     </message>
 </context>
 
@@ -8608,8 +8770,8 @@ Comments: %4</source>
         <translation>选择通过 ASS 字幕轨还是 qEmby 自适应原生渲染器来显示弹幕</translation>
     </message>
     <message>
-        <source>ASS Subtitle Track</source>
-        <translation>ASS 字幕轨渲染</translation>
+        <source>ASS Subtitle Track (Not Recommended)</source>
+        <translation>ASS 字幕轨渲染（不推荐）</translation>
     </message>
     <message>
         <source>Native Smooth Renderer</source>
@@ -9621,4 +9783,37 @@ This cannot be undone.</source>
     </message>
 </context>
 
+<context>
+    <name>MediaItemUtils</name>
+    <message>
+        <source>Born: %1</source>
+        <translation>出生日期：%1</translation>
+    </message>
+    <message>
+        <source>Birthplace: %1</source>
+        <translation>出生地点：%1</translation>
+    </message>
+    <message>
+        <source>Died: %1</source>
+        <translation>逝世日期：%1</translation>
+    </message>
+</context>
+<context>
+    <name>ModernDialogBase</name>
+    <message>
+        <source>Close</source>
+        <translation>关闭</translation>
+    </message>
+</context>
+<context>
+    <name>SidebarLibraryRow</name>
+    <message>
+        <source>Show on home page</source>
+        <translation>在主页显示</translation>
+    </message>
+    <message>
+        <source>Hide from home page</source>
+        <translation>在主页隐藏</translation>
+    </message>
+</context>
 </TS>

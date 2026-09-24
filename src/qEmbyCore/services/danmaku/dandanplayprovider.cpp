@@ -982,6 +982,9 @@ QStringList parseAnimeSearchTitles(const QJsonObject &response,
                 continue;
             }
 
+            
+            
+            
             if (titleScore(queryKeyword, title) < 0.30) {
                 continue;
             }

@@ -6,6 +6,7 @@
 #include "moderntoast.h"
 
 #include "api/proxymanager.h"
+#include "api/useragentmanager.h"
 #include "services/manager/servermanager.h"
 
 #include <QDebug>
@@ -638,6 +639,7 @@ void ProxySettingsDialog::onTestClicked() {
     req.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                      QNetworkRequest::NoLessSafeRedirectPolicy);
     req.setRawHeader("User-Agent", "qEmby-ProxyTest/1.0");
+    UserAgentManager::instance()->applyToRequest(req);
     auto* timer = new QElapsedTimer();
     timer->start();
     QNetworkReply* reply = nam->head(req);

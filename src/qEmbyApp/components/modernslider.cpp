@@ -71,6 +71,12 @@ bool ModernSlider::event(QEvent *ev) {
     return QSlider::event(ev);
 }
 
+qreal ModernSlider::horizontalTrackCenter() const {
+    return height() / 2.0;
+}
+
+void ModernSlider::paintTrackBackground(QPainter &, const QRectF &) {}
+
 
 void ModernSlider::paintEvent(QPaintEvent *ev) {
     Q_UNUSED(ev);
@@ -78,20 +84,23 @@ void ModernSlider::paintEvent(QPaintEvent *ev) {
     painter.setRenderHint(QPainter::Antialiasing);
 
     const int trackHeight =
-        (m_isHovered || m_isPressed) ? m_hoverTrackHeight : m_normalTrackHeight;
+        (m_isHovered || m_isPressed || isSliderDown()) ? m_hoverTrackHeight : m_normalTrackHeight;
     const int handleRadius =
-        (m_isHovered || m_isPressed) ? m_activeHandleRadius : m_normalHandleRadius;
+        (m_isHovered || m_isPressed || isSliderDown()) ? m_activeHandleRadius : m_normalHandleRadius;
     const int edgePadding = qMax(m_normalHandleRadius, m_activeHandleRadius);
 
     QRectF trackRect;
     if (orientation() == Qt::Horizontal) {
-        trackRect = QRectF(edgePadding, (height() - trackHeight) / 2.0,
+        trackRect = QRectF(edgePadding, horizontalTrackCenter() - trackHeight / 2.0,
                            width() - 2 * edgePadding, trackHeight);
     } else {
         trackRect = QRectF((width() - trackHeight) / 2.0, edgePadding,
                            trackHeight, height() - 2 * edgePadding);
     }
 
+    painter.save();
+    paintTrackBackground(painter, trackRect);
+    painter.restore();
     painter.setPen(Qt::NoPen);
     painter.setBrush(m_trackColor);
     painter.drawRoundedRect(trackRect, trackHeight / 2.0, trackHeight / 2.0);
@@ -130,7 +139,7 @@ void ModernSlider::paintEvent(QPaintEvent *ev) {
     QPointF handleCenter;
     if (orientation() == Qt::Horizontal) {
         handleCenter = QPointF(trackRect.left() + trackRect.width() * valueRatio,
-                               height() / 2.0);
+                               horizontalTrackCenter());
     } else {
         handleCenter =
             QPointF(width() / 2.0,

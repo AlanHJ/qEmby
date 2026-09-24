@@ -1,4 +1,5 @@
 #include "homeview.h"
+#include "../../components/sidebarlibraryrow.h"
 #include "../../components/searchcompleterpopup.h"
 #include "../../components/downloadmanagerdialog.h"
 #include "../../components/elidedlabel.h"
@@ -25,6 +26,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QAbstractItemView>
+#include <QAbstractItemModel>
 #include <QBoxLayout>
 #include <QCompleter>
 #include <QCursor>
@@ -700,12 +702,61 @@ void HomeView::setupSidebar()
     layout->addWidget(m_navArea);
 
     
-    auto *libTitle = new QLabel(tr("MEDIA"), m_sidebar);
+    auto *libTitle = new QLabel(tr("MEDIA (%1 total)").arg(0), m_sidebar);
     libTitle->setObjectName("sidebar-title");
+    libTitle->setWordWrap(true);
     layout->addWidget(libTitle);
 
     m_libraryList = new QListWidget(m_sidebar);
     m_libraryList->setObjectName("sidebar-list");
+    
+    const auto updateLibraryCount = [this, libTitle]() {
+        const QStringList hiddenIds = ConfigStore::instance()->get<QStringList>(
+            ConfigKeys::forServer(m_sidebarLibraryServerId, ConfigKeys::HiddenHomeLibraries));
+        QStringList hiddenNames;
+        for (int i = 0; i < m_libraryList->count(); ++i) {
+            const auto *item = m_libraryList->item(i);
+            if (hiddenIds.contains(item->data(Qt::UserRole).toString())) {
+                hiddenNames.append(item->data(kSidebarLibraryNameRole).toString());
+            }
+        }
+        const bool pinned = ConfigStore::instance()->get<bool>(ConfigKeys::SidebarPinned, false);
+        if (pinned) {
+            libTitle->setText(hiddenNames.isEmpty()
+                                  ? tr("MEDIA %1").arg(m_libraryList->count())
+                                  : tr("MEDIA %1 (-%2)")
+                                        .arg(m_libraryList->count()).arg(hiddenNames.size()));
+        } else {
+            libTitle->setText(hiddenNames.isEmpty()
+                                  ? tr("MEDIA (%1 total)").arg(m_libraryList->count())
+                                  : tr("MEDIA (%1 total, %2 hidden)")
+                                        .arg(m_libraryList->count()).arg(hiddenNames.size()));
+        }
+        if (hiddenNames.isEmpty()) {
+            libTitle->setToolTip(QString());
+        } else {
+            
+            const QString details = tr("Hidden libraries:\n%1")
+                                        .arg(hiddenNames.join(QLatin1Char('\n')));
+            libTitle->setToolTip(QStringLiteral("<qt>%1</qt>").arg(
+                details.toHtmlEscaped().replace(QLatin1Char('\n'), QStringLiteral("<br/>"))));
+        }
+    };
+    connect(m_libraryList->model(), &QAbstractItemModel::rowsInserted,
+            libTitle, updateLibraryCount);
+    connect(m_libraryList->model(), &QAbstractItemModel::rowsRemoved,
+            libTitle, updateLibraryCount);
+    connect(m_libraryList->model(), &QAbstractItemModel::modelReset,
+            libTitle, updateLibraryCount);
+    connect(ConfigStore::instance(), &ConfigStore::valueChanged, libTitle,
+            [this, updateLibraryCount](const QString &key, const QVariant &) {
+                if (key == ConfigKeys::SidebarPinned ||
+                    key == ConfigKeys::forServer(
+                               m_sidebarLibraryServerId, ConfigKeys::HiddenHomeLibraries)) {
+                    updateLibraryCount();
+                }
+            });
+    updateLibraryCount();
     m_libraryList->setFocusPolicy(Qt::NoFocus);
     m_libraryList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_libraryList->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
@@ -1417,6 +1468,9 @@ QCoro::Task<void> HomeView::refreshProfile()
 
         if (!shouldKeepExistingLibraries)
         {
+            
+            m_sidebarLibraryServerId = activeProfile.id;
+            m_sidebarLibraryUserId = activeProfile.userId;
             m_libraryList->clear();
             for (const auto &view : views)
             {
@@ -1430,20 +1484,21 @@ QCoro::Task<void> HomeView::refreshProfile()
                 else if (view.collectionType == "homevideos" || view.collectionType == "photos")
                     iconStr = "🎞️ ";
 
-                auto *item = new QListWidgetItem(iconStr + view.name);
+                auto *item = new QListWidgetItem();
+                item->setSizeHint(QSize(0, 40));
                 item->setData(Qt::UserRole, view.id);
                 item->setData(kSidebarLibraryNameRole, view.name);
                 item->setData(Qt::ToolTipRole, view.name);
+                item->setData(Qt::AccessibleTextRole, view.name);
                 m_libraryList->addItem(item);
+                m_libraryList->setItemWidget(item, new SidebarLibraryRow(
+                    activeProfile.id, view.id, iconStr + view.name, m_libraryList));
 
                 if (currentRouteType == "LibraryView" && view.id == currentRouteId)
                 {
                     selectedLibraryItem = item;
                 }
             }
-
-            m_sidebarLibraryServerId = activeProfile.id;
-            m_sidebarLibraryUserId = activeProfile.userId;
         }
         else
         {

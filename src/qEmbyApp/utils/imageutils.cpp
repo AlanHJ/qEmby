@@ -3,9 +3,30 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QRect>
+#include <QPixmapCache>
+#include <QtMath>
 #include <algorithm>
 
 namespace ImageUtils {
+
+QPixmap scaledCoverPixmap(const QPixmap& source, const QSize& logicalSize,
+                          qreal devicePixelRatio)
+{
+    if (source.isNull() || logicalSize.isEmpty()) return {};
+    const qreal dpr = qMax(qreal(1), devicePixelRatio);
+    const QSize pixelSize(qCeil(logicalSize.width() * dpr),
+                          qCeil(logicalSize.height() * dpr));
+    const QString key = QStringLiteral("ImageUtils:cover:%1:%2x%3:%4")
+                            .arg(source.cacheKey()).arg(pixelSize.width())
+                            .arg(pixelSize.height()).arg(dpr, 0, 'g', 16);
+    QPixmap result;
+    if (QPixmapCache::find(key, &result)) return result;
+    result = source.scaled(pixelSize, Qt::KeepAspectRatioByExpanding,
+                           Qt::SmoothTransformation);
+    result.setDevicePixelRatio(dpr);
+    QPixmapCache::insert(key, result);
+    return result;
+}
 
 QPixmap roundedPixmap(const QPixmap &src, int radiusLeft, int radiusRight) {
     if (src.isNull()) return src;

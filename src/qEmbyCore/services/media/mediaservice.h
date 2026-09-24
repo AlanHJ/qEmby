@@ -135,7 +135,7 @@ public:
     
     QCoro::Task<QList<MediaItem>> searchMedia(const QString& searchTerm, const QString& includeItemTypes = "Movie,Series,BoxSet,Person", const QString& sortBy = "", const QString& sortOrder = "Ascending", int limit = 50);
 
-    QCoro::Task<MediaItem> getItemDetail(const QString& itemId);
+    QCoro::Task<MediaItem> getItemDetail(QString itemId);
     
     QCoro::Task<PlaybackInfo> getPlaybackInfo(const QString& itemId);
 
@@ -165,8 +165,8 @@ public:
     QCoro::Task<QList<MediaItem>> getSimilarItems(const QString& itemId, int limit = 15);
     QCoro::Task<QList<MediaItem>> getItemCollections(const QString& itemId);
     QCoro::Task<QList<MediaItem>> getCollectionItems(const QString& collectionId);
-    QCoro::Task<MediaQueryPage> getItemsByPersonPage(const QString& personId, const QString& sortBy = "SortName", const QString& sortOrder = "Ascending", int startIndex = 0, int limit = 0);
-    QCoro::Task<QList<MediaItem>> getItemsByPerson(const QString& personId, const QString& sortBy = "SortName", const QString& sortOrder = "Ascending");
+    QCoro::Task<MediaQueryPage> getItemsByPersonPage(QString personId, QString sortBy = "SortName", QString sortOrder = "Ascending", int startIndex = 0, int limit = 0);
+    QCoro::Task<QList<MediaItem>> getItemsByPerson(QString personId, QString sortBy = "SortName", QString sortOrder = "Ascending");
     QCoro::Task<MediaQueryPage> getItemsByFilterPage(const QString& genreFilter = "", const QString& tagFilter = "", const QString& studioFilter = "", const QString& sortBy = "SortName", const QString& sortOrder = "Ascending", int startIndex = 0, int limit = 0);
     QCoro::Task<QList<MediaItem>> getItemsByFilter(const QString& genreFilter = "", const QString& tagFilter = "", const QString& studioFilter = "", const QString& sortBy = "SortName", const QString& sortOrder = "Ascending", int limit = 0);
 
@@ -225,6 +225,7 @@ private:
     QNetworkAccessManager* m_imageManager;
     RecommendCache m_recommendCache; 
     UserViewsCache m_userViewsCache;
+    quint64 m_userViewsCacheGeneration = 0;
     QHash<QString, quint64> m_invalidatedImageRequestVersions;
     
     

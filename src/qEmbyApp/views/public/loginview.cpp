@@ -4,6 +4,7 @@
 #include "../../components/modernmessagebox.h"
 #include "../../components/modernswitch.h"
 #include "../../components/proxysettingsdialog.h"
+#include "../../components/useragentsettingsdialog.h"
 #include "../../components/serverwheelview.h"
 #include "../../components/webdavsyncdialog.h"
 #include <config/webdavprofilestore.h>
@@ -16,6 +17,7 @@
 #include <QIntValidator>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMenu>
 #include <QMouseEvent>
 #include <QPixmap>
 #include <QPointer>
@@ -178,8 +180,8 @@ void LoginView::onThemeChanged(ThemeManager::Theme theme) {
   }
 
   
-  if (m_serverProxyBtn) {
-    m_serverProxyBtn->setIcon(QIcon(getThemeSvgPath("proxy.svg")));
+  if (m_networkSettingsBtn) {
+    m_networkSettingsBtn->setIcon(QIcon(getThemeSvgPath("settings.svg")));
   }
 
   
@@ -510,25 +512,25 @@ void LoginView::setupAddPage() {
   
   
   
-  m_serverProxyBtn = new QPushButton(this);
-  m_serverProxyBtn->setObjectName("login-proxy-icon-btn");
-  m_serverProxyBtn->setCursor(Qt::PointingHandCursor);
-  m_serverProxyBtn->setIcon(QIcon(getThemeSvgPath("proxy.svg")));
-  m_serverProxyBtn->setIconSize(QSize(18, 18));
-  m_serverProxyBtn->setFixedWidth(36);
-  m_serverProxyBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+  m_networkSettingsBtn = new QPushButton(this);
+  m_networkSettingsBtn->setObjectName("login-network-icon-btn");
+  m_networkSettingsBtn->setCursor(Qt::PointingHandCursor);
+  m_networkSettingsBtn->setIcon(QIcon(getThemeSvgPath("settings.svg")));
+  m_networkSettingsBtn->setIconSize(QSize(18, 18));
+  m_networkSettingsBtn->setFixedWidth(36);
+  m_networkSettingsBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
 
   protoPortLayout->addWidget(m_protocolInput, 0);
   protoPortLayout->addWidget(m_portInput, 1);
   
   
-  protoPortLayout->addWidget(m_serverProxyBtn, 0);
+  protoPortLayout->addWidget(m_networkSettingsBtn, 0);
   layout->addLayout(protoPortLayout);
 
-  connect(m_serverProxyBtn, &QPushButton::clicked, this,
-          &LoginView::openProxyDialogForCurrentEntry);
+  connect(m_networkSettingsBtn, &QPushButton::clicked, this,
+          &LoginView::openNetworkSettingsMenu);
 
-  refreshServerProxyTooltip();
+  refreshNetworkSettingsTooltip();
 
     m_sslOptionsRow = new QWidget(this);
     m_sslOptionsRow->setObjectName("login-ssl-card");
@@ -864,7 +866,9 @@ void LoginView::showAddPage() {
   
   m_pendingProxy = ProxyConfig{};
   m_pendingUseGlobalProxy = false;
-  refreshServerProxyTooltip();
+  m_pendingUserAgent = UserAgentConfig{};
+  m_pendingUseGlobalUserAgent = false;
+  refreshNetworkSettingsTooltip();
   m_protocolInput->setCurrentIndex(0);
   m_serverAddressInput->clear();
   if (m_portInput) {
@@ -934,7 +938,9 @@ void LoginView::onEditServerClicked(const QString &serverId) {
       
       m_pendingProxy = server.proxy;
       m_pendingUseGlobalProxy = server.useGlobalProxy;
-      refreshServerProxyTooltip();
+      m_pendingUserAgent = server.userAgent;
+      m_pendingUseGlobalUserAgent = server.useGlobalUserAgent;
+      refreshNetworkSettingsTooltip();
 
       m_loginButton->setText(tr("Save & Login"));
       m_errorLabel->hide();
@@ -1055,10 +1061,10 @@ QCoro::Task<void> LoginView::onLoginClicked() {
 
     ConfigStore::instance()->set(ConfigKeys::LastSelectedServerId, profile.id);
 
-    if (!m_editingServerId.isEmpty()) {
+    if (!m_editingServerId.isEmpty() && m_editingServerId != profile.id) {
       m_core->serverManager()->removeServer(m_editingServerId);
-      m_editingServerId.clear();
     }
+    m_editingServerId.clear();
 
     
     
@@ -1070,9 +1076,21 @@ QCoro::Task<void> LoginView::onLoginClicked() {
               << "| useGlobal:" << m_pendingUseGlobalProxy
               << "| proxy:" << m_pendingProxy.summary();
     }
+    if (m_pendingUserAgent != UserAgentConfig{} ||
+        !m_pendingUseGlobalUserAgent) {
+      m_core->serverManager()->updateServerUserAgent(
+          profile.id, m_pendingUserAgent, m_pendingUseGlobalUserAgent);
+      qInfo() << "[LoginView] applied draft User-Agent to new profile"
+              << "| id:" << profile.id
+              << "| useGlobal:" << m_pendingUseGlobalUserAgent
+              << "| enabled:" << m_pendingUserAgent.enabled
+              << "| hasValue:" << !m_pendingUserAgent.value.isEmpty();
+    }
     
     m_pendingProxy = ProxyConfig{};
     m_pendingUseGlobalProxy = false;
+    m_pendingUserAgent = UserAgentConfig{};
+    m_pendingUseGlobalUserAgent = false;
 
     m_loginButton->setEnabled(true);
     m_loginButton->setText(tr("Login"));
@@ -1098,8 +1116,8 @@ QCoro::Task<void> LoginView::onLoginClicked() {
 
 
 
-void LoginView::refreshServerProxyTooltip() {
-  if (!m_serverProxyBtn) {
+void LoginView::refreshNetworkSettingsTooltip() {
+  if (!m_networkSettingsBtn) {
     return;
   }
   
@@ -1131,8 +1149,26 @@ void LoginView::refreshServerProxyTooltip() {
     }
     }
   }
-  m_serverProxyBtn->setToolTip(
-      tr("Server Proxy — %1").arg(state));
+  const QString userAgentState = m_pendingUseGlobalUserAgent
+      ? tr("Using global User-Agent")
+      : (m_pendingUserAgent.isEffective() ? tr("Custom User-Agent")
+                                          : tr("Default User-Agent"));
+  m_networkSettingsBtn->setToolTip(
+      tr("Network Settings\nProxy: %1\nUser-Agent: %2")
+          .arg(state, userAgentState));
+}
+
+void LoginView::openNetworkSettingsMenu() {
+  QMenu menu(this);
+  QAction *proxyAction = menu.addAction(tr("Server Proxy"));
+  QAction *userAgentAction = menu.addAction(tr("User-Agent"));
+  QAction *selected = menu.exec(m_networkSettingsBtn->mapToGlobal(
+      QPoint(0, m_networkSettingsBtn->height())));
+  if (selected == proxyAction) {
+    openProxyDialogForCurrentEntry();
+  } else if (selected == userAgentAction) {
+    openUserAgentDialogForCurrentEntry();
+  }
 }
 
 void LoginView::openProxyDialogForCurrentEntry() {
@@ -1151,7 +1187,7 @@ void LoginView::openProxyDialogForCurrentEntry() {
           break;
         }
       }
-      refreshServerProxyTooltip();
+      refreshNetworkSettingsTooltip();
     }
     dlg->deleteLater();
     return;
@@ -1166,9 +1202,31 @@ void LoginView::openProxyDialogForCurrentEntry() {
     qInfo() << "[LoginView] draft proxy updated"
             << "| useGlobal:" << m_pendingUseGlobalProxy
             << "| proxy:" << m_pendingProxy.summary();
-    refreshServerProxyTooltip();
+    refreshNetworkSettingsTooltip();
   }
   dlg->deleteLater();
+}
+
+void LoginView::openUserAgentDialogForCurrentEntry() {
+  UserAgentSettingsDialog *dialog = nullptr;
+  if (!m_editingServerId.isEmpty()) {
+    dialog = UserAgentSettingsDialog::createForServer(
+        m_core->serverManager(), m_editingServerId, this);
+  } else {
+    dialog = UserAgentSettingsDialog::createForDraft(
+        m_pendingUserAgent, m_pendingUseGlobalUserAgent, this);
+  }
+  if (dialog->exec() == QDialog::Accepted) {
+    m_pendingUserAgent = dialog->resultConfig();
+    m_pendingUseGlobalUserAgent = dialog->resultUseGlobal();
+    qInfo() << "[LoginView] User-Agent settings updated"
+            << "| draft:" << m_editingServerId.isEmpty()
+            << "| useGlobal:" << m_pendingUseGlobalUserAgent
+            << "| enabled:" << m_pendingUserAgent.enabled
+            << "| hasValue:" << !m_pendingUserAgent.value.isEmpty();
+    refreshNetworkSettingsTooltip();
+  }
+  dialog->deleteLater();
 }
 
 

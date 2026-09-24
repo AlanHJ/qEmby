@@ -5,10 +5,12 @@
 #include <QFontDatabase>
 #include <QFontMetricsF>
 #include <QHash>
+#include <QPair>
 #include <QTextStream>
 #include <QVector>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <utility>
 
 namespace {
@@ -28,8 +30,7 @@ constexpr double kScrollOutlineRatio = 0.72;
 constexpr double kScrollOutlineCap = 2.4;
 constexpr double kScrollShadowRatio = 0.25;
 constexpr double kScrollShadowCap = 0.45;
-constexpr qint64 kMinScrollDurationMs = 2200;
-constexpr qint64 kMaxScrollDurationMs = 22000;
+constexpr qint64 kMaxScrollQueueDelayMs = 5000;
 constexpr double kMaxScrollQueueDelayRatio = 0.42;
 constexpr qint64 kMaxStaticQueueDelayMs = 1800;
 
@@ -236,11 +237,8 @@ QString DanmakuAssComposer::composeAss(const QList<DanmakuComment> &comments,
                                        const DanmakuRenderOptions &options)
 {
     QList<DanmakuComment> sortedComments = comments;
-    std::sort(sortedComments.begin(), sortedComments.end(),
+    std::stable_sort(sortedComments.begin(), sortedComments.end(),
               [](const DanmakuComment &lhs, const DanmakuComment &rhs) {
-                  if (lhs.timeMs == rhs.timeMs) {
-                      return lhs.text < rhs.text;
-                  }
                   return lhs.timeMs < rhs.timeMs;
               });
 
@@ -268,9 +266,15 @@ QString DanmakuAssComposer::composeAss(const QList<DanmakuComment> &comments,
         qBound(24 * kAssCoordScale,
                static_cast<int>(std::lround(44.0 * fontScale * kAssCoordScale)),
                88 * kAssCoordScale);
-    const int lineHeight = static_cast<int>(std::ceil(baseFontSize * 1.28));
+    QFont font;
+    font.setFamily(findCjkFontFamily());
+    font.setPixelSize(baseFontSize);
+    font.setWeight(static_cast<QFont::Weight>(fontWeight));
+    const double textPadding = (outlineSize * 2.0 + shadowOffset) * kAssCoordScale;
+    const int lineHeight = static_cast<int>(std::ceil(std::max(
+        baseFontSize * 1.28, QFontMetricsF(font).height() + textPadding)));
     const int maxLanes = std::max(
-        1, static_cast<int>(std::floor((kPlayResY * (areaPercent / 100.0)) /
+        1, static_cast<int>(std::floor(((kPlayResY - kTopMargin - kBottomMargin) * (areaPercent / 100.0)) /
                                        static_cast<double>(lineHeight))));
     const int laneCount = std::max(
         1, static_cast<int>(std::round(maxLanes * (densityPercent / 100.0))));
@@ -278,7 +282,7 @@ QString DanmakuAssComposer::composeAss(const QList<DanmakuComment> &comments,
     const qint64 referenceDurationMs = static_cast<qint64>(
         std::lround(9000.0 / effectiveSpeedScale));
     const double referenceTextWidth = std::clamp(
-        baseFontSize * kScrollReferenceWidthFactor,
+        44.0 * kAssCoordScale * kScrollReferenceWidthFactor,
         220.0 * kAssCoordScale,
         1800.0 * kAssCoordScale);
     const double referenceDistance =
@@ -288,10 +292,6 @@ QString DanmakuAssComposer::composeAss(const QList<DanmakuComment> &comments,
         std::max(0.01, referenceDistance /
                            std::max<qint64>(1, referenceDurationMs)));
 
-    QFont font;
-    font.setFamily(findCjkFontFamily());
-    font.setPixelSize(baseFontSize);
-    font.setWeight(static_cast<QFont::Weight>(fontWeight));
     QHash<int, QFontMetricsF> fontMetricsCache;
     auto metricsForSize = [&font, &fontMetricsCache](int fontSize) {
         const auto it = fontMetricsCache.constFind(fontSize);
@@ -307,16 +307,20 @@ QString DanmakuAssComposer::composeAss(const QList<DanmakuComment> &comments,
     };
 
     QVector<qint64> scrollLaneAvailable(laneCount, 0);
+    QVector<qint64> scrollLaneEnd(laneCount, 0);
+    QVector<bool> scrollLaneReverse(laneCount, false);
     QVector<qint64> topLaneAvailable(laneCount, 0);
     QVector<qint64> bottomLaneAvailable(laneCount, 0);
 
-    QStringList dialogueLines;
+    QVector<QPair<qint64, QString>> dialogueLines;
     dialogueLines.reserve(sortedComments.size());
     int skippedInvalid = 0;
     int skippedBlocked = 0;
     int skippedByMode = 0;
+    int skippedUnsupported = 0;
     int skippedByOverload = 0;
     int renderedScroll = 0;
+    int renderedReverse = 0;
     int renderedTop = 0;
     int renderedBottom = 0;
 
@@ -331,20 +335,40 @@ QString DanmakuAssComposer::composeAss(const QList<DanmakuComment> &comments,
             continue;
         }
 
-        if ((comment.mode == 1 && options.hideScroll) ||
+        const bool scrolling = comment.mode == 1 || comment.mode == 2 ||
+                               comment.mode == 3 || comment.mode == 6;
+        if (!scrolling && comment.mode != 4 && comment.mode != 5) {
+            ++skippedUnsupported;
+            continue;
+        }
+        if ((scrolling && options.hideScroll) ||
             (comment.mode == 5 && options.hideTop) ||
             (comment.mode == 4 && options.hideBottom)) {
             ++skippedByMode;
             continue;
         }
 
-        const QString assText = escapeAssText(comment.text);
+        QString text = comment.text;
+        text.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+        text.replace(QLatin1Char('\r'), QLatin1Char('\n'));
+        const QString assText = escapeAssText(text);
         const double widthScale = commentScale(comment.fontLevel);
         const int fontSize = std::max(
             18, static_cast<int>(std::lround(baseFontSize * widthScale)));
         const QFontMetricsF metrics = metricsForSize(fontSize);
-        const double textWidth = std::max(metrics.horizontalAdvance(comment.text),
-                                          static_cast<double>(fontSize));
+        const QStringList lines = text.split(QLatin1Char('\n'));
+        double textWidth = fontSize;
+        for (const QString &line : lines) {
+            textWidth = std::max(textWidth, metrics.horizontalAdvance(line));
+        }
+        textWidth += textPadding;
+        const double textHeight = metrics.height() +
+            (lines.size() - 1) * metrics.lineSpacing() + textPadding;
+        const int span = std::max(1, static_cast<int>(std::ceil(textHeight / lineHeight)));
+        if (span > laneCount) {
+            ++skippedByOverload;
+            continue;
+        }
         const qint64 startMs = std::max<qint64>(0, comment.timeMs + options.offsetMs);
 
         if (comment.mode == 5 || comment.mode == 4) {
@@ -352,36 +376,39 @@ QString DanmakuAssComposer::composeAss(const QList<DanmakuComment> &comments,
                                                          : bottomLaneAvailable;
             const qint64 durationMs = 4200;
             int laneIndex = 0;
-            qint64 bestAvailable = lanes[0];
-            for (int i = 0; i < lanes.size(); ++i) {
-                if (lanes[i] <= startMs) {
-                    laneIndex = i;
-                    break;
+            qint64 bestAvailable = std::numeric_limits<qint64>::max();
+            for (int i = 0; i <= lanes.size() - span; ++i) {
+                qint64 available = startMs;
+                for (int row = i; row < i + span; ++row) {
+                    available = std::max(available, lanes[row]);
                 }
-                if (lanes[i] < bestAvailable) {
-                    bestAvailable = lanes[i];
+                if (available < bestAvailable) {
+                    bestAvailable = available;
                     laneIndex = i;
                 }
+                if (available <= startMs) break;
             }
 
-            const qint64 actualStartMs = std::max(startMs, lanes[laneIndex]);
+            const qint64 actualStartMs = bestAvailable;
             if (actualStartMs - startMs > kMaxStaticQueueDelayMs) {
                 ++skippedByOverload;
                 continue;
             }
             const qint64 endMs = actualStartMs + durationMs;
-            lanes[laneIndex] = endMs;
+            for (int row = laneIndex; row < laneIndex + span; ++row) {
+                lanes[row] = endMs;
+            }
 
             const int y = (comment.mode == 5)
                               ? (kTopMargin + laneIndex * lineHeight)
                               : (kPlayResY - kBottomMargin -
                                  laneIndex * lineHeight);
-            dialogueLines.append(eventForStatic(
+            dialogueLines.append({actualStartMs, eventForStatic(
                 comment.mode == 5 ? QStringLiteral("DanmakuTop")
                                   : QStringLiteral("DanmakuBottom"),
                 actualStartMs, endMs, y, fontSize, fontWeight, comment.color,
                 alpha,
-                assText));
+                assText)});
             if (comment.mode == 5) {
                 ++renderedTop;
             } else {
@@ -392,47 +419,65 @@ QString DanmakuAssComposer::composeAss(const QList<DanmakuComment> &comments,
 
         const int textWidthPixels =
             std::max(1, static_cast<int>(std::ceil(textWidth)));
-        const int startX = kPlayResX + kScrollStartPadding;
-        const int endX = -textWidthPixels - kScrollEndPadding;
-        const double totalDistance = static_cast<double>(startX - endX);
-        const qint64 durationMs = qBound<qint64>(
-            kMinScrollDurationMs,
-            static_cast<qint64>(std::llround(totalDistance / scrollPixelsPerMs)),
-            kMaxScrollDurationMs);
+        const bool reverse = comment.mode == 6;
+        const int startX = reverse ? -textWidthPixels - kScrollStartPadding
+                                   : kPlayResX + kScrollStartPadding;
+        const int endX = reverse ? kPlayResX + kScrollEndPadding
+                                 : -textWidthPixels - kScrollEndPadding;
+        const double totalDistance = std::abs(static_cast<double>(endX) - startX);
+        
+        
+        const qint64 durationMs = std::max<qint64>(
+            10, static_cast<qint64>(std::llround(totalDistance / scrollPixelsPerMs)));
         const qint64 laneGapMs =
             static_cast<qint64>(std::ceil((textWidthPixels + kScrollLaneGapPadding) /
                                           scrollPixelsPerMs));
 
         int laneIndex = 0;
-        qint64 bestAvailable = scrollLaneAvailable[0];
-        for (int i = 0; i < scrollLaneAvailable.size(); ++i) {
-            if (scrollLaneAvailable[i] <= startMs) {
+        const auto laneAvailable = [&](int index) {
+            
+            qint64 available = startMs;
+            for (int row = index; row < index + span; ++row) {
+                available = std::max(available, scrollLaneReverse[row] == reverse
+                    ? scrollLaneAvailable[row] : scrollLaneEnd[row]);
+            }
+            return available;
+        };
+        qint64 bestAvailable = laneAvailable(0);
+        for (int i = 0; i <= scrollLaneAvailable.size() - span; ++i) {
+            const qint64 available = laneAvailable(i);
+            if (available <= startMs) {
                 laneIndex = i;
                 break;
             }
-            if (scrollLaneAvailable[i] < bestAvailable) {
-                bestAvailable = scrollLaneAvailable[i];
+            if (available < bestAvailable) {
+                bestAvailable = available;
                 laneIndex = i;
             }
         }
 
-        const qint64 actualStartMs = std::max(startMs, scrollLaneAvailable[laneIndex]);
-        const qint64 maxQueueDelayMs = std::max<qint64>(
-            300,
-            static_cast<qint64>(std::lround(durationMs * kMaxScrollQueueDelayRatio)));
+        const qint64 actualStartMs = std::max(startMs, laneAvailable(laneIndex));
+        const qint64 maxQueueDelayMs = std::clamp<qint64>(
+            static_cast<qint64>(std::llround(durationMs * kMaxScrollQueueDelayRatio)),
+            300, kMaxScrollQueueDelayMs);
         if (actualStartMs - startMs > maxQueueDelayMs) {
             ++skippedByOverload;
             continue;
         }
         const qint64 endMs = actualStartMs + durationMs;
-        scrollLaneAvailable[laneIndex] = actualStartMs + laneGapMs;
+        for (int row = laneIndex; row < laneIndex + span; ++row) {
+            scrollLaneAvailable[row] = actualStartMs + laneGapMs;
+            scrollLaneEnd[row] = endMs;
+            scrollLaneReverse[row] = reverse;
+        }
 
         const int y = kTopMargin + laneIndex * lineHeight;
-        dialogueLines.append(eventForScroll(actualStartMs, endMs, y, startX, endX,
+        dialogueLines.append({actualStartMs, eventForScroll(actualStartMs, endMs, y, startX, endX,
                                             fontSize, fontWeight, comment.color,
                                             alpha,
-                                            assText));
+                                            assText)});
         ++renderedScroll;
+        if (reverse) ++renderedReverse;
     }
 
     QString ass;
@@ -469,8 +514,11 @@ QString DanmakuAssComposer::composeAss(const QList<DanmakuComment> &comments,
 
     stream << "[Events]\n";
     stream << "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n";
-    for (const QString &line : std::as_const(dialogueLines)) {
-        stream << line << '\n';
+    std::stable_sort(dialogueLines.begin(), dialogueLines.end(), [](const auto &a, const auto &b) {
+        return a.first < b.first;
+    });
+    for (const auto &line : std::as_const(dialogueLines)) {
+        stream << line.second << '\n';
     }
 
     const int renderedTotal = renderedScroll + renderedTop + renderedBottom;
@@ -479,11 +527,13 @@ QString DanmakuAssComposer::composeAss(const QList<DanmakuComment> &comments,
         << "| inputCount:" << sortedComments.size()
         << "| renderedCount:" << renderedTotal
         << "| scroll:" << renderedScroll
+        << "| reverse:" << renderedReverse
         << "| top:" << renderedTop
         << "| bottom:" << renderedBottom
         << "| droppedInvalid:" << skippedInvalid
         << "| droppedBlocked:" << skippedBlocked
         << "| droppedModeFiltered:" << skippedByMode
+        << "| droppedUnsupported:" << skippedUnsupported
         << "| droppedQueueOverflow:" << skippedByOverload
         << "| laneCount:" << laneCount
         << "| coordScale:" << kAssCoordScale

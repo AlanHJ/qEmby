@@ -6,6 +6,7 @@
 #include <QFont>
 #include <QFontMetrics>
 #include <QScrollBar>
+#include <QTimer>
 
 namespace {
 
@@ -114,6 +115,10 @@ void ModernScrollPanel::addItem(const QString &text, const QVariant &userData, b
     pixmap.fill(Qt::transparent);
 
     if (isSelected) {
+        
+        if (!m_selectedItem) {
+            m_selectedItem = btn;
+        }
         QPainter painter(&pixmap);
         painter.setRenderHint(QPainter::Antialiasing);
         painter.setPen(QColor(255, 255, 255, 255));
@@ -200,6 +205,26 @@ void ModernScrollPanel::finalizeLayout(int maxHeight, int maxWidth) {
     
     m_scrollArea->setFixedSize(finalWidth, finalHeight);
     this->setFixedSize(finalWidth, finalHeight);
+}
+
+void ModernScrollPanel::showEvent(QShowEvent *event) {
+    QFrame::showEvent(event);
+
+    
+    
+    QTimer::singleShot(0, this, [this]() {
+        if (!isVisible() || !m_selectedItem) {
+            return;
+        }
+
+        m_mainLayout->activate();
+        m_layout->activate();
+        const int itemCenter =
+            m_selectedItem->mapTo(m_container, m_selectedItem->rect().center()).y();
+        auto *scrollBar = m_scrollArea->verticalScrollBar();
+        
+        scrollBar->setValue(itemCenter - m_scrollArea->viewport()->height() / 2);
+    });
 }
 
 void ModernScrollPanel::wheelEvent(QWheelEvent *event) {

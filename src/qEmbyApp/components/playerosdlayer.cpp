@@ -1,4 +1,5 @@
 #include "playerosdlayer.h"
+#include "danmakuheatmapwidget.h"
 #include <QAbstractAnimation>
 #include <QGraphicsOpacityEffect>
 #include <QIcon>
@@ -12,6 +13,7 @@
 namespace
 {
 constexpr int kSeekLineHeight = 4;
+constexpr int kSeekHeatmapHeight = 28;
 constexpr int kSeekLabelMinWidth = 80;
 constexpr int kSeekLabelMaxWidth = 148;
 constexpr int kSeekLabelHeight = 28;
@@ -69,6 +71,10 @@ PlayerOsdLayer::PlayerOsdLayer(QWidget *parent)
     m_seekLine->setTextVisible(false);
     m_seekLine->setFixedHeight(kSeekLineHeight);
 
+    m_seekHeatmap = new DanmakuHeatmapWidget(m_container);
+    m_seekHeatmap->setObjectName(QStringLiteral("osdSeekHeatmap"));
+    m_seekHeatmap->hide();
+
     
     m_seekTimeLabel = new QLabel(m_container);
     m_seekTimeLabel->setObjectName("osdSeekTimeLabel");
@@ -103,11 +109,19 @@ PlayerOsdLayer::PlayerOsdLayer(QWidget *parent)
     m_volumeLabel->setAlignment(Qt::AlignCenter);
 }
 
+void PlayerOsdLayer::setSeekHeatmap(const QPainterPath &path)
+{
+    m_hasSeekHeatmap = !path.isEmpty();
+    m_seekHeatmap->setHeatmapPath(path);
+    m_seekHeatmap->setVisible(m_hasSeekHeatmap && !m_seekLine->isHidden());
+}
+
 void PlayerOsdLayer::showSeek(double position, double duration, const QString &timeText)
 {
     fadeIn();
 
     m_seekLine->show();
+    m_seekHeatmap->setVisible(m_hasSeekHeatmap);
     m_seekTimeLabel->show();
     m_seekStem->show();
     m_seekMarker->show();
@@ -138,6 +152,7 @@ void PlayerOsdLayer::showVolume(int volumePercent, const QString &text, bool mut
     fadeIn();
 
     m_seekLine->hide();
+    m_seekHeatmap->hide();
     m_seekTimeLabel->hide();
     m_seekStem->hide();
     m_seekMarker->hide();
@@ -202,6 +217,9 @@ void PlayerOsdLayer::updateGeometry(int parentWidth, int parentHeight)
 
     m_container->setGeometry(0, 0, parentWidth, parentHeight);
     m_seekLine->setGeometry(0, parentHeight - kSeekLineHeight, parentWidth, kSeekLineHeight);
+    const int waveHeight = qMin(kSeekHeatmapHeight, qMax(0, parentHeight - kSeekLineHeight));
+    m_seekHeatmap->setGeometry(0, qMax(0, parentHeight - kSeekLineHeight - waveHeight),
+                              parentWidth, waveHeight);
     updateSeekLayout();
     updateVolumeLayout();
 }

@@ -2,6 +2,7 @@
 #define PLAYEROSDLAYER_H
 
 #include <QObject>
+#include <QPainterPath>
 
 class QWidget;
 class QLabel;
@@ -9,6 +10,7 @@ class QProgressBar;
 class QGraphicsOpacityEffect;
 class QPropertyAnimation;
 class QTimer;
+class DanmakuHeatmapWidget;
 
 
 class PlayerOsdLayer : public QObject
@@ -19,6 +21,8 @@ public:
 
     
     void showSeek(double position, double duration, const QString &timeText);
+
+    void setSeekHeatmap(const QPainterPath &path);
 
     
     void showVolume(int volumePercent, const QString &text, bool muted);
@@ -55,6 +59,8 @@ private:
 
     QWidget *m_container = nullptr;
     QProgressBar *m_seekLine = nullptr;
+    DanmakuHeatmapWidget *m_seekHeatmap = nullptr;
+    bool m_hasSeekHeatmap = false;
     QLabel *m_seekTimeLabel = nullptr;
     QWidget *m_seekStem = nullptr;
     QWidget *m_seekMarker = nullptr;

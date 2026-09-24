@@ -1,8 +1,10 @@
 #include "embywebsocket.h"
 #include "proxymanager.h"
+#include "useragentmanager.h"
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkProxy>
+#include <QNetworkRequest>
 #include <QStringList>
 #include <QUrl>
 #include <QDebug>
@@ -38,6 +40,15 @@ EmbyWebSocket::EmbyWebSocket(const ServerProfile& profile, QObject* parent)
                     qInfo() << "[EmbyWebSocket] proxy changed → reconnect"
                             << "| profileId:" << m_profile.id;
                     
+                    m_intentionalDisconnect = false;
+                    m_socket->close();
+                }
+            });
+    connect(UserAgentManager::instance(),
+            &UserAgentManager::userAgentChanged, this, [this]() {
+                if (m_socket->state() != QAbstractSocket::UnconnectedState) {
+                    qInfo() << "[EmbyWebSocket] User-Agent changed → reconnect"
+                            << "| profileId:" << m_profile.id;
                     m_intentionalDisconnect = false;
                     m_socket->close();
                 }
@@ -85,7 +96,9 @@ void EmbyWebSocket::connectToServer()
         qWarning() << "[EmbyWebSocket] SSL certificate verification is DISABLED"
                    << "| url:" << url;
     }
-    m_socket->open(QUrl(url));
+    QNetworkRequest request{QUrl(url)};
+    UserAgentManager::instance()->applyToRequest(request, m_profile.id);
+    m_socket->open(request);
 }
 
 void EmbyWebSocket::disconnectFromServer()
@@ -220,7 +233,9 @@ void EmbyWebSocket::attemptReconnect()
     
     m_socket->setProxy(
         ProxyManager::instance()->resolveForServer(m_profile));
-    m_socket->open(QUrl(url));
+    QNetworkRequest request{QUrl(url)};
+    UserAgentManager::instance()->applyToRequest(request, m_profile.id);
+    m_socket->open(request);
 }
 
 

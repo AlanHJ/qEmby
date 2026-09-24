@@ -8,6 +8,7 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include "api/useragentmanager.h"
 #include <QPointer>
 #include <QTcpServer>
 #include <QTcpSocket>
@@ -240,6 +241,7 @@ void MpvHttpStreamRelay::processRequest(QTcpSocket *socket, const QByteArray &re
         return;
     }
     it->headOnly = method == "HEAD";
+    UserAgentManager::instance()->applyToRequest(request, m_serverId);
     it->reply = it->headOnly ? m_network->head(request) : m_network->get(request);
     it->reply->setReadBufferSize(kReplyReadBufferBytes);
 

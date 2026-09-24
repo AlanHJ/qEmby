@@ -66,6 +66,8 @@ private:
                                   const QString& streamUrl, long long startPositionTicks,
                                   const QVariant& extraData);
 
+    void closeIndependentWindow();
+
     
     
     static PlayerType identifyPlayerType(const QString& playerPath);

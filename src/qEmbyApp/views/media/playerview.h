@@ -35,6 +35,8 @@ class PlayerOsdLayer;
 class PlayerLongPressHandler;
 class PlayerStatisticsOverlay;
 class NativeDanmakuOverlay;
+class DanmakuProgressSlider;
+class QVBoxLayout;
 
 class PlayerView : public BaseView {
     Q_OBJECT
@@ -198,6 +200,7 @@ private:
     
     QWidget *m_topHUD;
     QWidget *m_bottomHUD;
+    QVBoxLayout *m_bottomControlsLayout = nullptr;
     PlayerStatisticsOverlay *m_statisticsOverlay;
     LoadingOverlay *m_loadingOverlay; 
 
@@ -231,7 +234,7 @@ private:
 
     
     QLabel *m_currentTimeLabel;
-    ModernSlider *m_progressSlider;
+    DanmakuProgressSlider *m_progressSlider = nullptr;
     QLabel *m_totalTimeLabel;
 
     

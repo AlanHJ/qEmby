@@ -26,6 +26,7 @@ QMap<QString, QString> ApiClient::getAuthHeaders() const {
 NetworkRequestOptions ApiClient::requestOptions() const {
     NetworkRequestOptions options;
     options.ignoreSslErrors = m_profile.ignoreSslVerification;
+    options.userAgentServerId = m_profile.id;
     return options;
 }
 

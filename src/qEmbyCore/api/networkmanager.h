@@ -18,6 +18,8 @@
 struct NetworkRequestOptions {
     bool ignoreSslErrors = false;
     int timeoutMs = 0;
+    
+    QString userAgentServerId;
 };
 
 struct NetworkJsonGetRequest {

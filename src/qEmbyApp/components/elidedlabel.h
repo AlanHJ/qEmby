@@ -17,6 +17,9 @@ public:
     
     QString fullText() const { return m_fullText; }
 
+signals:
+    void elisionChanged(bool elided);
+
 protected:
     void resizeEvent(QResizeEvent* event) override;
     QSize sizeHint() const override;

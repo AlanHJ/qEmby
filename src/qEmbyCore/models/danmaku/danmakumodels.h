@@ -166,14 +166,14 @@ Q_DECLARE_METATYPE(DanmakuComment)
 
 struct QEMBYCORE_EXPORT DanmakuRenderOptions {
     bool enabled = true;
-    double opacity = 0.72;
+    double opacity = 0.8;
     double fontScale = 1.0;
-    int fontWeight = 400;
+    int fontWeight = 500;
     double outlineSize = 3.0;
-    double shadowOffset = 1.0;
-    int areaPercent = 70;
+    double shadowOffset = 0.8;
+    int areaPercent = 35;
     int density = 100;
-    double speedScale = 0.5;
+    double speedScale = 1.0;
     int offsetMs = 0;
     bool hideScroll = false;
     bool hideTop = false;

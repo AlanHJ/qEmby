@@ -21,6 +21,7 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include "api/useragentmanager.h"
 #include <QPointer>
 #include <QProcess>
 #include <QRegularExpression>
@@ -1163,6 +1164,7 @@ QCoro::Task<void> DownloadManager::startDownload(
     }
 
     QNetworkRequest request{QUrl(downloadUrl)};
+    UserAgentManager::instance()->applyToRequest(request, profile.id);
     request.setAttribute(QNetworkRequest::Http2AllowedAttribute, true);
     if (resumeOffset > 0) {
         request.setRawHeader(

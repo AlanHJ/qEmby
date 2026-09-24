@@ -7,6 +7,10 @@
 namespace ImageUtils {
 
 
+QPixmap scaledCoverPixmap(const QPixmap& source, const QSize& logicalSize,
+                          qreal devicePixelRatio);
+
+
 
 
 

@@ -11,6 +11,7 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include "api/useragentmanager.h"
 #include <QRegularExpression>
 #include <QStringList>
 #include <QVersionNumber>
@@ -114,6 +115,7 @@ void UpdateManager::checkForUpdates(CheckMode mode)
     request.setHeader(QNetworkRequest::UserAgentHeader,
                       QStringLiteral("qEmby/%1")
                           .arg(QCoreApplication::applicationVersion()));
+    UserAgentManager::instance()->applyToRequest(request);
     request.setRawHeader("Accept", "application/vnd.github+json");
     request.setRawHeader("X-GitHub-Api-Version", "2026-03-10");
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,

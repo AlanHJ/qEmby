@@ -10,6 +10,8 @@
 #include <QList>
 #include <QWheelEvent>
 #include <QPaintEvent>
+#include <QPointer>
+#include <QShowEvent>
 
 class ModernScrollPanel : public QFrame {
     Q_OBJECT
@@ -27,6 +29,7 @@ signals:
     void itemTriggered(const QVariant &userData, const QString &text);
 
 protected:
+    void showEvent(QShowEvent *event) override;
     void paintEvent(QPaintEvent *event) override;
     void wheelEvent(QWheelEvent *event) override;
 
@@ -43,6 +46,7 @@ private:
     QVBoxLayout *m_layout;
 
     QList<MenuItem> m_items;
+    QPointer<QPushButton> m_selectedItem;
     int m_maxContentWidth; 
 };
 

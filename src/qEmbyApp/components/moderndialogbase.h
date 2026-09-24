@@ -7,6 +7,7 @@
 class QVBoxLayout;
 class QLabel;
 class QWidget;
+class QShowEvent;
 
 class ModernDialogBase : public QDialog {
     Q_OBJECT
@@ -15,7 +16,11 @@ public:
                               bool disableNativeTransitions = false);
     void setTitle(const QString &title);
 
+public slots:
+    int exec() override;
+
 protected:
+    void showEvent(QShowEvent *event) override;
     
     QVBoxLayout* contentLayout() const { return m_contentLayout; }
 

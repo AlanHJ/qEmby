@@ -21,9 +21,9 @@ public:
     
 
     
-    QCoro::Task<ServerProfile> login(const QString& serverUrl,
-                                     const QString& username,
-                                     const QString& password,
+    QCoro::Task<ServerProfile> login(QString serverUrl,
+                                     QString username,
+                                     QString password,
                                      bool ignoreSslVerification);
 
     

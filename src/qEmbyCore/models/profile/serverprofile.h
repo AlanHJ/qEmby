@@ -2,6 +2,7 @@
 #define SERVERPROFILE_H
 
 #include "proxyconfig.h"
+#include "useragentconfig.h"
 #include <QString>
 #include <QUuid>
 
@@ -29,6 +30,10 @@ struct ServerProfile {
     
     bool useGlobalProxy = false;
     ProxyConfig proxy;
+
+    
+    bool useGlobalUserAgent = false;
+    UserAgentConfig userAgent;
 
     bool isValid() const { return !accessToken.isEmpty(); }
 };

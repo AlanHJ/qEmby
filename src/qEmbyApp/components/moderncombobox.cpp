@@ -1,18 +1,22 @@
 #include "moderncombobox.h"
 #include <QAbstractItemView>
 #include <QApplication>
+#include <QDebug>
 #include <QEvent>
 #include <QFontMetrics>
 #include <QFrame>
 #include <QKeyEvent>
+#include <QListView>
 #include <QListWidget>
 #include <QPainter>
+#include <QScreen>
 #include <QScrollBar>
 #include <QShortcut>
 #include <QStyleOption>
 #include <QStyleOptionComboBox>
 #include <QStyleOptionViewItem>
 #include <QStylePainter>
+#include <QTimer>
 #include <QVBoxLayout>
 
 namespace {
@@ -23,14 +27,6 @@ constexpr int kArrowWidth = 32;
 
 
 constexpr int kModernComboMinItemHeight = 36;
-
-constexpr auto kPopupEdgeFixMarker = "/* modern-combobox-popup-edge-fix */";
-constexpr auto kPopupEdgeFixQss = R"(
-/* modern-combobox-popup-edge-fix */
-QAbstractItemView QScrollBar:vertical {
-  margin: 0px;
-}
-)";
 
 } 
 
@@ -126,21 +122,93 @@ void ModernComboBox::showPopup() {
   polishPopupView();
   QComboBox::showPopup();
 
+  adjustPopupGeometry();
+  
+  QTimer::singleShot(0, this, &ModernComboBox::adjustPopupGeometry);
+}
+
+void ModernComboBox::adjustPopupGeometry() {
   auto *popupView = view();
-  QWidget *popupContainer = popupView ? popupView->window() : nullptr;
-  if (!popupView || !popupContainer) {
+  auto *popupContainer = popupView ? popupView->window() : nullptr;
+  if (!popupView || !popupContainer || popupContainer == window() ||
+      !popupContainer->isVisible() || m_embeddedPopup || count() == 0) {
+    return;
+  }
+
+  if (auto *popupLayout = popupContainer->layout()) {
+    popupLayout->activate();
+  }
+  popupView->doItemsLayout();
+
+  
+  
+  const auto *listView = qobject_cast<QListView *>(popupView);
+  const int spacing = listView ? listView->spacing() : 0;
+  int contentHeight = 0;
+  int visibleRows = 0;
+  bool hasMoreRows = false;
+  for (int row = 0; row < count(); ++row) {
+    if (listView && listView->isRowHidden(row)) {
+      continue;
+    }
+    if (visibleRows >= maxVisibleItems()) {
+      hasMoreRows = true;
+      break;
+    }
+    const QModelIndex index = model()->index(row, modelColumn(), rootModelIndex());
+    const int itemHeight = qMax(popupView->sizeHintForIndex(index).height(),
+                               popupView->visualRect(index).height());
+    contentHeight += qMax(0, itemHeight) + 2 * spacing;
+    ++visibleRows;
+  }
+  if (visibleRows == 0) {
     return;
   }
 
   
-  
-  auto *vScrollBar = popupView->verticalScrollBar();
-  if (vScrollBar && vScrollBar->isVisible()) {
-    const int targetWidth = qMax(popupContainer->width(),
-                                 width() + vScrollBar->sizeHint().width());
-    if (targetWidth > popupContainer->width()) {
-      popupContainer->resize(targetWidth, popupContainer->height());
+  const int frameHeight = popupContainer->height() - popupView->viewport()->height();
+  const int desiredHeight = contentHeight + qMax(0, frameHeight);
+  QRect target = popupContainer->geometry();
+  const QRect original = target;
+  target.setHeight(desiredHeight);
+
+  if (const QScreen *popupScreen = screen()) {
+    const QRect available = popupScreen->availableGeometry();
+    const int aboveY = mapToGlobal(QPoint(0, 0)).y();
+    const int belowY = mapToGlobal(QPoint(0, height())).y();
+    const int aboveSpace = qMax(0, aboveY - available.top());
+    const int belowSpace = qMax(0, available.bottom() + 1 - belowY);
+    bool openAbove = original.bottom() < aboveY;
+    if ((openAbove ? aboveSpace : belowSpace) < desiredHeight) {
+      openAbove = aboveSpace > belowSpace;
     }
+    target.setHeight(qMin(desiredHeight, openAbove ? aboveSpace : belowSpace));
+    target.moveTop(openAbove ? aboveY - target.height() : belowY);
+    target.moveTop(qBound(available.top(), target.top(),
+                          available.bottom() + 1 - target.height()));
+
+    
+    if (hasMoreRows || target.height() < desiredHeight) {
+      target.setWidth(qMax(target.width(),
+                           width() + popupView->verticalScrollBar()->sizeHint().width()));
+    }
+    target.setWidth(qMin(target.width(), available.width()));
+    target.moveLeft(qBound(available.left(), target.left(),
+                           available.right() + 1 - target.width()));
+  }
+
+  if (target != original) {
+    popupContainer->setGeometry(target);
+    if (auto *popupLayout = popupContainer->layout()) {
+      popupLayout->activate();
+    }
+    popupView->doItemsLayout();
+    popupView->scrollTo(popupView->currentIndex(), QAbstractItemView::EnsureVisible);
+    qDebug() << "ModernComboBox popup geometry corrected"
+             << "rows=" << count() << "visibleRows=" << visibleRows
+             << "contentHeight=" << contentHeight << "frameHeight=" << frameHeight
+             << "before=" << original << "after=" << popupContainer->geometry()
+             << "viewportHeight=" << popupView->viewport()->height();
   }
 }
 
@@ -328,14 +396,25 @@ void ModernComboBox::polishPopupView() {
   popupView->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
   popupView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 
-  QString popupStyleSheet = popupView->styleSheet();
-  if (!popupStyleSheet.contains(QLatin1String(kPopupEdgeFixMarker))) {
-    if (!popupStyleSheet.isEmpty() && !popupStyleSheet.endsWith(QLatin1Char('\n'))) {
-      popupStyleSheet += QLatin1Char('\n');
-    }
-    popupStyleSheet += QLatin1String(kPopupEdgeFixQss);
-    popupView->setStyleSheet(popupStyleSheet);
+  
+  popupView->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+
+  
+  
+  auto *popupContainer = qobject_cast<QFrame *>(popupView->window());
+  if (popupContainer && popupContainer != window()) {
+    popupContainer->setObjectName(QStringLiteral("modernComboPopupContainer"));
+    popupContainer->setAttribute(Qt::WA_TranslucentBackground);
+    popupContainer->ensurePolished();
+    popupContainer->setFrameStyle(QFrame::NoFrame);
   }
+
+  
+  
+  
+  popupView->ensurePolished();
+  popupView->viewport()->ensurePolished();
+  popupView->doItemsLayout();
 }
 
 

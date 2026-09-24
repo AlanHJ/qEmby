@@ -46,16 +46,19 @@ public:
 
     void setDanmakuEnabled(bool enabled);
     void setDanmakuVisible(bool visible);
+    void applyRenderSettings();
     void reload(const QString &manualKeyword = QString());
     void loadFromCandidate(DanmakuMatchCandidate candidate,
                            bool saveAsManualMatch = true);
     void loadLocalFile(QString filePath);
 
 signals:
+    void commentPayloadChanged(const QList<DanmakuComment> &comments);
     void stateChanged();
     void toastRequested(const QString &message);
 
 private:
+    void setCommentPayload(QList<DanmakuComment> comments);
     void launchTask(QCoro::Task<void> &&task);
     DanmakuMediaContext buildMediaContext(const PlayerLaunchContext &context) const;
     bool isDanmakuTrackMap(const QVariantMap &trackMap) const;
@@ -81,8 +84,10 @@ private:
     QPointer<QEmbyCore> m_core;
     QPointer<MpvWidget> m_mpvWidget;
     QPointer<NativeDanmakuOverlay> m_nativeDanmakuOverlay;
+    QVariant m_trackListNotification;
     PlayerLaunchContext m_launchContext;
     DanmakuMediaContext m_mediaContext;
+    DanmakuMatchCandidate m_activeCandidate;
     QString m_assFilePath;
     QString m_sourceTitle;
     QString m_sourceProvider;
@@ -99,6 +104,7 @@ private:
     bool m_loading = false;
     bool m_motionStabilityProfileApplied = false;
     bool m_nativePayloadDirty = false;
+    bool m_assRenderSettingsDirty = false;
     quint64 m_requestSerial = 0;
 };
 

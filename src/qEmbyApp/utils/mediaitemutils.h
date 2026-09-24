@@ -2,12 +2,15 @@
 #define MEDIAITEMUTILS_H
 
 #include <QString>
+#include <QCoreApplication>
 
 #include <models/media/mediaitem.h>
 
 class MediaItemUtils
 {
+    Q_DECLARE_TR_FUNCTIONS(MediaItemUtils)
 public:
+    static QStringList personBiographicalDetails(const MediaItem& item);
     static QString effectiveSeriesTitle(
         const MediaItem &item,
         const QString &fallbackSeriesName = QString());

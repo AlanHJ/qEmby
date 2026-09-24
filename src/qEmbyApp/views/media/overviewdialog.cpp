@@ -1,4 +1,5 @@
 #include "overviewdialog.h"
+#include "../../utils/mediaitemutils.h"
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QLabel>
@@ -11,8 +12,11 @@ OverviewDialog::OverviewDialog(QWidget *parent) : ModernDialogBase(parent) {
     setTitle(tr("作品简介"));
     resize(800, 450); 
 
+    
+    
+    contentLayout()->setContentsMargins(20, 10, 0, 20);
     auto* mainLayout = new QHBoxLayout();
-    mainLayout->setContentsMargins(10, 10, 10, 10);
+    mainLayout->setContentsMargins(10, 10, 0, 10);
     mainLayout->setSpacing(30);
 
     
@@ -36,6 +40,7 @@ OverviewDialog::OverviewDialog(QWidget *parent) : ModernDialogBase(parent) {
     m_titleLabel = new QLabel(this);
     m_titleLabel->setObjectName("overview-title"); 
     m_titleLabel->setWordWrap(true);
+    m_titleLabel->setContentsMargins(0, 0, 30, 0);
 
     
     auto* scrollArea = new QScrollArea(this);
@@ -47,7 +52,7 @@ OverviewDialog::OverviewDialog(QWidget *parent) : ModernDialogBase(parent) {
     auto* scrollContent = new QWidget(scrollArea);
     scrollContent->setObjectName("overview-scroll-content");
     auto* scrollLayout = new QVBoxLayout(scrollContent);
-    scrollLayout->setContentsMargins(0, 0, 15, 0);
+    scrollLayout->setContentsMargins(0, 0, 45, 0);
 
     m_overviewLabel = new QLabel(scrollContent);
     m_overviewLabel->setObjectName("overview-text"); 
@@ -67,6 +72,7 @@ OverviewDialog::OverviewDialog(QWidget *parent) : ModernDialogBase(parent) {
 }
 
 void OverviewDialog::setMediaItem(const MediaItem& item, const QPixmap& posterPix) {
+    m_posterLabel->setVisible(!posterPix.isNull());
     if (!posterPix.isNull()) {
         m_posterLabel->setPixmap(posterPix);
     }
@@ -83,6 +89,14 @@ void OverviewDialog::setMediaItem(const MediaItem& item, const QPixmap& posterPi
     html.replace(QRegularExpression("<br\\s*/?>\\n", QRegularExpression::CaseInsensitiveOption), "<br>");
     
     html.replace("\n", "<br>");
+
+    
+    const QStringList details = MediaItemUtils::personBiographicalDetails(item);
+    if (!details.isEmpty()) {
+        QString metadata = details.join(QLatin1Char('\n')).toHtmlEscaped();
+        metadata.replace(QLatin1Char('\n'), QStringLiteral("<br>"));
+        html.prepend(QStringLiteral("<p>%1</p>").arg(metadata));
+    }
 
     
     m_overviewLabel->setTextFormat(Qt::RichText);

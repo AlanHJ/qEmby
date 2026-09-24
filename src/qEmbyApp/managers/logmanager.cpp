@@ -102,7 +102,9 @@ void LogManager::setupSpdlog() {
         std::make_shared<spdlog::logger>(kLoggerName, fileSink);
     logger->set_level(spdlog::level::debug);
     logger->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] %v");
-    logger->flush_on(spdlog::level::warn); 
+    
+    
+    logger->flush_on(spdlog::level::info);
 
     spdlog::register_logger(logger);
 

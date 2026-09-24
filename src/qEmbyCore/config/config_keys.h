@@ -55,6 +55,8 @@ constexpr const char* ProxyPort             = "network/proxy_port";
 constexpr const char* ProxyUsername         = "network/proxy_username";
 constexpr const char* ProxyPassword         = "network/proxy_password";
 constexpr const char* ProxyBypassLocalhost  = "network/proxy_bypass_local";
+constexpr const char* UserAgentEnabled      = "network/user_agent_enabled";
+constexpr const char* UserAgentValue        = "network/user_agent_value";
 
 
 
@@ -87,6 +89,8 @@ constexpr const char* CompletedWatchingRequestLimit =
     "library/completed_watching_request_limit";
 constexpr const char* ShowMediaLibraries = "library/show_media_libraries";
 constexpr const char* ShowEachLibrary = "library/show_each_library";
+
+constexpr const char* HiddenHomeLibraries = "library/hidden_home_libraries";
 constexpr const char* ShowFavoriteFolders = "library/show_favorite_folders";
 constexpr const char* CustomHomeSectionOrderEnabled =
     "library/custom_home_section_order_enabled";
@@ -100,6 +104,7 @@ constexpr const char* ShowMediaTooltips = "library/show_media_tooltips";
 constexpr const char* LibrarySortIndex = "sort/index";
 constexpr const char* LibrarySortDescending = "sort/descending";
 constexpr const char* LibraryViewMode = "view/mode";
+constexpr const char* LibraryTabIndex = "tab/index";
 
 
 constexpr const char* CategoryViewMode = "view/mode";
@@ -119,6 +124,7 @@ constexpr const char* PlayerVideoSync = "player/video_sync";
 constexpr const char* PlayerDefaultScale = "player/default_scale";
 constexpr const char* PlayerAudioLang = "player/audio_lang";
 constexpr const char* PlayerSubLang = "player/sub_lang";
+constexpr const char* PlayerHideSubtitles = "player/hide_subtitles";
 constexpr const char* PlayerPreferredVersion = "player/preferred_version";
 
 constexpr const char* PlayerSelectedMediaSource = "player/selected_media_source";

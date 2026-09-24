@@ -855,8 +855,8 @@ QLabel#app-version-label {
     letter-spacing: 0.5px;
 }
 
-/* ── 登录页：端口框右侧的代理图标按钮（与 QLineEdit 同款视觉与尺寸） ── */
-QWidget#login-add-page QPushButton#login-proxy-icon-btn {
+/* ── 登录页：端口框右侧的网络设置按钮（与 QLineEdit 同款视觉与尺寸） ── */
+QWidget#login-add-page QPushButton#login-network-icon-btn {
     background-color: #FFFFFF;
     border: 1px solid #CBD5E1;
     border-radius: 8px;
@@ -865,12 +865,12 @@ QWidget#login-add-page QPushButton#login-proxy-icon-btn {
     min-width: 24px;
 }
 
-QWidget#login-add-page QPushButton#login-proxy-icon-btn:hover {
+QWidget#login-add-page QPushButton#login-network-icon-btn:hover {
     background-color: #F8FAFC;
     border-color: #94A3B8;
 }
 
-QWidget#login-add-page QPushButton#login-proxy-icon-btn:pressed {
+QWidget#login-add-page QPushButton#login-network-icon-btn:pressed {
     background-color: #EFF6FF;
     border-color: #3B82F6;
 }
@@ -1016,6 +1016,10 @@ QWidget[playerDialogSurface="true"] {
 QWidget#dialog-titlebar {
     background-color: transparent;
     min-height: 34px;
+}
+
+QWidget#dialog-titlebar[standaloneDialogTitleBar=true] {
+    border-bottom: 1px solid #E5E7EB;
 }
 
 QLabel#dialog-title {
@@ -2805,6 +2809,13 @@ QWidget#playerMediaSwitcherEpisodeGallery {
     /* 纯白小巧圆滑块 */
 }
 
+/* 弹幕密度波浪图：保留底部滑轨，上方显示半透明峰谷。 */
+DanmakuProgressSlider#playerSlider {
+    min-height: 40px;
+    max-height: 40px;
+    qproperty-heatmapColor: rgba(255, 255, 255, 72);
+}
+
 /* ========== 浅色模式：沉浸式流选项卡 (Immersive Stream Selector) ========== */
 
 QPushButton#immersive-stream-btn {
@@ -2971,6 +2982,11 @@ QToolTip {
 /* =========================================================
    Mini OSD 极简沉浸式反馈组件 (新增)
    ========================================================= */
+DanmakuHeatmapWidget#osdSeekHeatmap {
+    background: transparent;
+    qproperty-heatmapColor: rgba(255, 255, 255, 72);
+}
+
 QProgressBar#osdSeekLine {
     background-color: rgba(248, 250, 252, 38);
     border: none;
@@ -3607,6 +3623,22 @@ QLabel#SubtitleOptionSliderHint {
     qproperty-hoverTrackHeight: 8;
     qproperty-normalHandleRadius: 7;
     qproperty-activeHandleRadius: 9;
+}
+
+/* ModernComboBox 使用列表式弹出层，避免平台菜单模式的留白和滚动箭头。 */
+ModernComboBox {
+    combobox-popup: 0;
+}
+
+QFrame#modernComboPopupContainer {
+    background: transparent;
+    border: none;
+    padding: 0px;
+    margin: 0px;
+}
+
+ModernComboBox QAbstractItemView QScrollBar:vertical {
+    margin: 0px;
 }
 
 /* 7. Settings 内的下拉选择框 */
@@ -4829,7 +4861,7 @@ QLineEdit#PlaylistSearchEdit {
     font-size: 12px;
     font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
     padding: 4px 10px;
-    min-height: 28px;
+    min-height: 0px;
     max-height: 28px;
     selection-background-color: rgba(59, 130, 246, 0.20);
     selection-color: #1E293B;
@@ -6471,4 +6503,21 @@ QTableView#webdav-snapshot-table QHeaderView::section:last {
 QTableView#webdav-snapshot-table QTableCornerButton::section {
     background-color: #F8FAFC;
     border: none;
+}
+
+/* Per-library client home visibility action. */
+QLabel#sidebar-library-name {
+    color: #374151;
+    background: transparent;
+    font-size: 14px;
+    font-weight: 500;
+}
+QPushButton#sidebar-library-visibility {
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    padding: 0px;
+}
+QPushButton#sidebar-library-visibility:hover {
+    background-color: #D1D5DB;
 }

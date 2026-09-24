@@ -11,19 +11,30 @@ ServerManager::ServerManager(NetworkManager* nm, QObject* parent)
     loadSettings();
 }
 
-void ServerManager::addServer(const ServerProfile& profile) {
+ServerProfile ServerManager::addServer(const ServerProfile& profile) {
     
     for (int i = 0; i < m_servers.size(); ++i) {
         if (m_servers[i].url == profile.url && m_servers[i].userId == profile.userId) {
-            m_servers[i] = profile;
+            const ServerProfile previous = m_servers[i];
+            ServerProfile merged = profile;
+            merged.id = previous.id;
+            merged.useGlobalProxy = previous.useGlobalProxy;
+            merged.proxy = previous.proxy;
+            merged.useGlobalUserAgent = previous.useGlobalUserAgent;
+            merged.userAgent = previous.userAgent;
+            m_servers[i] = merged;
             saveSettings();
+            qInfo() << "[ServerManager] existing server profile refreshed"
+                    << "| id:" << merged.id
+                    << "| local network settings preserved";
             Q_EMIT serversChanged();
-            return;
+            return merged;
         }
     }
     m_servers.append(profile);
     saveSettings();
     Q_EMIT serversChanged();
+    return profile;
 }
 
 void ServerManager::removeServer(const QString& id) {
@@ -117,6 +128,47 @@ void ServerManager::updateServerProxy(const QString& id,
     }
 }
 
+void ServerManager::updateServerUserAgent(
+    const QString &id, const UserAgentConfig &userAgent,
+    bool useGlobalUserAgent) {
+    bool found = false;
+    bool isActive = false;
+    for (ServerProfile &profile : m_servers) {
+        if (profile.id != id) {
+            continue;
+        }
+        if (profile.userAgent == userAgent &&
+            profile.useGlobalUserAgent == useGlobalUserAgent) {
+            return;
+        }
+        profile.userAgent = userAgent;
+        profile.useGlobalUserAgent = useGlobalUserAgent;
+        if (m_activeProfile.id == id) {
+            m_activeProfile = profile;
+            m_activeClient = QSharedPointer<ApiClient>::create(profile, m_network);
+            isActive = true;
+        }
+        found = true;
+        break;
+    }
+    if (!found) {
+        qWarning() << "[ServerManager] updateServerUserAgent: server not found"
+                   << "| id:" << id;
+        return;
+    }
+    saveSettings();
+    qInfo() << "[ServerManager] User-Agent configuration updated"
+            << "| id:" << id
+            << "| useGlobal:" << useGlobalUserAgent
+            << "| enabled:" << userAgent.enabled
+            << "| hasValue:" << !userAgent.value.trimmed().isEmpty();
+    Q_EMIT serversChanged();
+    Q_EMIT serverUserAgentChanged(id);
+    if (isActive) {
+        Q_EMIT activeServerChanged(m_activeProfile);
+    }
+}
+
 
 
 
@@ -178,6 +230,8 @@ void ServerManager::saveSettings() {
         obj["iconBase64"] = p.iconBase64;
         obj["useGlobalProxy"] = p.useGlobalProxy;
         obj["proxy"] = p.proxy.toJson();
+        obj["useGlobalUserAgent"] = p.useGlobalUserAgent;
+        obj["userAgent"] = p.userAgent.toJson();
         array.append(obj);
     }
 
@@ -213,6 +267,8 @@ void ServerManager::loadSettings() {
         p.iconBase64 = obj["iconBase64"].toString();
         p.useGlobalProxy = obj["useGlobalProxy"].toBool(false);
         p.proxy = ProxyConfig::fromJson(obj["proxy"].toObject());
+        p.useGlobalUserAgent = obj["useGlobalUserAgent"].toBool(false);
+        p.userAgent = UserAgentConfig::fromJson(obj["userAgent"].toObject());
         m_servers.append(p);
     }
 
@@ -229,4 +285,3 @@ void ServerManager::clearActiveSession()
     m_activeClient.reset();
     Q_EMIT activeServerChanged(m_activeProfile);
 }
-

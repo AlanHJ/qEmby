@@ -9,6 +9,7 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include "api/useragentmanager.h"
 #include <QProcess>
 #include <QSaveFile>
 #include <QStandardPaths>
@@ -79,6 +80,7 @@ void WindowsUpdateManager::startDownload(const UpdateInfo &info)
     request.setHeader(QNetworkRequest::UserAgentHeader,
                       QStringLiteral("qEmby/%1")
                           .arg(QCoreApplication::applicationVersion()));
+    UserAgentManager::instance()->applyToRequest(request);
     request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                          QNetworkRequest::NoLessSafeRedirectPolicy);
     m_reply = m_networkManager->get(request);

@@ -57,6 +57,7 @@ private:
     QString currentDashboardContextKey() const;
     QWidget* sectionWidgetForId(const QString& sectionId) const;
     void clearLibraryGallerySections();
+    void applyLibraryVisibility(bool refreshItems = false);
     void clearDashboardState(bool resetScrollPositions);
     void resetDashboardScrollPositions();
     void clearDashboardGallery(HorizontalListViewGallery* gallery);
@@ -112,6 +113,7 @@ private:
     QLabel* m_libraryTitle = nullptr;
     QListView* m_libraryListView = nullptr;
     MediaListModel* m_libraryModel = nullptr;
+    QList<MediaItem> m_homeLibraries; 
 
     
     QList<MediaSectionWidget*> m_libraryGalleries;

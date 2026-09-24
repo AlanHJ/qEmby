@@ -14,7 +14,7 @@ QString nativeSmoothRendererId()
 
 QString defaultRendererId()
 {
-    return assTrackRendererId();
+    return nativeSmoothRendererId();
 }
 
 QString normalizeRendererId(QString value)
@@ -23,7 +23,10 @@ QString normalizeRendererId(QString value)
     if (value == nativeSmoothRendererId()) {
         return nativeSmoothRendererId();
     }
-    return assTrackRendererId();
+    if (value == assTrackRendererId()) {
+        return assTrackRendererId();
+    }
+    return defaultRendererId();
 }
 
 bool isNativeRenderer(QString value)
