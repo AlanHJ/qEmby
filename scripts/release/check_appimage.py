@@ -66,9 +66,18 @@ def smoke(image, platform, base):
                     # A native surface configure proves this did not use XWayland.
                     shown = bool(re.search(r'xdg_toplevel@\d+\.configure', logs))
                 else:
-                    window = subprocess.run(['xdotool', 'search', '--onlyvisible', '--name', 'qEmby'],
+                    window = subprocess.run(['xdotool', 'search', '--onlyvisible', '--class', '.'],
                                             env=env, capture_output=True)
-                    shown = window.returncode == 0 and bool(window.stdout.strip())
+                    # Login windows can have translated titles. Check the owning
+                    # executable rather than depending on a particular title.
+                    for window_id in window.stdout.decode().split():
+                        owner = subprocess.run(['xdotool', 'getwindowpid', window_id],
+                                               env=env, text=True, capture_output=True)
+                        if owner.returncode == 0 and owner.stdout.strip().isdigit():
+                            executable = Path('/proc') / owner.stdout.strip() / 'exe'
+                            if executable.resolve().name == 'qEmbyApp':
+                                shown = True
+                                break
                 if shown:
                     break
                 time.sleep(.2)

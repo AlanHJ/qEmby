@@ -25,7 +25,7 @@ class AppImagePolicy(unittest.TestCase):
             digest = hash_file(folder / name)
             reports = [{'distro': d, 'sha256': digest, 'x11': 'passed',
                         'native_wayland': 'passed', 'static_runtime': 'passed'}
-                       for d in ('jammy', 'noble', 'bookworm', 'trixie')]
+                       for d in ('jammy', 'noble', 'bookworm', 'trixie', 'nixos')]
             info = {'schema_version': 1, 'group': folder.name, 'version': '0.0.9',
                     'run': '42', 'commit': 'a' * 40, 'platform': 'appimage', 'packages': [name],
                     'validation': {'dependency_closure': 'passed', 'glibc_maximum': '2.35',

@@ -11,7 +11,7 @@ root = Path(__file__).resolve().parents[2]
 image, = (root / 'build/appimage').glob('*.AppImage')
 digest = hash_file(image)
 reports = [json.loads(p.read_text()) for p in (root / 'build/appimage-reports').rglob('*.json')]
-expected = {'jammy', 'noble', 'bookworm', 'trixie'}
+expected = {'jammy', 'noble', 'bookworm', 'trixie', 'nixos'}
 if len(reports) != len(expected) or {r['distro'] for r in reports} != expected:
     raise RuntimeError('Missing distribution smoke reports')
 for report in reports:

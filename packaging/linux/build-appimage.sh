@@ -55,7 +55,7 @@ cmake "${cmake_args[@]}"
 
 cmake --build "$BUILD_DIR" --config Release
 DESTDIR="$APPDIR" cmake --install "$BUILD_DIR" --config Release --prefix /usr
-python3 "$ROOT_DIR/scripts/release/bundle_appimage.py" --appdir "$APPDIR"
+python3 "$ROOT_DIR/scripts/release/bundle_appimage.py" --appdir "$APPDIR" --build-dir "$BUILD_DIR"
 
 install -m 0755 "$ROOT_DIR/packaging/linux/AppRun" "$APPDIR/AppRun"
 cp "$APPDIR/usr/share/applications/qemby.desktop" "$APPDIR/qemby.desktop"

@@ -7,12 +7,17 @@ on:
         description: Platforms to test
         type: choice
         default: all
-        options: [all, windows, linux, macos, appimage]
+        options: [all, windows, linux, macos, appimage, nixos]
+      source_run:
+        description: Existing AppImage run ID (required only for nixos)
+        type: string
+        default: ''
   push:
     branches: [codex/cloud-build-test]
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: cloud-package-test-${{ github.ref }}-${{ inputs.platform || 'all' }}
@@ -64,7 +69,7 @@ jobs:
         shell: bash
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends python3 binutils xvfb xauth xdotool weston libgl1-mesa-dri fonts-dejavu-core
+          apt-get install -y --no-install-recommends ca-certificates python3 binutils xvfb xauth xdotool weston libgl1-mesa-dri fonts-dejavu-core
       - name: Launch AppImage on X11 and native Wayland
         shell: bash
         run: python3 scripts/release/check_appimage.py --image build/appimage/*.AppImage --distro '${{ matrix.codename }}' --report build/appimage-reports/${{ matrix.codename }}.json
@@ -76,7 +81,7 @@ jobs:
           retention-days: 7
 
   package_appimage:
-    needs: test_appimage
+    needs: [test_appimage, test_appimage_nixos]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -95,6 +100,38 @@ jobs:
         with:
           name: package-linux-appimage-x86_64
           path: dist/cloud/*
+          if-no-files-found: error
+          retention-days: 7
+
+  test_appimage_nixos:
+    needs: [preflight, appimage]
+    if: always() && needs.preflight.result == 'success' && (needs.appimage.result == 'success' || (inputs.platform == 'nixos' && inputs.source_run != ''))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-linux-appimage-x86_64
+          path: build/appimage
+          run-id: ${{ inputs.source_run || github.run_id }}
+          github-token: ${{ github.token }}
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            system-features = nixos-test benchmark big-parallel kvm
+      - name: Run X11 and native Wayland tests in NixOS 26.05 VM
+        shell: bash
+        run: |
+          test -c /dev/kvm
+          sudo setfacl -m "u:$(whoami):rw" /dev/kvm
+          images=("$GITHUB_WORKSPACE"/build/appimage/*.AppImage)
+          test "${#images[@]}" = 1
+          nix-build scripts/release/appimage-nixos.nix --arg image "${images[0]}" --out-link build/nixos-result --option sandbox false
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appimage-report-nixos
+          path: build/nixos-result/nixos.json
           if-no-files-found: error
           retention-days: 7
 

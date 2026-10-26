@@ -12,7 +12,7 @@ import subprocess
 # These are supplied by the host glibc or GPU driver installation. GLVND,
 # Wayland, XCB, audio libraries and libstdc++ are deliberately bundled.
 HOST_LIBRARY = re.compile(
-    r"^(?:ld-linux.*|lib(?:c|m|pthread|dl|rt|resolv|util|anl|nss_[^.]+)\.so(?:\..*)?"
+    r"^(?:ld-linux.*|lib(?:c|m|mvec|pthread|dl|rt|resolv|util|anl|thread_db|BrokenLocale|nss_[^.]+)\.so(?:\..*)?"
     r"|lib(?:GLX_mesa|EGL_mesa|nvidia[^.]*)\.so(?:\..*)?)$")
 
 
@@ -38,8 +38,10 @@ def owners(path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--appdir', type=Path, required=True)
+    parser.add_argument('--build-dir', type=Path, required=True)
     args = parser.parse_args()
     appdir = args.appdir.resolve()
+    build = args.build_dir.resolve()
     libdir = appdir / 'usr/lib/qemby'
     if not (libdir / 'qEmbyApp').is_file():
         raise SystemExit('AppDir is missing the private installed executable')
@@ -63,7 +65,24 @@ def main():
     docs = appdir / 'usr/share/doc/qemby-bundled'
     docs.mkdir(parents=True, exist_ok=True)
     shutil.copy2(root / 'LICENSE', docs / 'qEmby-LICENSE')
-    env = dict(os.environ, LD_LIBRARY_PATH=f'{libdir}:{root}/build/cloud/bin')
+    for directory in (root / 'libs/qwindowkit', root / 'libs/qwindowkit/qmsetup',
+                      build / '_deps/qcoro-src', build / '_deps/spdlog-src'):
+        notices = [p for p in directory.rglob('*') if p.is_file()
+                   and (p.name.startswith(('LICENSE', 'COPYING')))]
+        if not notices:
+            raise RuntimeError(f'Missing dependency license notices: {directory.name}')
+        for notice in notices:
+            target = docs / directory.name / notice.relative_to(directory)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(notice, target)
+    env = dict(os.environ, LD_LIBRARY_PATH=f'{libdir}:{build}/bin')
+    # Qt's TLS backend dlopens OpenSSL, so ldd alone cannot discover these.
+    for name in ('libssl.so.3', 'libcrypto.so.3'):
+        source = Path('/usr/lib/x86_64-linux-gnu') / name
+        if not source.is_file():
+            raise RuntimeError(f'Missing Qt TLS runtime: {name}')
+        shutil.copy2(source.resolve(), libdir / name)
+        copyright_packages.update(owners(source))
     queue = [p for p in libdir.rglob('*') if elf(p)]
     origins = {}
     visited = set()

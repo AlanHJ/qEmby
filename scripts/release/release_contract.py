@@ -57,7 +57,7 @@ def validate_artifact(folder, run_id, commit):
     if info["platform"] == "appimage":
         reports = validation.get("distro_smoke", [])
         if (validation.get("dependency_closure") != "passed" or validation.get("glibc_maximum") != "2.35"
-                or len(reports) != 4 or {r.get("distro") for r in reports} != {'jammy', 'noble', 'bookworm', 'trixie'}
+                or len(reports) != 5 or {r.get("distro") for r in reports} != {'jammy', 'noble', 'bookworm', 'trixie', 'nixos'}
                 or any(any(r.get(key) != 'passed' for key in ('x11', 'native_wayland', 'static_runtime'))
                        for r in reports)):
             raise ValueError("AppImage compatibility validation is missing")
