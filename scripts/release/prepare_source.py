@@ -4,10 +4,48 @@ import contextlib
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
 import sys
+
+
+def release_remover():
+    from comms.core import CommentRemover
+
+    class ReleaseCommentRemover(CommentRemover):
+        def remove_c_style_comments(self, content):
+            # Shield literals and complete legal notices from the upstream
+            # character scanner (raw strings, digit separators, URLs in notices).
+            pattern = re.compile(
+                r'(?P<raw>(?:u8|u|U|L)?R"(?P<tag>[^ ()\\\t\r\n]{0,16})\(.*?\)(?P=tag)")'
+                r"|(?P<number>\b[0-9][A-Za-z0-9._']*'[A-Za-z0-9._']+)"
+                r'''|(?P<string>(?:u8|u|U|L)?"(?:\\.|[^"\\])*"|(?:u8|u|U|L)?'(?:\\.|[^'\\])*')'''
+                r'|(?P<comment>/\*.*?\*/|//[^\n]*)', re.DOTALL)
+            saved = []
+            prefix = "__QEMBY_RELEASE_LITERAL__"
+            while prefix in content:
+                prefix += "_"
+
+            def shield(match):
+                value = match.group()
+                if match.lastgroup == "comment":
+                    if not re.search(r"copyright|SPDX-License-Identifier|licensed under|permission is hereby", value, re.I):
+                        return value + (" " if value.startswith("/*") else "")
+                token = f'"{prefix}{len(saved)}"'
+                saved.append((token, value))
+                return token
+
+            cleaned = super().remove_c_style_comments(pattern.sub(shield, content))
+            for token, value in saved:
+                cleaned = cleaned.replace(token, value)
+            return cleaned
+
+    remover = ReleaseCommentRemover()
+    for suffix in (".ts", ".m"):
+        remover.supported_extensions.pop(suffix, None)
+    return remover
 
 
 def main():
@@ -29,7 +67,7 @@ def main():
     if not branch.startswith("codex/cloud-build"):
         raise SystemExit("Only a codex/cloud-build* worktree may be updated")
     ignore = shutil.ignore_patterns(".git", ".github", ".backup", "__pycache__",
-                                    "build", "build-*", ".DS_Store", "*.user")
+                                    "build", ".DS_Store", "*.user")
     for relative in ("src", "cmake", "packaging", "libs/qwindowkit", "scripts/release"):
         target = (destination / relative).resolve()
         if not target.is_relative_to(destination) or target == destination:
@@ -56,15 +94,11 @@ def main():
     # actual source, including qmsetup, rather than fetching a different revision.
     (destination / ".gitmodules").write_text("", encoding="utf-8")
     if args.strip_comments:
-        from comms.core import CommentRemover
         previous = Path.cwd()
         os.chdir(destination)
         try:
             (destination / ".backup").mkdir(exist_ok=True)
-            remover = CommentRemover(preserve_patterns=[
-                r"(?is)/\*.*?(?:copyright|SPDX-License-Identifier|permission is hereby|licensed under).*?\*/",
-                r"(?i)//[^\n]*(?:copyright|SPDX-License-Identifier|licensed under)[^\n]*",
-            ])
+            remover = release_remover()
             # Qt .ts files are XML, and .m files here are Objective-C, not MATLAB.
             for suffix in (".ts", ".m"):
                 remover.supported_extensions.pop(suffix, None)
@@ -97,6 +131,10 @@ def main():
         path = destination / name
         path.write_bytes(path.read_bytes().replace(b"\r\n", b"\n"))
         manifest[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+    for required in ("packaging/linux/build-deb.sh", "scripts/release/package.py",
+                     "libs/qwindowkit/qmsetup/cmake/scripts/configure_file.cmake"):
+        if required not in manifest:
+            raise RuntimeError(f"Missing required release input: {required}")
     (destination / "release-source.json").write_text(
         json.dumps({"comments_stripped": args.strip_comments, "files": manifest}, indent=2) + "\n", encoding="utf-8")
     (destination / ".backup").mkdir(exist_ok=True)

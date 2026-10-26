@@ -545,7 +545,7 @@ void ProxySettingsDialog::onSaveClicked() {
                 << "| server-private kept:" << m_initialConfig.summary();
         persistGlobal(cfg);
         if (!m_isDraft) {
-            persistServer(m_initialConfig, true);
+            persistServer(m_initialConfig,  true);
         }
         m_resultConfig = m_initialConfig;
         m_resultUseGlobal = true;
@@ -556,7 +556,7 @@ void ProxySettingsDialog::onSaveClicked() {
         qInfo() << "[ProxySettingsDialog] PerServer OFF: persist form to "
                    "SERVER-PRIVATE; leave global untouched";
         if (!m_isDraft) {
-            persistServer(cfg, false);
+            persistServer(cfg,  false);
         }
         m_resultConfig = cfg;
         m_resultUseGlobal = false;

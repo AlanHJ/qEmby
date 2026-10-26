@@ -4,7 +4,7 @@
 #include <QObject>
 #include <QString>
 
-
+ 
 class LogManager : public QObject {
   Q_OBJECT
 

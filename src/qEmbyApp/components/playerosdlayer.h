@@ -13,43 +13,43 @@ class QTimer;
 class DanmakuHeatmapWidget;
 class PlayerSeekIndicator;
 
-
+ 
 class PlayerOsdLayer : public QObject
 {
     Q_OBJECT
 public:
     explicit PlayerOsdLayer(QWidget *parent);
 
-    
+     
     void showSeek(double position, double duration, const QString &timeText);
 
     void setSeekHeatmap(const QPainterPath &path);
 
-    
+     
     void showVolume(int volumePercent, const QString &text, bool muted);
 
-    
+     
     void hide();
 
-    
+     
     void forceHide();
 
-    
+     
     void updateGeometry(int parentWidth, int parentHeight);
 
-    
+     
     void stopAnimations();
 
-    
+     
     bool isVisible() const;
 
-    
+     
     bool isSeekLineVisible() const;
 
-    
+     
     QWidget *container() const;
 
-    
+     
     void updateSeekPosition(int position, const QString &timeText);
 
 private:

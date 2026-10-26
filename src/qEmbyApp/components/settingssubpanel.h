@@ -6,7 +6,7 @@
 #include <QLabel>
 #include <QPropertyAnimation>
 
-
+ 
 class SettingsSubPanel : public QFrame {
     Q_OBJECT
     Q_PROPERTY(int panelHeight READ panelHeight WRITE setPanelHeight)

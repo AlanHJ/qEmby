@@ -89,7 +89,7 @@ namespace SysCmdLine {
             bool hasNext;
         };
 
-        using Output = std::function<void(const Context & )>;
+        using Output = std::function<void(const Context &  )>;
 
     public:
         void addHelpTextItem(HelpTextItem type, const Output &out = {});

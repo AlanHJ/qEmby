@@ -1,4 +1,4 @@
-// Copyright (C) 2023-2024 Stdware Collections (https:
+// Copyright (C) 2023-2024 Stdware Collections (https://www.github.com/stdware)
 // Copyright (C) 2021-2023 wangwenx190 (Yuhang Zhao)
 // SPDX-License-Identifier: Apache-2.0
 
@@ -45,13 +45,13 @@ namespace QWK {
         AbstractWindowContext *ctx;
     };
 
-    
+     
     QWidget *WidgetWindowAgent::systemButtonArea() const {
         Q_D(const WidgetWindowAgent);
         return d->systemButtonAreaWidget;
     }
 
-    
+     
     void WidgetWindowAgent::setSystemButtonArea(QWidget *widget) {
         Q_D(WidgetWindowAgent);
         if (d->systemButtonAreaWidget == widget)
@@ -68,13 +68,13 @@ namespace QWK {
             std::make_unique<SystemButtonAreaWidgetEventFilter>(widget, ctx);
     }
 
-    
+     
     ScreenRectCallback WidgetWindowAgent::systemButtonAreaCallback() const {
         Q_D(const WidgetWindowAgent);
         return d->systemButtonAreaWidget ? nullptr : d->context->systemButtonAreaCallback();
     }
 
-    
+     
     void WidgetWindowAgent::setSystemButtonAreaCallback(const ScreenRectCallback &callback) {
         Q_D(WidgetWindowAgent);
         setSystemButtonArea(nullptr);

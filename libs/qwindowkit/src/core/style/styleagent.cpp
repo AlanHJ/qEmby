@@ -1,4 +1,4 @@
-// Copyright (C) 2023-2024 Stdware Collections (https:
+// Copyright (C) 2023-2024 Stdware Collections (https://www.github.com/stdware)
 // Copyright (C) 2021-2023 wangwenx190 (Yuhang Zhao)
 // SPDX-License-Identifier: Apache-2.0
 
@@ -9,7 +9,7 @@
 
 namespace QWK {
 
-    
+     
 
     StyleAgentPrivate::StyleAgentPrivate() {
     }
@@ -31,27 +31,27 @@ namespace QWK {
         Q_EMIT q->systemThemeChanged();
     }
 
-    
+     
     StyleAgent::StyleAgent(QObject *parent) : StyleAgent(*new StyleAgentPrivate(), parent) {
     }
 
-    
+     
     StyleAgent::~StyleAgent() {
     }
 
-    
+     
     StyleAgent::SystemTheme StyleAgent::systemTheme() const {
         Q_D(const StyleAgent);
         return d->systemTheme;
     }
 
-    
+     
     StyleAgent::StyleAgent(StyleAgentPrivate &d, QObject *parent) : QObject(parent), d_ptr(&d) {
         d.q_ptr = this;
 
         d.init();
     }
 
-    
+     
 
 }

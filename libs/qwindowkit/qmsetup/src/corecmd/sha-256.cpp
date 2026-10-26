@@ -6,11 +6,11 @@
 static constexpr const auto CHUNK_SIZE = 64;
 static constexpr const auto TOTAL_LEN_LEN = 8;
 
+ 
 
+ 
 
-
-
-
+ 
 static constexpr const uint32_t k[] = {
     0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
     0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
@@ -26,13 +26,13 @@ struct buffer_state {
     const uint8_t * p;
     size_t len;
     size_t total_len;
-    int single_one_delivered; 
-    int total_len_delivered; 
+    int single_one_delivered;  
+    int total_len_delivered;  
 };
 
 static inline constexpr uint32_t right_rot(uint32_t value, unsigned int count)
 {
-    
+     
     return value >> count | value << (32 - count);
 }
 
@@ -45,7 +45,7 @@ static void init_buf_state(struct buffer_state * state, const void * input, size
     state->total_len_delivered = 0;
 }
 
-
+ 
 static int calc_chunk(uint8_t chunk[CHUNK_SIZE], struct buffer_state * state)
 {
     size_t space_in_chunk;
@@ -67,14 +67,14 @@ static int calc_chunk(uint8_t chunk[CHUNK_SIZE], struct buffer_state * state)
     state->p += state->len;
     state->len = 0;
 
-    
+     
     if (!state->single_one_delivered) {
         *chunk++ = 0x80;
         space_in_chunk -= 1;
         state->single_one_delivered = 1;
     }
 
-    
+     
     if (space_in_chunk >= TOTAL_LEN_LEN) {
         const size_t left = space_in_chunk - TOTAL_LEN_LEN;
         size_t len = state->total_len;
@@ -82,7 +82,7 @@ static int calc_chunk(uint8_t chunk[CHUNK_SIZE], struct buffer_state * state)
         std::memset(chunk, 0x00, left);
         chunk += left;
 
-        
+         
         chunk[7] = (uint8_t) (len << 3);
         len >>= 5;
         for (i = 6; i >= 0; i--) {
@@ -97,16 +97,16 @@ static int calc_chunk(uint8_t chunk[CHUNK_SIZE], struct buffer_state * state)
     return 1;
 }
 
-
+ 
 void calc_sha_256(uint8_t hash[32], const void * input, size_t len)
 {
-    
+     
 
-    
+     
     uint32_t h[] = { 0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19 };
     int i, j;
 
-    
+     
     uint8_t chunk[64];
 
     struct buffer_state state;
@@ -116,7 +116,7 @@ void calc_sha_256(uint8_t hash[32], const void * input, size_t len)
     while (calc_chunk(chunk, &state)) {
         uint32_t ah[8];
 
-        
+         
         uint32_t w[64];
         const uint8_t *p = chunk;
 
@@ -127,18 +127,18 @@ void calc_sha_256(uint8_t hash[32], const void * input, size_t len)
             p += 4;
         }
 
-        
+         
         for (i = 16; i < 64; i++) {
             const uint32_t s0 = right_rot(w[i - 15], 7) ^ right_rot(w[i - 15], 18) ^ (w[i - 15] >> 3);
             const uint32_t s1 = right_rot(w[i - 2], 17) ^ right_rot(w[i - 2], 19) ^ (w[i - 2] >> 10);
             w[i] = w[i - 16] + s0 + w[i - 7] + s1;
         }
 
-        
+         
         for (i = 0; i < 8; i++)
             ah[i] = h[i];
 
-        
+         
         for (i = 0; i < 64; i++) {
             const uint32_t s1 = right_rot(ah[4], 6) ^ right_rot(ah[4], 11) ^ right_rot(ah[4], 25);
             const uint32_t ch = (ah[4] & ah[5]) ^ (~ah[4] & ah[6]);
@@ -157,12 +157,12 @@ void calc_sha_256(uint8_t hash[32], const void * input, size_t len)
             ah[0] = temp1 + temp2;
         }
 
-        
+         
         for (i = 0; i < 8; i++)
             h[i] += ah[i];
     }
 
-    
+     
     for (i = 0, j = 0; i < 8; i++)
     {
         hash[j++] = (uint8_t) (h[i] >> 24);

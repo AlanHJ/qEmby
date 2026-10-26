@@ -226,7 +226,7 @@ void HomeView::setupUi()
                           : QString();
 
     connect(m_contentSwitcher, &QStackedWidget::currentChanged, this,
-            [this](int )
+            [this](int  )
             {
                 QWidget *current = m_contentSwitcher->currentWidget();
                 const QString currentRouteType = current ? current->property("routeType").toString() : QString();
@@ -1054,13 +1054,13 @@ void HomeView::setupSearchHistory()
                 }
             });
     connect(SearchHistoryManager::instance(), &SearchHistoryManager::enabledChanged,
-            this, [this](bool ) {
+            this, [this](bool  ) {
                 updateSearchCompleter(m_searchBox ? m_searchBox->text()
                                                   : QString());
             });
     connect(SearchHistoryManager::instance(),
             &SearchHistoryManager::autocompleteEnabledChanged, this,
-            [this](bool ) {
+            [this](bool  ) {
                 updateSearchCompleter(m_searchBox ? m_searchBox->text()
                                                   : QString());
             });

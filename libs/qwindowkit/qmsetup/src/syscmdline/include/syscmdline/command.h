@@ -52,7 +52,7 @@ namespace SysCmdLine {
     class SYSCMDLINE_EXPORT Command : public ArgumentHolder {
         SYSCMDLINE_DECL_PRIVATE(Command)
     public:
-        using Handler = std::function<int  (const ParseResult & )>;
+        using Handler = std::function<int   (const ParseResult &  )>;
 
         Command();
         Command(const std::string &name, const std::string &desc = {},

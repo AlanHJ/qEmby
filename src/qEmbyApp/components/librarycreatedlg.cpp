@@ -270,7 +270,7 @@ QStringList LibraryCreateDialog::defaultImageFetchers(
 }
 
 QStringList LibraryCreateDialog::defaultSubtitleDownloaders(
-    ServerProfile::ServerType ) {
+    ServerProfile::ServerType  ) {
   return {"Open Subtitles", "Podnapisi"};
 }
 

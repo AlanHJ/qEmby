@@ -1,7 +1,7 @@
 /**
 
 Doxygen Awesome
-https:
+https://github.com/jothepro/doxygen-awesome-css
 
 MIT License
 
@@ -86,12 +86,12 @@ class DoxygenAwesomeDarkModeToggle extends HTMLElement {
         this.onclick=this.toggleDarkMode
     }
 
-    
+     
     static get systemPreference() {
         return window.matchMedia('(prefers-color-scheme: dark)').matches
     }
 
-    
+     
     static get userPreference() {
         return (!DoxygenAwesomeDarkModeToggle.systemPreference && localStorage.getItem(DoxygenAwesomeDarkModeToggle.prefersDarkModeInLightModeKey)) || 
         (DoxygenAwesomeDarkModeToggle.systemPreference && !localStorage.getItem(DoxygenAwesomeDarkModeToggle.prefersLightModeInDarkModeKey))

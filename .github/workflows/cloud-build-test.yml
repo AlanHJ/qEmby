@@ -27,7 +27,7 @@ jobs:
         with:
           version: '6.9.2'
           arch: win64_msvc2022_64
-          modules: qtwebsockets qtimageformats qtsvg
+          modules: qtwebsockets qtimageformats
           cache: true
       - name: Install pinned libmpv SDK
         shell: pwsh
@@ -109,7 +109,7 @@ jobs:
         with:
           version: '6.9.2'
           arch: clang_64
-          modules: qtwebsockets qtimageformats qtsvg
+          modules: qtwebsockets qtimageformats
           cache: true
       - name: Configure Release arm64
         run: >-

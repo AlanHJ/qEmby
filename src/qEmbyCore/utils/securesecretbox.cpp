@@ -23,7 +23,7 @@ constexpr uint8_t kVersion = 0x01;
 constexpr uint8_t kFlagLocal = 0x00;
 constexpr uint8_t kFlagPassphrase = 0x01;
 
-constexpr int kHeaderLen = 4  + 1  + 1  + 16  + 16 ;
+constexpr int kHeaderLen = 4   + 1   + 1   + 16   + 16  ;
 constexpr int kSaltLen = 16;
 constexpr int kNonceLen = 16;
 constexpr int kAesKeyLen = 32;

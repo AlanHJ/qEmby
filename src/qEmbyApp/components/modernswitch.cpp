@@ -50,7 +50,7 @@ QSize ModernSwitch::sizeHint() const {
     return QSize(44, 24); 
 }
 
-void ModernSwitch::paintEvent(QPaintEvent* ) {
+void ModernSwitch::paintEvent(QPaintEvent*  ) {
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
     painter.setPen(Qt::NoPen);

@@ -6,7 +6,7 @@
 
 class QPropertyAnimation;
 
-
+ 
 class ShimmerWidget : public QWidget
 {
     Q_OBJECT

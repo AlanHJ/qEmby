@@ -912,7 +912,7 @@ void MainWindow::setupGlobalSearchHistory()
             });
     connect(SearchHistoryManager::instance(),
             &SearchHistoryManager::autocompleteEnabledChanged, this,
-            [this](bool ) {
+            [this](bool  ) {
                 updateGlobalSearchCompleter(m_globalSearchBox
                                                 ? m_globalSearchBox->text()
                                                 : QString());

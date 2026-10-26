@@ -94,7 +94,7 @@ namespace SysCmdLine {
     }
 #endif
 
-    
+     
     std::string wideToUtf8(const std::wstring &s) {
 #ifdef _WIN32
         if (s.empty()) {
@@ -119,7 +119,7 @@ namespace SysCmdLine {
 #endif
     }
 
-    
+     
     std::wstring utf8ToWide(const std::string &s) {
 #ifdef _WIN32
         if (s.empty()) {
@@ -145,7 +145,7 @@ namespace SysCmdLine {
     }
 
 #ifdef _WIN32
-    
+     
     std::string ansiToUtf8(const std::string &s) {
         if (s.empty()) {
             return {};
@@ -167,7 +167,7 @@ namespace SysCmdLine {
     }
 #endif
 
-    
+     
     std::string appPath() {
         static const auto res = []() -> std::string {
 #ifdef _WIN32
@@ -185,7 +185,7 @@ namespace SysCmdLine {
         return res;
     }
 
-    
+     
     std::string appDirectory() {
         auto appDir = appPath();
         auto slashIdx = appDir.find_last_of('/');
@@ -195,7 +195,7 @@ namespace SysCmdLine {
         return appDir;
     }
 
-    
+     
     std::string appFileName() {
         auto appName = appPath();
         auto slashIdx = appName.find_last_of('/');
@@ -205,7 +205,7 @@ namespace SysCmdLine {
         return appName;
     }
 
-    
+     
     std::string appName() {
         auto appName = appFileName();
 #ifdef _WIN32
@@ -220,7 +220,7 @@ namespace SysCmdLine {
         return appName;
     }
 
-    
+     
     std::vector<std::string> commandLineArguments() {
         std::vector<std::string> res;
 #ifdef _WIN32
@@ -459,7 +459,7 @@ namespace SysCmdLine {
         return std::vprintf(fmt, args);
     }
 
-    
+     
     int u8debug(MessageType messageType, bool highlight, const char *fmt, ...) {
         int color;
         switch (messageType) {

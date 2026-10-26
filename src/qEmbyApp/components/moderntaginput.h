@@ -14,7 +14,7 @@ class QShowEvent;
 class QToolButton;
 class QWidget;
 
-
+ 
 class ModernTagInput : public QFrame {
     Q_OBJECT
 public:

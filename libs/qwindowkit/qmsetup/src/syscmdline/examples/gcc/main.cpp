@@ -3,7 +3,7 @@
 
 using namespace SysCmdLine;
 
-int main(int , char * []) {
+int main(int  , char *  []) {
     Option linkDirOption({"-L", "--linkdir"}, "Add link directory");
     linkDirOption.setShortMatchRule(Option::ShortMatchSingleChar);
     linkDirOption.addArgument(Argument("dir"));

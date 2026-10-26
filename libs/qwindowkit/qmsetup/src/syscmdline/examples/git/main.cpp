@@ -3,7 +3,7 @@
 
 using namespace SysCmdLine;
 
-int main(int , char * []) {
+int main(int  , char *  []) {
     Command cloneCommand("clone", "Clone a repository into a new directory");
     Command initCommand("init", "Create an empty Git repository or reinitialize an existing one");
 

@@ -1,4 +1,4 @@
-// Copyright (C) 2023-2024 Stdware Collections (https:
+// Copyright (C) 2023-2024 Stdware Collections (https://www.github.com/stdware)
 // Copyright (C) 2021-2023 wangwenx190 (Yuhang Zhao)
 // SPDX-License-Identifier: Apache-2.0
 
@@ -341,13 +341,13 @@ namespace QWK {
         return {qmargins.left(), qmargins.right(), qmargins.top(), qmargins.bottom()};
     }
 
-    inline  QString hwnd2str(const WId windowId) {
+    inline   QString hwnd2str(const WId windowId) {
         
         return QLatin1String("0x") +
                QString::number(windowId, 16).toUpper().rightJustified(8, u'0');
     }
 
-    inline  QString hwnd2str(HWND hwnd) {
+    inline   QString hwnd2str(HWND hwnd) {
         
         return hwnd2str(reinterpret_cast<WId>(hwnd));
     }

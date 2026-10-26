@@ -75,7 +75,7 @@ void SettingsSubPanel::updateStyleSheet() {
     
     if (isDark) {
         setStyleSheet(QString(
-            
+             
             "#SettingsSubPanel {"
             "  background: rgba(255,255,255,0.025);"
             "  border: 1px solid rgba(255,255,255,0.06);"
@@ -83,7 +83,7 @@ void SettingsSubPanel::updateStyleSheet() {
             "  border-radius: 12px;"
             "  margin-left: 20px;"
             "}"
-            
+             
             "#SettingsSubPanel ModernComboBox {"
             "  background-color: rgba(255,255,255,0.07);"
             "  border: 1px solid rgba(255,255,255,0.10);"
@@ -111,7 +111,7 @@ void SettingsSubPanel::updateStyleSheet() {
             "#SettingsSubPanel ModernComboBox::down-arrow {"
             "  image: url(':/svg/dark/chevron-down.svg'); width: 14px; height: 14px;"
             "}"
-            
+             
             "#SettingsSubPanel ModernComboBox QAbstractItemView {"
             "  background-color: #1E293B;"
             "  border: 1px solid rgba(255,255,255,0.10);"
@@ -132,13 +132,13 @@ void SettingsSubPanel::updateStyleSheet() {
             "#SettingsSubPanel ModernComboBox QAbstractItemView::item:selected:hover {"
             "  background-color: rgba(59,130,246,0.20); color: #93C5FD;"
             "}"
-            
+             
             "#SettingsSubPanel #SettingsCardDesc {"
             "  color: #64748B;"
             "  font-size: 12px;"
             "  font-family: 'Segoe UI','Microsoft YaHei',sans-serif;"
             "}"
-            
+             
             "#SettingsSubPanel QLineEdit {"
             "  background-color: rgba(255,255,255,0.07);"
             "  border: 1px solid rgba(255,255,255,0.10);"
@@ -206,7 +206,7 @@ void SettingsSubPanel::updateStyleSheet() {
         ).arg(accent));
     } else {
         setStyleSheet(QString(
-            
+             
             "#SettingsSubPanel {"
             "  background: rgba(0,0,0,0.018);"
             "  border: 1px solid rgba(0,0,0,0.06);"
@@ -214,7 +214,7 @@ void SettingsSubPanel::updateStyleSheet() {
             "  border-radius: 12px;"
             "  margin-left: 20px;"
             "}"
-            
+             
             "#SettingsSubPanel ModernComboBox {"
             "  background-color: #FFFFFF;"
             "  border: 1px solid #CBD5E1;"
@@ -239,7 +239,7 @@ void SettingsSubPanel::updateStyleSheet() {
             "#SettingsSubPanel ModernComboBox::down-arrow {"
             "  image: url(':/svg/light/chevron-down.svg'); width: 14px; height: 14px;"
             "}"
-            
+             
             "#SettingsSubPanel ModernComboBox QAbstractItemView {"
             "  background-color: #FFFFFF;"
             "  border: 1px solid #E2E8F0;"
@@ -260,13 +260,13 @@ void SettingsSubPanel::updateStyleSheet() {
             "#SettingsSubPanel ModernComboBox QAbstractItemView::item:selected:hover {"
             "  background-color: rgba(59,130,246,0.10); color: #2563EB;"
             "}"
-            
+             
             "#SettingsSubPanel #SettingsCardDesc {"
             "  color: #94A3B8;"
             "  font-size: 12px;"
             "  font-family: 'Segoe UI','Microsoft YaHei',sans-serif;"
             "}"
-            
+             
             "#SettingsSubPanel QLineEdit {"
             "  background-color: #FFFFFF;"
             "  border: 1px solid #CBD5E1;"

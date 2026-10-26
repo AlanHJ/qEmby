@@ -45,8 +45,8 @@ namespace SysCmdLine {
             MultiValue,
             Remainder,
         };
-        using Validator = std::function<bool  (
-            const std::string & , Value * , std::string * )>;
+        using Validator = std::function<bool   (
+            const std::string &  , Value *  , std::string *  )>;
 
         Argument();
         Argument(const std::string &name, const std::string &desc = {}, bool required = true,

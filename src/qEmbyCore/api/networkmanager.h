@@ -53,7 +53,7 @@ public:
     static QString buildReplyErrorMessage(QNetworkReply* reply,
                                           int httpStatus);
 
-    
+     
     
     QCoro::Task<QJsonObject> get(QString url,
                                  QMap<QString, QString> headers,
@@ -61,12 +61,12 @@ public:
     QCoro::Task<QList<NetworkJsonResult>> getBatch(
         QList<NetworkJsonGetRequest> requests);
 
-    
+     
     QCoro::Task<QString> getText(const QString& url,
                                  const QMap<QString, QString>& headers,
                                  const NetworkRequestOptions& options = {});
 
-    
+     
     QCoro::Task<QByteArray> getBytes(const QString& url,
                                      const QMap<QString, QString>& headers,
                                      const NetworkRequestOptions& options = {});
@@ -76,7 +76,7 @@ public:
         qint64 maximumBytes,
         NetworkRequestOptions options = {});
 
-    
+     
     QCoro::Task<QJsonObject> post(const QString& url,
                                   const QMap<QString, QString>& headers,
                                   const QJsonObject& payload,
@@ -95,7 +95,7 @@ public:
                                       const QUrlQuery& formData,
                                       const NetworkRequestOptions& options = {});
 
-    
+     
     QCoro::Task<QJsonObject> deleteResource(const QString& url,
                                             const QMap<QString, QString>& headers,
                                             const NetworkRequestOptions& options = {});

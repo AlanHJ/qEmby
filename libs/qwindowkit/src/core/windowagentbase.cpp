@@ -1,4 +1,4 @@
-// Copyright (C) 2023-2024 Stdware Collections (https:
+// Copyright (C) 2023-2024 Stdware Collections (https://www.github.com/stdware)
 // Copyright (C) 2021-2023 wangwenx190 (Yuhang Zhao)
 // SPDX-License-Identifier: Apache-2.0
 
@@ -21,9 +21,9 @@ Q_LOGGING_CATEGORY(qWindowKitLog, "qwindowkit")
 
 namespace QWK {
 
-    
+     
 
-    
+     
 
     WindowAgentBasePrivate::WindowContextFactoryMethod
         WindowAgentBasePrivate::windowContextFactoryMethod = nullptr;
@@ -56,40 +56,40 @@ namespace QWK {
         context.reset(ctx);
     }
 
-    
+     
     WindowAgentBase::~WindowAgentBase() = default;
 
-    
+     
     QVariant WindowAgentBase::windowAttribute(const QString &key) const {
         Q_D(const WindowAgentBase);
         return d->context->windowAttribute(key);
     }
 
-    
+     
     bool WindowAgentBase::setWindowAttribute(const QString &key, const QVariant &attribute) {
         Q_D(WindowAgentBase);
         return d->context->setWindowAttribute(key, attribute);
     }
 
-    
+     
     void WindowAgentBase::showSystemMenu(const QPoint &pos) {
         Q_D(WindowAgentBase);
         d->context->showSystemMenu(pos);
     }
 
-    
+     
     void WindowAgentBase::centralize() {
         Q_D(WindowAgentBase);
         d->context->virtual_hook(AbstractWindowContext::CentralizeHook, nullptr);
     }
 
-    
+     
     void WindowAgentBase::raise() {
         Q_D(WindowAgentBase);
         d->context->virtual_hook(AbstractWindowContext::RaiseWindowHook, nullptr);
     }
 
-    
+     
     WindowAgentBase::WindowAgentBase(WindowAgentBasePrivate &d, QObject *parent)
         : QObject(parent), d_ptr(&d) {
         d.q_ptr = this;

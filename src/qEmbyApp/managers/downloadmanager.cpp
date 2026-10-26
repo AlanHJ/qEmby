@@ -257,7 +257,7 @@ bool sortByNewest(const DownloadManager::DownloadRecord& left,
     return left.itemName.localeAwareCompare(right.itemName) < 0;
 }
 
-} // namespace
+} 
 
 struct DownloadManager::ActiveDownload {
     DownloadRecord record;

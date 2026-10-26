@@ -87,7 +87,7 @@ namespace SysCmdLine {
         inline int invoke(int argc, char **argv, int errCode = -1, int parseOptions = Standard);
 
     public:
-        using TextProvider = std::string (*)(int , int );
+        using TextProvider = std::string (*)(int  , int  );
 
         enum SizeType {
             ST_Indent,

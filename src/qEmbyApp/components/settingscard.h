@@ -15,7 +15,7 @@ class ElidedLabel;
 class SettingsCard : public QFrame {
   Q_OBJECT
 public:
-  
+   
   explicit SettingsCard(const QString &iconSvgPath, const QString &title,
                         const QString &description, QWidget *controlWidget,
                         const QString &configKey, QWidget *parent = nullptr,

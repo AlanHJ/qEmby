@@ -20,8 +20,8 @@ static constexpr int kSpacing      = 6;
 PlayerItemDelegate::PlayerItemDelegate(QObject *parent)
     : QStyledItemDelegate(parent) {}
 
-QSize PlayerItemDelegate::sizeHint(const QStyleOptionViewItem & ,
-                                   const QModelIndex & ) const {
+QSize PlayerItemDelegate::sizeHint(const QStyleOptionViewItem &  ,
+                                   const QModelIndex &  ) const {
     return QSize(200, kItemHeight);
 }
 

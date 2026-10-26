@@ -53,8 +53,8 @@ namespace SysCmdLine {
         };
 
         using HelpProvider =
-            std::function<std::string(const Symbol * , HelpPosition ,
-                                      int , void * )>;
+            std::function<std::string(const Symbol *  , HelpPosition  ,
+                                      int  , void *  )>;
 
         inline std::string helpText(HelpPosition pos, int displayOptions) const;
         virtual std::string helpText(HelpPosition pos, int displayOptions, void *extra) const;

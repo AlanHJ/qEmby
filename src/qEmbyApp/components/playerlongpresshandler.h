@@ -12,7 +12,7 @@ class QGraphicsOpacityEffect;
 class QPropertyAnimation;
 class QTimer;
 
-
+ 
 class PlayerLongPressHandler : public QObject
 {
     Q_OBJECT
