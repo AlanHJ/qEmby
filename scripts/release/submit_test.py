@@ -12,7 +12,7 @@ def main():
     parser.add_argument("--packaging-source", type=Path, required=True)
     parser.add_argument("--push", action="store_true")
     parser.add_argument("--message", default="ci: update verified cloud package test")
-    parser.add_argument("--platform", choices=["all", "windows", "linux", "macos"], default="all")
+    parser.add_argument("--platform", choices=["all", "windows", "linux", "macos", "appimage"], default="all")
     args = parser.parse_args()
     scripts = Path(__file__).resolve().parent
     destination = args.destination.resolve()

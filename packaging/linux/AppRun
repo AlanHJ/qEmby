@@ -3,6 +3,19 @@ set -eu
 
 HERE="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 export APPDIR="$HERE"
-export LD_LIBRARY_PATH="$HERE/usr/lib/qemby:$HERE/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH="$HERE/usr/lib/qemby${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+# Keep host desktop Qt plugins from mixing with the bundled Qt version.
+export QT_PLUGIN_PATH="$HERE/usr/lib/qemby/plugins"
+export QT_QPA_PLATFORM_PLUGIN_PATH="$QT_PLUGIN_PATH/platforms"
+unset QT_QPA_PLATFORMTHEME
+if [ -z "${XKB_CONFIG_ROOT:-}" ] || [ ! -d "$XKB_CONFIG_ROOT" ]; then
+    export XKB_CONFIG_ROOT="$HERE/usr/share/X11/xkb"
+fi
+export XDG_DATA_DIRS="$HERE/usr/share${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}:/usr/local/share:/usr/share"
+if [ -n "${QEMBY_QPA_PLATFORM:-}" ]; then
+    export QT_QPA_PLATFORM="$QEMBY_QPA_PLATFORM"
+elif [ -z "${QT_QPA_PLATFORM:-}" ] && [ -n "${WAYLAND_DISPLAY:-}" ]; then
+    export QT_QPA_PLATFORM='wayland;xcb'
+fi
 
 exec "$HERE/usr/bin/qEmbyApp" "$@"

@@ -8,7 +8,6 @@ DIST_DIR="${OUTPUT_DIR:-$ROOT_DIR/dist/appimage}"
 APPDIR="${APPDIR:-$DIST_DIR/AppDir}"
 GENERATOR="${CMAKE_GENERATOR:-Ninja}"
 APPIMAGETOOL="${APPIMAGETOOL:-}"
-APPIMAGE_BUNDLE_MPV="${QEMBY_APPIMAGE_BUNDLE_MPV:-ON}"
 
 
 if [[ -z "$APPIMAGETOOL" ]]; then
@@ -43,8 +42,9 @@ cmake_args=(
     -B "$BUILD_DIR"
     -G "$GENERATOR"
     -DCMAKE_BUILD_TYPE=Release
-    -DQEMBY_ENABLE_QT_DEPLOY=ON
-    -DQEMBY_BUNDLE_MPV_RUNTIME="$APPIMAGE_BUNDLE_MPV"
+    -DCMAKE_INSTALL_LIBDIR=lib
+    -DQEMBY_ENABLE_QT_DEPLOY=OFF
+    -DQEMBY_BUNDLE_MPV_RUNTIME=OFF
 )
 
 if [[ -n "${QEMBY_QT_ROOT:-}" ]]; then
@@ -55,6 +55,7 @@ cmake "${cmake_args[@]}"
 
 cmake --build "$BUILD_DIR" --config Release
 DESTDIR="$APPDIR" cmake --install "$BUILD_DIR" --config Release --prefix /usr
+python3 "$ROOT_DIR/scripts/release/bundle_appimage.py" --appdir "$APPDIR"
 
 install -m 0755 "$ROOT_DIR/packaging/linux/AppRun" "$APPDIR/AppRun"
 cp "$APPDIR/usr/share/applications/qemby.desktop" "$APPDIR/qemby.desktop"
@@ -72,11 +73,16 @@ fi
 ARCH="$(uname -m)"
 APPIMAGE_PATH="$DIST_DIR/qemby-${VERSION}-${ARCH}.AppImage"
 
+runtime_args=()
+if [[ -n "${APPIMAGE_RUNTIME_FILE:-}" ]]; then
+    runtime_args+=(--runtime-file "$APPIMAGE_RUNTIME_FILE")
+fi
+export ARCH
 if [[ "$APPIMAGETOOL" == *.AppImage ]]; then
     chmod +x "$APPIMAGETOOL"
-    "$APPIMAGETOOL" --appimage-extract-and-run "$APPDIR" "$APPIMAGE_PATH"
+    "$APPIMAGETOOL" --appimage-extract-and-run "${runtime_args[@]}" "$APPDIR" "$APPIMAGE_PATH"
 else
-    "$APPIMAGETOOL" "$APPDIR" "$APPIMAGE_PATH"
+    "$APPIMAGETOOL" "${runtime_args[@]}" "$APPDIR" "$APPIMAGE_PATH"
 fi
 
 echo "AppImage output: $APPIMAGE_PATH"

@@ -13,6 +13,7 @@ def main():
     parser.add_argument("--repository", default="AlanHJ/qEmby")
     parser.add_argument("--destination", type=Path, required=True)
     parser.add_argument("--allow-partial", action="store_true")
+    parser.add_argument("--platform", choices=['all', 'windows', 'macos', 'linux', 'appimage'], default='all')
     parser.add_argument("--artifact-pattern", default="package-*")
     args = parser.parse_args()
     run = json.loads(subprocess.check_output([
@@ -41,8 +42,11 @@ def main():
         raise SystemExit("Artifacts do not refer to one source commit")
     if len(versions) != 1:
         raise SystemExit("Artifacts do not refer to one release version")
-    if not args.allow_partial and ({p.name for p in groups} != set(GROUPS) or verified != 7):
-        raise SystemExit(f"Incomplete run: {len(groups)}/6 platform groups, {verified}/7 packages")
+    expected = {name for name, (platform, _) in GROUPS.items()
+                if args.platform == 'all' or platform == args.platform
+                or (args.platform == 'linux' and platform == 'appimage')}
+    if not args.allow_partial and {p.name for p in groups} != expected:
+        raise SystemExit(f"Incomplete run: expected {sorted(expected)}, got {sorted(p.name for p in groups)}")
     print(f"Verified {verified} packages from commit {next(iter(commits))}")
     print(destination)
 

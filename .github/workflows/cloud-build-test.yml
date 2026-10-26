@@ -7,7 +7,7 @@ on:
         description: Platforms to test
         type: choice
         default: all
-        options: [all, windows, linux, macos]
+        options: [all, windows, linux, macos, appimage]
   push:
     branches: [codex/cloud-build-test]
 
@@ -19,6 +19,85 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  appimage:
+    needs: preflight
+    if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'linux' || inputs.platform == 'appimage'
+    runs-on: ubuntu-24.04
+    container: ubuntu:22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Release AppImage with complete Qt and mpv runtime
+        shell: bash
+        run: bash scripts/release/appimage-build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-linux-appimage-x86_64
+          path: dist/appimage/*.AppImage
+          if-no-files-found: error
+          retention-days: 7
+
+  test_appimage:
+    needs: appimage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: ubuntu:22.04
+            codename: jammy
+          - image: ubuntu:24.04
+            codename: noble
+          - image: debian:12
+            codename: bookworm
+          - image: debian:13
+            codename: trixie
+    container: ${{ matrix.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-linux-appimage-x86_64
+          path: build/appimage
+      - name: Install test displays and host graphics drivers
+        shell: bash
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends python3 binutils xvfb xauth xdotool weston libgl1-mesa-dri fonts-dejavu-core
+      - name: Launch AppImage on X11 and native Wayland
+        shell: bash
+        run: python3 scripts/release/check_appimage.py --image build/appimage/*.AppImage --distro '${{ matrix.codename }}' --report build/appimage-reports/${{ matrix.codename }}.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appimage-report-${{ matrix.codename }}
+          path: build/appimage-reports/*.json
+          if-no-files-found: error
+          retention-days: 7
+
+  package_appimage:
+    needs: test_appimage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-linux-appimage-x86_64
+          path: build/appimage
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: appimage-report-*
+          path: build/appimage-reports
+      - name: Verify compatibility reports and package checksums
+        run: python3 scripts/release/finalize_appimage.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-linux-appimage-x86_64
+          path: dist/cloud/*
+          if-no-files-found: error
+          retention-days: 7
+
   preflight:
     runs-on: ubuntu-24.04
     timeout-minutes: 5

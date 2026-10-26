@@ -1,4 +1,4 @@
-"""Shared package names and integrity checks for the six release targets."""
+"""Shared package names and integrity checks for release targets."""
 import hashlib
 import json
 from pathlib import Path
@@ -6,6 +6,7 @@ import re
 
 
 GROUPS = {
+    "package-linux-appimage-x86_64": ("appimage", None),
     "package-windows-x64": ("windows", None),
     "package-macos26-arm64": ("macos", None),
     **{f"package-linux-{name}-amd64": ("linux", name)
@@ -29,6 +30,8 @@ def expected_packages(group, version):
         return {f"qEmby-v{version}-Win-x64.zip", f"qEmby-v{version}-Win-x64-Setup.exe"}
     if platform == "macos":
         return {f"qEmby-v{version}-macOS26-arm64.dmg"}
+    if platform == "appimage":
+        return {f"qemby-{version}-x86_64.AppImage"}
     return {f"qemby_{version}-{distro}_amd64.deb"}
 
 
@@ -51,6 +54,13 @@ def validate_artifact(folder, run_id, commit):
     if not isinstance(packages, list) or len(packages) != len(expected) or set(packages) != expected:
         raise ValueError("Package names or count do not match the target")
     validation = info.get("validation", {})
+    if info["platform"] == "appimage":
+        reports = validation.get("distro_smoke", [])
+        if (validation.get("dependency_closure") != "passed" or validation.get("glibc_maximum") != "2.35"
+                or len(reports) != 4 or {r.get("distro") for r in reports} != {'jammy', 'noble', 'bookworm', 'trixie'}
+                or any(any(r.get(key) != 'passed' for key in ('x11', 'native_wayland', 'static_runtime'))
+                       for r in reports)):
+            raise ValueError("AppImage compatibility validation is missing")
     if info["platform"] == "linux":
         if (validation.get("deb_lifecycle") != "passed" or validation.get("qt_preserved") is not True
                 or validation.get("global_probes_preserved") is not True):
@@ -73,4 +83,6 @@ def validate_artifact(folder, run_id, commit):
     for name, digest in checksums.items():
         if hash_file(folder / name) != digest:
             raise ValueError(f"Package checksum mismatch: {name}")
+        if info["platform"] == "appimage" and any(r.get('sha256') != digest for r in reports):
+            raise ValueError("AppImage smoke reports refer to a different binary")
     return info
