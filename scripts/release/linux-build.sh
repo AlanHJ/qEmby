@@ -2,11 +2,28 @@
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
+available_package() {
+  local candidate
+  for candidate in "$@"; do
+    if apt-cache show "$candidate" >/dev/null 2>&1; then
+      printf '%s' "$candidate"
+      return 0
+    fi
+  done
+  printf 'No package available for %s\n' "$*" >&2
+  return 1
+}
+svg_dev="$(available_package qt6-svg-dev libqt6svg6-dev)"
+websockets_dev="$(available_package qt6-websockets-dev libqt6websockets6-dev)"
+svg_plugins=()
+if apt-cache show qt6-svg-plugins >/dev/null 2>&1; then
+  svg_plugins+=(qt6-svg-plugins)
+fi
 apt-get install -y --no-install-recommends \
   ca-certificates git build-essential cmake ninja-build pkg-config python3 \
   dpkg-dev libmpv-dev libgl1-mesa-dev qt6-base-dev qt6-base-private-dev \
-  qt6-tools-dev qt6-tools-dev-tools qt6-l10n-tools qt6-websockets-dev \
-  qt6-svg-dev qt6-svg-plugins libxkbcommon-dev libxkbcommon-x11-dev \
+  qt6-tools-dev qt6-tools-dev-tools qt6-l10n-tools "$websockets_dev" \
+  "$svg_dev" "${svg_plugins[@]}" libxkbcommon-dev libxkbcommon-x11-dev \
   libxcb-cursor-dev libxcb-icccm4-dev libxcb-image0-dev libxcb-keysyms1-dev \
   libxcb-randr0-dev libxcb-render-util0-dev libxcb-shape0-dev libxcb-sync-dev \
   libxcb-xfixes0-dev libxcb-xkb-dev libxcb-util-dev libx11-xcb-dev
@@ -15,7 +32,12 @@ export BUILD_DIR="$GITHUB_WORKSPACE/build/cloud"
 export OUTPUT_DIR="$GITHUB_WORKSPACE/dist/cloud"
 export QEMBY_DEB_DEPLOY_QT=OFF
 export QEMBY_DEB_SHLIBDEPS=ON
+export QEMBY_DEB_EXTRA_DEPENDS="libqt6openglwidgets6, libqt6websockets6, libqt6svg6"
+if ((${#svg_plugins[@]})); then
+  QEMBY_DEB_EXTRA_DEPENDS+=", qt6-svg-plugins"
+fi
 export CMAKE_BUILD_PARALLEL_LEVEL=2
+python3 scripts/release/verify_source.py
 bash packaging/linux/build-deb.sh
 for deb in "$OUTPUT_DIR"/*.deb; do
   dpkg-deb --info "$deb"

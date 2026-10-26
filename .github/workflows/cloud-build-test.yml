@@ -18,6 +18,8 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      - name: Verify source snapshot
+        run: python scripts/release/verify_source.py
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
@@ -25,7 +27,7 @@ jobs:
         with:
           version: '6.9.2'
           arch: win64_msvc2022_64
-          modules: qtwebsockets qtimageformats
+          modules: qtwebsockets qtimageformats qtsvg
           cache: true
       - name: Install pinned libmpv SDK
         shell: pwsh
@@ -101,12 +103,13 @@ jobs:
       - name: Install dependencies
         run: |
           test "$(uname -m)" = arm64
+          python3 scripts/release/verify_source.py
           brew install mpv ninja pkg-config
       - uses: jurplel/install-qt-action@v4
         with:
           version: '6.9.2'
           arch: clang_64
-          modules: qtwebsockets qtimageformats
+          modules: qtwebsockets qtimageformats qtsvg
           cache: true
       - name: Configure Release arm64
         run: >-

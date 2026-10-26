@@ -99,6 +99,9 @@ def main():
         manifest[name] = hashlib.sha256(path.read_bytes()).hexdigest()
     (destination / "release-source.json").write_text(
         json.dumps({"comments_stripped": args.strip_comments, "files": manifest}, indent=2) + "\n", encoding="utf-8")
+    (destination / ".backup").mkdir(exist_ok=True)
+    (destination / ".backup/stage-paths.txt").write_text(
+        "\n".join([*manifest, "release-source.json", ".gitignore", ".gitmodules"]) + "\n", encoding="utf-8")
     print(f"Exported {len(manifest)} files to {destination}")
 
 

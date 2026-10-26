@@ -64,3 +64,13 @@ release/
 __pycache__/
 dist/
 release/
+
+.backup/
+__pycache__/
+dist/
+release/
+
+.backup/
+__pycache__/
+dist/
+release/
