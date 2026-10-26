@@ -27,11 +27,19 @@ def package_windows(root, build, dist, version):
     shutil.copy2(binaries / "qEmbyApp.exe", app)
     for path in binaries.glob("*.dll"):
         shutil.copy2(path, app)
-    for required in ("qEmbyCore.dll", "libmpv-2.dll"):
+    for required in ("qEmbyCore.dll", "libmpv-2.dll", "vulkan-1.dll"):
         if not (app / required).is_file():
             raise RuntimeError(f"Missing runtime: {required}")
     run("windeployqt", "--release", "--compiler-runtime", app / "qEmbyApp.exe")
     shutil.copy2(root / "LICENSE", app)
+    (app / "licenses").mkdir()
+    shutil.copy2(binaries / "VulkanRT-License.txt", app / "licenses/VulkanRT-License.txt")
+    # Exercise the native Windows loader: missing dependencies must fail CI
+    # before we produce either distribution package.
+    import ctypes
+    with os.add_dll_directory(str(app)):
+        ctypes.WinDLL(str(app / "libmpv-2.dll"))
+    print("Validated libmpv native DLL loading", flush=True)
     shutil.make_archive(str(dist / f"qEmby-v{version}-Win-x64"), "zip", dist, "qEmby")
     candidates = [shutil.which("ISCC"), r"C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
                   r"C:\Program Files\Inno Setup 6\ISCC.exe"]

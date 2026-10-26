@@ -80,6 +80,19 @@ jobs:
         with:
           name: build-windows-x64
           path: build/cloud/bin
+      - name: Install pinned Vulkan loader
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $url = 'https://sdk.lunarg.com/sdk/download/1.4.313.0/windows/VulkanRT-X64-1.4.313.0-Components.zip?Human=true'
+          $archive = Join-Path $env:RUNNER_TEMP 'vulkan-runtime.zip'
+          Invoke-WebRequest $url -Headers @{ 'Referer' = 'https://vulkan.lunarg.com/' } -OutFile $archive
+          $hash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -ne 'e8d37913185142270a2bc1b3e1f8f498a4edf47405fddda666f2f38b30ca944b') { throw 'Vulkan runtime SHA256 mismatch' }
+          Expand-Archive $archive -DestinationPath "$env:RUNNER_TEMP\vulkan-runtime"
+          $components = Join-Path $env:RUNNER_TEMP 'vulkan-runtime\VulkanRT-X64-1.4.313.0-Components'
+          Copy-Item "$components\x64\vulkan-1.dll" build/cloud/bin/
+          Copy-Item "$components\VulkanRT-License.txt" build/cloud/bin/
       - name: Package ZIP and installer
         run: python scripts/release/package.py --platform windows
       - uses: actions/upload-artifact@v4
