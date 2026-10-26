@@ -10,7 +10,7 @@ GROUPS = {
     "package-windows-x64": ("windows", None),
     "package-macos26-arm64": ("macos", None),
     **{f"package-linux-{name}-amd64": ("linux", name)
-       for name in ("jammy", "noble", "bookworm", "trixie")},
+       for name in ("jammy", "noble", "resolute", "bookworm", "trixie")},
 }
 
 

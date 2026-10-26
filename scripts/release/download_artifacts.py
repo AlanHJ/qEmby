@@ -13,7 +13,7 @@ def main():
     parser.add_argument("--repository", default="AlanHJ/qEmby")
     parser.add_argument("--destination", type=Path, required=True)
     parser.add_argument("--allow-partial", action="store_true")
-    parser.add_argument("--platform", choices=['all', 'windows', 'macos', 'linux', 'appimage'], default='all')
+    parser.add_argument("--platform", choices=['all', 'windows', 'macos', 'linux', 'appimage', 'ubuntu26'], default='all')
     parser.add_argument("--artifact-pattern", default="package-*")
     args = parser.parse_args()
     run = json.loads(subprocess.check_output([
@@ -30,7 +30,8 @@ def main():
     pattern = args.artifact_pattern
     if pattern == 'package-*' and args.platform != 'all':
         pattern = {'windows': 'package-windows-*', 'macos': 'package-macos*',
-                   'linux': 'package-linux-*', 'appimage': 'package-linux-appimage-*'}[args.platform]
+                   'linux': 'package-linux-*', 'appimage': 'package-linux-appimage-*',
+                   'ubuntu26': 'package-linux-resolute-amd64'}[args.platform]
     subprocess.run(["gh", "run", "download", str(args.run_id), "--repo", args.repository,
                     "--pattern", pattern, "--dir", str(destination)], check=True)
     commits = set()
@@ -49,6 +50,8 @@ def main():
     expected = {name for name, (platform, _) in GROUPS.items()
                 if args.platform == 'all' or platform == args.platform
                 or (args.platform == 'linux' and platform == 'appimage')}
+    if args.platform == 'ubuntu26':
+        expected = {'package-linux-resolute-amd64'}
     if not args.allow_partial and {p.name for p in groups} != expected:
         raise SystemExit(f"Incomplete run: expected {sorted(expected)}, got {sorted(p.name for p in groups)}")
     print(f"Verified {verified} packages from commit {next(iter(commits))}")

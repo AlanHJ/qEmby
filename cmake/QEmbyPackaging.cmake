@@ -34,7 +34,7 @@ set(QEMBY_DEBIAN_PACKAGE_EXTRA_DEPENDS
     "${_qemby_default_extra_depends}" CACHE STRING
     "Additional Debian runtime dependencies appended to generated package dependencies")
 set(QEMBY_DEBIAN_PACKAGE_RELEASE "" CACHE STRING
-    "Optional Debian package release suffix, e.g. jammy, noble, bookworm or trixie")
+    "Optional Debian package release suffix, e.g. jammy, noble, resolute, bookworm or trixie")
 
 set(QEMBY_EXECUTABLE_NAME "qEmbyApp" CACHE STRING
     "Installed executable name used by Linux desktop files")
