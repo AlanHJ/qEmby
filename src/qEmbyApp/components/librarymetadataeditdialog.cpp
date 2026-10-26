@@ -164,7 +164,7 @@ QDateTime parseServerDateTime(QString rawValue)
         parsed = QDateTime::fromString(
             rawValue, QStringLiteral("yyyy-MM-ddTHH:mm:ss.zzzzzzzZ"));
         if (parsed.isValid()) {
-            parsed.setTimeZone(QTimeZone::UTC);
+            parsed.setTimeZone(QTimeZone(0));
         }
     }
 

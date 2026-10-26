@@ -299,7 +299,7 @@ void WebdavSyncService::parseSnapshotName(const QString &fileName, QString &appV
     QDateTime parsed = QDateTime::fromString(tsPart, QStringLiteral("yyyyMMdd-HHmmss"));
     if (parsed.isValid())
     {
-        parsed.setTimeZone(QTimeZone(QTimeZone::UTC));
+        parsed.setTimeZone(QTimeZone(0));
         createdAtOut = parsed;
     }
 }

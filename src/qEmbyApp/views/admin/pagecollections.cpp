@@ -946,7 +946,7 @@ QCoro::Task<void> PageCollections::onOrderChanged(QStringList newOrderIds) {
               PlaylistDateUpdate update;
               update.itemId = orderedIds[windowStart + i];
               update.dateCreatedRaw =
-                  QDateTime::fromSecsSinceEpoch(dateSecs, QTimeZone::UTC)
+                  QDateTime::fromSecsSinceEpoch(dateSecs, QTimeZone(0))
                       .toString(Qt::ISODateWithMs);
               updates.append(update);
             }
@@ -957,7 +957,7 @@ QCoro::Task<void> PageCollections::onOrderChanged(QStringList newOrderIds) {
               PlaylistDateUpdate update;
               update.itemId = orderedIds[windowStart + i];
               update.dateCreatedRaw =
-                  QDateTime::fromSecsSinceEpoch(dateSecs, QTimeZone::UTC)
+                  QDateTime::fromSecsSinceEpoch(dateSecs, QTimeZone(0))
                       .toString(Qt::ISODateWithMs);
               updates.append(update);
             }
@@ -968,7 +968,7 @@ QCoro::Task<void> PageCollections::onOrderChanged(QStringList newOrderIds) {
               PlaylistDateUpdate update;
               update.itemId = orderedIds[windowStart + i];
               update.dateCreatedRaw =
-                  QDateTime::fromSecsSinceEpoch(dateSecs, QTimeZone::UTC)
+                  QDateTime::fromSecsSinceEpoch(dateSecs, QTimeZone(0))
                       .toString(Qt::ISODateWithMs);
               updates.append(update);
             }
@@ -985,7 +985,7 @@ QCoro::Task<void> PageCollections::onOrderChanged(QStringList newOrderIds) {
               PlaylistDateUpdate update;
               update.itemId = orderedIds[windowStart + i];
               update.dateCreatedRaw =
-                  QDateTime::fromSecsSinceEpoch(dateSecs, QTimeZone::UTC)
+                  QDateTime::fromSecsSinceEpoch(dateSecs, QTimeZone(0))
                       .toString(Qt::ISODateWithMs);
               updates.append(update);
             }

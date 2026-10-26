@@ -32,7 +32,7 @@ QString formatIsoDateTime(QString isoDate)
         return isoDate;
     }
 
-    dateTime.setTimeZone(QTimeZone::UTC);
+    dateTime.setTimeZone(QTimeZone(0));
     return dateTime.toLocalTime().toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
 }
 

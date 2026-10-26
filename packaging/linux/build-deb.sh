@@ -110,7 +110,11 @@ fi
 
 cmake "${cmake_args[@]}"
 
-cmake --build "$BUILD_DIR" --config Release
+build_args=(--build "$BUILD_DIR" --config Release)
+if [[ "${QEMBY_BUILD_KEEP_GOING:-OFF}" == "ON" && "$GENERATOR" == "Ninja" ]]; then
+    build_args+=(-- -k 0)
+fi
+cmake "${build_args[@]}"
 rm -rf "$OUTPUT_DIR/_CPack_Packages"
 cpack --config "$BUILD_DIR/CPackConfig.cmake" -G DEB -B "$OUTPUT_DIR"
 

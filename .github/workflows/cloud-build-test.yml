@@ -114,6 +114,7 @@ jobs:
       image: ${{ matrix.image }}
     env:
       QEMBY_DEB_DIST_TAG: ${{ matrix.codename }}
+      QEMBY_BUILD_KEEP_GOING: 'ON'
     steps:
       - uses: actions/checkout@v4
       - name: Build and validate native DEB
