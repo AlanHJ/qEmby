@@ -113,10 +113,12 @@ def main():
         finally:
             os.chdir(previous)
     # Backups intentionally remain local and are excluded from Git.
-    ignores = (destination / ".gitignore").read_text(encoding="utf-8").splitlines()
-    local_only = [".backup/", "__pycache__/", "dist/", "release/"]
-    original = "\n".join(line for line in ignores if line not in local_only).rstrip()
-    (destination / ".gitignore").write_text(original + "\n\n" + "\n".join(local_only) + "\n", encoding="utf-8", newline="\n")
+    # Existing publication .gitignore comments may use a legacy Windows encoding.
+    # Preserve its bytes; only the ASCII exclusion entries need modification.
+    ignores = (destination / ".gitignore").read_bytes().splitlines()
+    local_only = [b".backup/", b"__pycache__/", b"dist/", b"release/"]
+    original = b"\n".join(line for line in ignores if line not in local_only).rstrip()
+    (destination / ".gitignore").write_bytes(original + b"\n\n" + b"\n".join(local_only) + b"\n")
     manifest = {}
     for relative in ("src", "cmake", "packaging", "libs/qwindowkit", "scripts/release", ".github", "installer"):
         for path in sorted((destination / relative).rglob("*")):
@@ -138,7 +140,7 @@ def main():
         if required not in manifest:
             raise RuntimeError(f"Missing required release input: {required}")
     (destination / "release-source.json").write_text(
-        json.dumps({"comments_stripped": args.strip_comments, "files": manifest}, indent=2) + "\n", encoding="utf-8")
+        json.dumps({"comments_stripped": args.strip_comments, "files": manifest}, indent=2) + "\n", encoding="utf-8", newline="\n")
     (destination / ".backup").mkdir(exist_ok=True)
     (destination / ".backup/stage-paths.txt").write_text(
         "\n".join([*manifest, "release-source.json", ".gitignore", ".gitmodules"]) + "\n", encoding="utf-8")

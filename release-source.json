@@ -1033,17 +1033,18 @@
     "libs/qwindowkit/src/widgets/widgetwindowagent_p.h": "aa78cd5e03209dc90343f1cdbd7ef2b2eba4183fd6da4ef4e6ae9329d6f46702",
     "libs/qwindowkit/src/widgets/widgetwindowagent_win.cpp": "8f529e6cfe6d0b2a8b3b17fe86f0751706d831198b46f259b7bf1a52fdfff376",
     "scripts/release/check_comment_removal.py": "00ecd2317ddb36e98d9086cd854809262227bfd748f471ac6fb1f800e146e1d5",
-    "scripts/release/download_artifacts.py": "ae343252250a2f7d7836cac22c6a6bfc0841815d876f283933cf412e734d082c",
-    "scripts/release/linux-build.sh": "219720c1c93a5f995b75c4a3b00e796ffcc930a03175019176bb41a0c1f0d72f",
-    "scripts/release/package.py": "a2c3f6ba01d70198929c513594569730d83de6f691a39fff0a8efc3c56d6bc4e",
-    "scripts/release/prepare_source.py": "c22ea75268ddccda0963edb5f6cc0c473ecc820fd74c0ecc515a2de878b826cb",
+    "scripts/release/download_artifacts.py": "649629e24d6578e25692a001fbe1c973f1584a0f61db72446cdc3e0f59714a03",
+    "scripts/release/linux-build.sh": "e1021eb68fd8f0ebb02053c26ab66013eb57fa9d811c0421d69abbf38b5d17b2",
+    "scripts/release/package.py": "3f4ab741bb2d79aa444f5c66c89b71e0e4ed8a2ecd42553fed9abc9b6416aa67",
+    "scripts/release/prepare_source.py": "5abe6066b951798ea2e3a2d4e01fbfd5d3038e4c8136b50d17017c0ae4865ebf",
+    "scripts/release/submit_test.py": "58da21062eaa900bffaa3e7463f23e51a0d65069b5f1035dfceab390ced706d2",
     "scripts/release/verify_source.py": "aa85a39675c3103db228cbcaae041cd4e1dd2e02d461bd6a393ceb8667cc245a",
-    ".github/workflows/cloud-build-test.yml": "c1c80a3c6157d0bc9e9d96a087fd9d15392d5985e89a0b317b2882ac23d4dcc6",
+    ".github/workflows/cloud-build-test.yml": "4207cdf55d79e06c018852440c499505508f19d1c7e8a0908c589ca98441637b",
     "installer/ChineseSimplified.isl": "47fde4f972985f1078614c18f22294b87bf5b5aaa1488126db8daaa1cf0b2372",
     "installer/qEmby.iss": "ff6f036e4e63538ac50cff8168f0a3bfd35aac6807a4e0b1f3bb32bc913ae1ea",
-    "CMakeLists.txt": "ecfecb3afbbef49c08cd4aca06113048bd082a6b637eaef8a634924f2f8c02d6",
+    "CMakeLists.txt": "e793e1bc068ec2cc58e15ea8358ff5b4fef10d690fc81d25ba4c67e372306729",
     "LICENSE": "abbde79c54aaa85df9903419ea13959a1e9043d5bf437a5154693262724033f2",
     "README.md": "34b183e13835c3574904b3de09d9684186a17d0c48e0d6c46ac499db4f6877e5",
-    ".gitattributes": "f4e49d0d25fbce6cf5a79e2f784895ce774168d7a5c0393234242a35b693e967"
+    ".gitattributes": "bd1ce9481f8b301dbe74bf1f57885cd443f0f3c8a9a33faa9d72a5e8145e63dd"
   }
 }
