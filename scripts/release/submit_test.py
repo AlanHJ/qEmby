@@ -19,9 +19,12 @@ def main():
         subprocess.run(list(map(str, command)), check=True)
 
     checked(sys.executable, scripts / "check_comment_removal.py")
+    checked(sys.executable, scripts / "check_package_helpers.py")
     checked(sys.executable, scripts / "prepare_source.py", "--destination", destination,
             "--packaging-source", args.packaging_source, "--strip-comments")
     checked(sys.executable, destination / "scripts/release/verify_source.py")
+    checked("git", "-C", destination, "add", "-u", "--", "src", "cmake", "packaging",
+            "libs/qwindowkit", "scripts/release", ".github", "installer")
     checked("git", "-C", destination, "add", "-f", "--pathspec-from-file=.backup/stage-paths.txt")
     changed = subprocess.run(["git", "-C", str(destination), "diff", "--cached", "--quiet"])
     if changed.returncode == 1:

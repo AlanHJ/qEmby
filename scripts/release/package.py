@@ -45,7 +45,8 @@ def package_windows(root, build, dist, version):
 
 def mac_dependencies(binary):
     return [line.strip().split(" (compatibility", 1)[0]
-            for line in output("otool", "-L", binary).splitlines()[1:]]
+            for line in output("otool", "-arch", "arm64", "-L", binary).splitlines()
+            if line and line[0].isspace()]
 
 
 def package_macos(root, build, dist, version):
@@ -89,6 +90,8 @@ def package_macos(root, build, dist, version):
                 candidates.append(executable.parent / dependency.removeprefix("@executable_path/"))
             elif dependency.startswith("@loader_path/"):
                 candidates.append(binary.parent / dependency.removeprefix("@loader_path/"))
+                if binary.name in origins:
+                    candidates.append(origins[binary.name].parent / dependency.removeprefix("@loader_path/"))
             elif dependency.startswith("/"):
                 candidates.append(Path(dependency))
             elif dependency.startswith("@rpath/"):

@@ -13,13 +13,14 @@ def main():
     parser.add_argument("--repository", default="AlanHJ/qEmby")
     parser.add_argument("--destination", type=Path, required=True)
     parser.add_argument("--allow-partial", action="store_true")
+    parser.add_argument("--artifact-pattern", default="package-*")
     args = parser.parse_args()
     destination = args.destination.resolve()
     if destination.exists() and any(destination.iterdir()):
         raise SystemExit("Use an empty destination to avoid mixing runs")
     destination.mkdir(parents=True, exist_ok=True)
     subprocess.run(["gh", "run", "download", str(args.run_id), "--repo", args.repository,
-                    "--pattern", "package-*", "--dir", str(destination)], check=True)
+                    "--pattern", args.artifact_pattern, "--dir", str(destination)], check=True)
     commits = set()
     verified = 0
     groups = list(destination.glob("*/build-info.json"))

@@ -68,7 +68,7 @@ def main():
         raise SystemExit("Only a codex/cloud-build* worktree may be updated")
     ignore = shutil.ignore_patterns(".git", ".github", ".backup", "__pycache__",
                                     "build", ".DS_Store", "*.user")
-    for relative in ("src", "cmake", "packaging", "libs/qwindowkit", "scripts/release"):
+    for relative in ("src", "cmake", "packaging", "libs/qwindowkit", "scripts/release", ".github"):
         target = (destination / relative).resolve()
         if not target.is_relative_to(destination) or target == destination:
             raise SystemExit("Unsafe export target")
@@ -80,7 +80,6 @@ def main():
         if not origin.exists():
             origin = args.packaging_source / name
         shutil.copy2(origin, destination / name)
-    shutil.copytree(source / ".github", destination / ".github", dirs_exist_ok=True)
     installer = (destination / "installer").resolve()
     if not installer.is_relative_to(destination):
         raise SystemExit("Unsafe installer directory")

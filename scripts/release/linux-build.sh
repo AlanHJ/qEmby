@@ -20,7 +20,7 @@ if apt-cache show qt6-svg-plugins >/dev/null 2>&1; then
   svg_plugins+=(qt6-svg-plugins)
 fi
 apt-get install -y --no-install-recommends \
-  ca-certificates git build-essential cmake ninja-build pkg-config python3 \
+  ca-certificates git build-essential cmake ninja-build pkg-config python3 file \
   dpkg-dev libmpv-dev libgl1-mesa-dev libqt6opengl6-dev qt6-base-dev qt6-base-private-dev \
   qt6-tools-dev qt6-tools-dev-tools qt6-l10n-tools "$websockets_dev" \
   "$svg_dev" "${svg_plugins[@]}" libxkbcommon-dev libxkbcommon-x11-dev \
