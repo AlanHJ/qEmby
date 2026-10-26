@@ -166,6 +166,7 @@ if(QEMBY_BUILD_PLAYBACK_PROBE AND UNIX AND NOT APPLE)
     target_link_libraries(qEmbyPlaybackProbe PRIVATE ${_probe_links})
     target_compile_definitions(qEmbyPlaybackProbe PRIVATE ${_probe_defines})
     target_include_directories(qEmbyPlaybackProbe PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_compile_options(qEmbyPlaybackProbe PRIVATE -g1)
 endif()
 
 # ==========================================

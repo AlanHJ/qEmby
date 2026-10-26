@@ -67,6 +67,14 @@ def main():
                                                 stderr=subprocess.STDOUT, timeout=65)
                         print(result.stdout[-16000:], flush=True)
                         if result.returncode or '[PlaybackProbe] PASS' not in result.stdout or 'Qt: 6.9.3' not in result.stdout:
+                            debugger = ['gdb', '--batch', '-ex', 'set pagination off', '-ex', 'run',
+                                        '-ex', 'thread apply all bt 12', '--args',
+                                        str(build / 'bin/qEmbyPlaybackProbe'), str(video), mode]
+                            if platform == 'xcb':
+                                debugger = ['xvfb-run', '-a', '-s', '-screen 0 1280x720x24', *debugger]
+                            trace = subprocess.run(debugger, env=current, text=True, stdout=subprocess.PIPE,
+                                                   stderr=subprocess.STDOUT, timeout=90)
+                            print(trace.stdout[-40000:], flush=True)
                             raise RuntimeError(f'Real video playback failed: {platform}/{mode} (exit {result.returncode})')
                         reports.append({'platform': platform, 'mode': mode, 'result': 'passed'})
                     finally:

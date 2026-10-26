@@ -9,7 +9,7 @@ on:
         default: all
         options: [all, windows, linux, macos, appimage, nixos, ubuntu26, ubuntu24, debs]
       source_run:
-        description: Existing AppImage run ID (required only for nixos)
+        description: Existing AppImage run for nixos, or compiled DEB run for diagnostic replay
         type: string
         default: ''
   push:
@@ -256,6 +256,7 @@ jobs:
         shell: bash
         run: bash scripts/release/linux-build.sh --prepare
       - uses: jurplel/install-qt-action@v4
+        if: inputs.source_run == ''
         with:
           version: '6.9.3'
           arch: linux_gcc_64
@@ -263,9 +264,35 @@ jobs:
           cache: true
           install-deps: false
       - name: Build private Qt DEB and verify real video playback
+        if: inputs.source_run == ''
         shell: bash
         run: bash scripts/release/linux-build.sh
+      - uses: actions/download-artifact@v4
+        if: inputs.source_run != ''
+        with:
+          name: debug-linux-${{ matrix.codename }}
+          run-id: ${{ inputs.source_run }}
+          github-token: ${{ github.token }}
+          path: .
+      - name: Diagnose previously compiled playback binary without publishing
+        if: inputs.source_run != ''
+        shell: bash
+        run: |
+          chmod +x build/cloud/bin/qEmbyPlaybackProbe
+          python3 scripts/release/check_deb_playback.py --build-dir build/cloud
       - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: debug-linux-${{ matrix.codename }}
+          path: |
+            build/cloud/bin/
+            build/cloud/deb-safety-report.json
+            dist/cloud/*.deb
+            release-source.json
+          if-no-files-found: warn
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: inputs.source_run == ''
         with:
           name: package-linux-${{ matrix.codename }}-amd64
           path: |

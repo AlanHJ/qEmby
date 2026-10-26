@@ -28,7 +28,7 @@ apt-get install -y --no-install-recommends \
   libxcb-cursor-dev libxcb-icccm4-dev libxcb-image0-dev libxcb-keysyms1-dev \
   libxcb-randr0-dev libxcb-render-util0-dev libxcb-shape0-dev libxcb-sync-dev \
   libxcb-xfixes0-dev libxcb-xkb-dev libxcb-util-dev libx11-xcb-dev
-apt-get install -y --no-install-recommends xvfb xauth weston libgl1-mesa-dri fonts-dejavu-core ffmpeg
+apt-get install -y --no-install-recommends xvfb xauth weston libgl1-mesa-dri fonts-dejavu-core ffmpeg gdb
 exit 0
 fi
 git config --global --add safe.directory "$GITHUB_WORKSPACE"
