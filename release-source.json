@@ -1044,7 +1044,7 @@
     "scripts/release/check_linux_helpers.py": "8aa8fccf9b6d8f656bd43d045c48f61afb010fe6605301c2c537d574889f8db6",
     "scripts/release/check_package_helpers.py": "203451bf106d765160afa2072121593fbac08d437c0a052f03b5992464b40410",
     "scripts/release/check_release_safety.py": "2acefb662a4276c78261c1fb43d73c2db6ee67bd8f92a1e15e32fb8b18a55b5b",
-    "scripts/release/download_artifacts.py": "196fd8bb74f005b40ae33aa1e149d3f96b739e5b3fa46c581c66144cf9c06ee5",
+    "scripts/release/download_artifacts.py": "900a5a8ad54e913133e218bbe2a0601a63847d832eb2d8b80d8a5232d8bdaedf",
     "scripts/release/finalize_appimage.py": "cb6b894631431ef33531e6bea2172667cc43c73f857ed4fd7600a4b0f7492fec",
     "scripts/release/linux-build.sh": "6e0c75c9e000181342b25e05d97251171e696886748e1acc3ebd93852c05a870",
     "scripts/release/package.py": "e4ad70fb4977ce52a56ad095d443f57ec045fef1368b9b8a22439591ad3b6d53",

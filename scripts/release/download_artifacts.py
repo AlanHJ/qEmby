@@ -27,8 +27,12 @@ def main():
     if destination.exists() and any(destination.iterdir()):
         raise SystemExit("Use an empty destination to avoid mixing runs")
     destination.mkdir(parents=True, exist_ok=True)
+    pattern = args.artifact_pattern
+    if pattern == 'package-*' and args.platform != 'all':
+        pattern = {'windows': 'package-windows-*', 'macos': 'package-macos*',
+                   'linux': 'package-linux-*', 'appimage': 'package-linux-appimage-*'}[args.platform]
     subprocess.run(["gh", "run", "download", str(args.run_id), "--repo", args.repository,
-                    "--pattern", args.artifact_pattern, "--dir", str(destination)], check=True)
+                    "--pattern", pattern, "--dir", str(destination)], check=True)
     commits = set()
     versions = set()
     verified = 0
