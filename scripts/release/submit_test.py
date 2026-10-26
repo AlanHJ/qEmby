@@ -30,6 +30,7 @@ def main():
     checked(sys.executable, scripts / "check_comment_removal.py")
     checked(sys.executable, scripts / "check_package_helpers.py")
     checked(sys.executable, scripts / "check_release_safety.py")
+    checked(sys.executable, scripts / "check_appimage_helpers.py")
     checked(sys.executable, scripts / "prepare_source.py", "--destination", destination,
             "--packaging-source", args.packaging_source, "--strip-comments")
     checked(sys.executable, destination / "scripts/release/verify_source.py")
