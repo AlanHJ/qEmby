@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "$ROOT_DIR/packaging/linux/common.sh"
 BUILD_DIR="${BUILD_DIR:-$ROOT_DIR/build-release-appimage}"
 DIST_DIR="${OUTPUT_DIR:-$ROOT_DIR/dist/appimage}"
 APPDIR="${APPDIR:-$DIST_DIR/AppDir}"
@@ -9,28 +10,6 @@ GENERATOR="${CMAKE_GENERATOR:-Ninja}"
 APPIMAGETOOL="${APPIMAGETOOL:-}"
 APPIMAGE_BUNDLE_MPV="${QEMBY_APPIMAGE_BUNDLE_MPV:-ON}"
 
-reset_stale_cmake_cache_if_needed() {
-    local build_dir="$1"
-    local cache_file="$build_dir/CMakeCache.txt"
-
-    if [[ ! -f "$cache_file" ]]; then
-        return 0
-    fi
-
-    local cached_source_dir
-    local cached_build_dir
-    cached_source_dir="$(sed -n 's/^CMAKE_HOME_DIRECTORY:INTERNAL=//p' "$cache_file" | head -n 1)"
-    cached_build_dir="$(sed -n 's/^CMAKE_CACHEFILE_DIR:INTERNAL=//p' "$cache_file" | head -n 1)"
-
-    if [[ -n "$cached_source_dir" && "$cached_source_dir" != "$ROOT_DIR" ]] ||
-       [[ -n "$cached_build_dir" && "$cached_build_dir" != "$build_dir" ]]; then
-        echo "Detected stale CMake cache in $build_dir" >&2
-        echo "Cached source: ${cached_source_dir:-<unknown>}" >&2
-        echo "Cached build dir: ${cached_build_dir:-<unknown>}" >&2
-        echo "Recreating the build directory for the current machine..." >&2
-        rm -rf "$build_dir"
-    fi
-}
 
 if [[ -z "$APPIMAGETOOL" ]]; then
     APPIMAGETOOL="$(command -v appimagetool || true)"
@@ -53,10 +32,11 @@ if [[ -z "$APPIMAGETOOL" ]]; then
     exit 1
 fi
 
-reset_stale_cmake_cache_if_needed "$BUILD_DIR"
+qemby_check_build_cache "$ROOT_DIR" "$BUILD_DIR"
 
+qemby_validate_work_dir "$ROOT_DIR" "$DIST_DIR"
 mkdir -p "$DIST_DIR"
-rm -rf "$APPDIR"
+qemby_reset_owned_appdir "$ROOT_DIR" "$APPDIR"
 
 cmake_args=(
     -S "$ROOT_DIR"

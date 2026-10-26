@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "$ROOT_DIR/packaging/linux/common.sh"
 BUILD_DIR="${BUILD_DIR:-$ROOT_DIR/build-release-deb}"
 OUTPUT_DIR="${OUTPUT_DIR:-$ROOT_DIR/dist/deb}"
 GENERATOR="${CMAKE_GENERATOR:-Ninja}"
@@ -9,31 +10,9 @@ DEB_SHLIBDEPS="${QEMBY_DEB_SHLIBDEPS:-}"
 DEB_DEPLOY_QT="${QEMBY_DEB_DEPLOY_QT:-OFF}"
 DEB_BUNDLE_MPV="${QEMBY_DEB_BUNDLE_MPV:-OFF}"
 DEB_MANUAL_DEPENDS="${QEMBY_DEB_MANUAL_DEPENDS:-}"
-DEB_EXTRA_DEPENDS="${QEMBY_DEB_EXTRA_DEPENDS:-libqt6openglwidgets6, libqt6websockets6, libqt6svg6, qt6-svg-plugins}"
+DEB_EXTRA_DEPENDS="${QEMBY_DEB_EXTRA_DEPENDS-}"
 DEB_DIST_TAG="${QEMBY_DEB_DIST_TAG:-}"
 
-reset_stale_cmake_cache_if_needed() {
-    local build_dir="$1"
-    local cache_file="$build_dir/CMakeCache.txt"
-
-    if [[ ! -f "$cache_file" ]]; then
-        return 0
-    fi
-
-    local cached_source_dir
-    local cached_build_dir
-    cached_source_dir="$(sed -n 's/^CMAKE_HOME_DIRECTORY:INTERNAL=//p' "$cache_file" | head -n 1)"
-    cached_build_dir="$(sed -n 's/^CMAKE_CACHEFILE_DIR:INTERNAL=//p' "$cache_file" | head -n 1)"
-
-    if [[ -n "$cached_source_dir" && "$cached_source_dir" != "$ROOT_DIR" ]] ||
-       [[ -n "$cached_build_dir" && "$cached_build_dir" != "$build_dir" ]]; then
-        echo "Detected stale CMake cache in $build_dir" >&2
-        echo "Cached source: ${cached_source_dir:-<unknown>}" >&2
-        echo "Cached build dir: ${cached_build_dir:-<unknown>}" >&2
-        echo "Recreating the build directory for the current machine..." >&2
-        rm -rf "$build_dir"
-    fi
-}
 
 default_manual_depends_for_dist() {
     local dist_tag="$1"
@@ -69,7 +48,7 @@ if [[ -z "$DEB_DIST_TAG" && -f /etc/os-release ]]; then
     fi
 fi
 
-reset_stale_cmake_cache_if_needed "$BUILD_DIR"
+qemby_check_build_cache "$ROOT_DIR" "$BUILD_DIR"
 
 if [[ -z "$DEB_SHLIBDEPS" ]]; then
     if [[ "$DEB_DEPLOY_QT" == "ON" ]]; then
@@ -83,6 +62,7 @@ if [[ "$DEB_SHLIBDEPS" == "OFF" && -z "$DEB_MANUAL_DEPENDS" ]]; then
     DEB_MANUAL_DEPENDS="$(default_manual_depends_for_dist "$DEB_DIST_TAG")"
 fi
 
+qemby_validate_work_dir "$ROOT_DIR" "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR"
 
 cmake_args=(
@@ -91,10 +71,17 @@ cmake_args=(
     -G "$GENERATOR"
     -DCMAKE_BUILD_TYPE=Release
     -DQEMBY_DEBIAN_PACKAGE_SHLIBDEPS="$DEB_SHLIBDEPS"
-    -DQEMBY_DEBIAN_PACKAGE_EXTRA_DEPENDS="$DEB_EXTRA_DEPENDS"
     -DQEMBY_ENABLE_QT_DEPLOY="$DEB_DEPLOY_QT"
     -DQEMBY_BUNDLE_MPV_RUNTIME="$DEB_BUNDLE_MPV"
 )
+
+if [[ "${QEMBY_DEB_EXTRA_DEPENDS+x}" == x ]]; then
+    cmake_args+=("-DQEMBY_DEBIAN_PACKAGE_EXTRA_DEPENDS=$DEB_EXTRA_DEPENDS")
+else
+    # Refresh the distro-aware default rather than retaining an obsolete cached
+    # qt6-svg-plugins dependency on distributions where that package is absent.
+    cmake_args+=(-UQEMBY_DEBIAN_PACKAGE_EXTRA_DEPENDS)
+fi
 
 if [[ -n "$DEB_MANUAL_DEPENDS" ]]; then
     cmake_args+=("-DQEMBY_DEBIAN_PACKAGE_DEPENDS=$DEB_MANUAL_DEPENDS")
@@ -115,7 +102,6 @@ if [[ "${QEMBY_BUILD_KEEP_GOING:-OFF}" == "ON" && "$GENERATOR" == "Ninja" ]]; th
     build_args+=(-- -k 0)
 fi
 cmake "${build_args[@]}"
-rm -rf "$OUTPUT_DIR/_CPack_Packages"
 cpack --config "$BUILD_DIR/CPackConfig.cmake" -G DEB -B "$OUTPUT_DIR"
 
 echo "DEB package output: $OUTPUT_DIR"

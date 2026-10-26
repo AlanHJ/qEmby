@@ -11,6 +11,74 @@ import subprocess
 import sys
 
 
+EXPORT_DIRS = ("src", "cmake", "packaging", "libs/qwindowkit", "scripts/release", ".github")
+ROOT_FILES = ("CMakeLists.txt", "LICENSE", "README.md", ".gitattributes")
+
+
+def is_link(path):
+    return path.is_symlink() or getattr(path, "is_junction", lambda: False)()
+
+
+def export_ignore(directory, names):
+    ignored = set(shutil.ignore_patterns(
+        ".git", ".github", ".backup", "__pycache__", ".cache", ".vs", ".vscode",
+        "build", ".DS_Store", "*.user", "*.log", "AGENTS.md", "CLAUDE.md", ".env", ".env.*"
+    )(directory, names))
+    for name in names:
+        if name in ignored:
+            continue
+        path = Path(directory) / name
+        if is_link(path):
+            raise ValueError(f"Linked release input is not allowed: {path}")
+        if path.is_dir() and name.startswith("build-"):
+            ignored.add(name)
+    return ignored
+
+
+def validate_worktree(destination):
+    if is_link(destination) or not (destination / ".git").is_file():
+        raise ValueError("Destination must be a dedicated, unlinked Git worktree")
+    root = Path(subprocess.check_output(
+        ["git", "-C", str(destination), "rev-parse", "--show-toplevel"], text=True).strip()).resolve()
+    branch = subprocess.check_output(
+        ["git", "-C", str(destination), "branch", "--show-current"], text=True).strip()
+    if root != destination.resolve() or not branch.startswith("codex/cloud-build"):
+        raise ValueError("Only the root of a codex/cloud-build* worktree may be updated")
+    dirty = subprocess.check_output(
+        ["git", "-C", str(destination), "status", "--porcelain", "--untracked-files=all"], text=True)
+    if dirty.strip():
+        raise ValueError("Test worktree has local or staged changes; preserve/review them before exporting")
+
+
+def validate_export_paths(source, destination, packaging_source):
+    roots = [path.resolve() for path in (source, destination, packaging_source)]
+    for origin in (roots[0], roots[2]):
+        if origin == roots[1] or origin in roots[1].parents or roots[1] in origin.parents:
+            raise ValueError("Source, packaging inputs and destination must not overlap")
+    for relative in (*EXPORT_DIRS, "installer", ".backup", *ROOT_FILES,
+                     ".gitignore", ".gitmodules", "release-source.json"):
+        path = destination / relative
+        if is_link(path) or path.resolve() != path.absolute():
+            raise ValueError(f"Linked export destination is not allowed: {relative}")
+    for relative in EXPORT_DIRS:
+        path = source / relative
+        if not path.is_dir() or is_link(path):
+            raise ValueError(f"Missing or linked source directory: {relative}")
+        target = destination / relative
+        if is_link(target) or not target.resolve().is_relative_to(destination.resolve()):
+            raise ValueError(f"Unsafe export target: {relative}")
+    for name in ROOT_FILES:
+        path = source / name if (source / name).exists() else packaging_source / name
+        if not path.is_file() or is_link(path):
+            raise ValueError(f"Missing or linked input: {name}")
+    for name in ("qEmby.iss", "ChineseSimplified.isl"):
+        path = packaging_source / "installer" / name
+        if not path.is_file() or is_link(path):
+            raise ValueError(f"Missing or linked installer input: {name}")
+    if is_link(destination / "installer") or is_link(packaging_source / "installer"):
+        raise ValueError("Linked installer directory is not allowed")
+
+
 def release_remover():
     from comms.core import CommentRemover
 
@@ -57,25 +125,24 @@ def main():
     parser.add_argument("--strip-comments", action="store_true")
     args = parser.parse_args()
     source = Path(__file__).resolve().parents[2]
+    if is_link(args.destination):
+        raise SystemExit("Linked destination is not allowed")
     destination = args.destination.resolve()
-    if destination == source or source in destination.parents:
-        raise SystemExit("Destination must be outside the development tree")
-    if not (destination / ".git").is_file():
-        raise SystemExit("Destination must be a dedicated Git worktree")
-    branch = subprocess.check_output(
-        ["git", "-C", str(destination), "branch", "--show-current"], text=True).strip()
-    if not branch.startswith("codex/cloud-build"):
-        raise SystemExit("Only a codex/cloud-build* worktree may be updated")
-    ignore = shutil.ignore_patterns(".git", ".github", ".backup", "__pycache__",
-                                    "build", ".DS_Store", "*.user")
-    for relative in ("src", "cmake", "packaging", "libs/qwindowkit", "scripts/release", ".github"):
+    validate_worktree(destination)
+    validate_export_paths(source, destination, args.packaging_source)
+    # Validate all source entries before deleting any previous export directory.
+    for relative in EXPORT_DIRS:
+        for directory, names, files in os.walk(source / relative):
+            excluded = export_ignore(directory, names + files)
+            names[:] = [name for name in names if name not in excluded]
+    for relative in EXPORT_DIRS:
         target = (destination / relative).resolve()
         if not target.is_relative_to(destination) or target == destination:
             raise SystemExit("Unsafe export target")
         if target.exists():
             shutil.rmtree(target)
-        shutil.copytree(source / relative, target, ignore=ignore)
-    for name in ("CMakeLists.txt", "LICENSE", "README.md", ".gitattributes"):
+        shutil.copytree(source / relative, target, ignore=export_ignore)
+    for name in ROOT_FILES:
         origin = source / name
         if not origin.exists():
             origin = args.packaging_source / name
@@ -130,7 +197,7 @@ def main():
                 except UnicodeDecodeError:
                     pass
                 manifest[path.relative_to(destination).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
-    for name in ("CMakeLists.txt", "LICENSE", "README.md", ".gitattributes"):
+    for name in (*ROOT_FILES, ".gitignore", ".gitmodules"):
         path = destination / name
         path.write_bytes(path.read_bytes().replace(b"\r\n", b"\n"))
         manifest[name] = hashlib.sha256(path.read_bytes()).hexdigest()
@@ -142,7 +209,7 @@ def main():
         json.dumps({"comments_stripped": args.strip_comments, "files": manifest}, indent=2) + "\n", encoding="utf-8", newline="\n")
     (destination / ".backup").mkdir(exist_ok=True)
     (destination / ".backup/stage-paths.txt").write_text(
-        "\n".join([*manifest, "release-source.json", ".gitignore", ".gitmodules"]) + "\n", encoding="utf-8")
+        "\n".join([*manifest, "release-source.json"]) + "\n", encoding="utf-8")
     print(f"Exported {len(manifest)} files to {destination}")
 
 

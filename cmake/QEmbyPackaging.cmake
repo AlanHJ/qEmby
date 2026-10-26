@@ -16,8 +16,22 @@ set(QEMBY_RUNTIME_LIB_SUBDIR "qemby" CACHE STRING
     "Subdirectory under the install libdir for bundled private runtime libraries")
 set(QEMBY_DEBIAN_PACKAGE_DEPENDS "" CACHE STRING
     "Manual Debian dependencies used when dpkg-shlibdeps is disabled")
+set(_qemby_default_extra_depends
+    "libqt6openglwidgets6, libqt6websockets6, libqt6svg6")
+if(UNIX AND NOT APPLE)
+    find_program(QEMBY_APT_CACHE_EXECUTABLE apt-cache)
+    if(QEMBY_APT_CACHE_EXECUTABLE)
+        execute_process(
+            COMMAND "${QEMBY_APT_CACHE_EXECUTABLE}" show qt6-svg-plugins
+            RESULT_VARIABLE _qemby_svg_plugin_available
+            OUTPUT_QUIET ERROR_QUIET TIMEOUT 10)
+        if(_qemby_svg_plugin_available EQUAL 0)
+            string(APPEND _qemby_default_extra_depends ", qt6-svg-plugins")
+        endif()
+    endif()
+endif()
 set(QEMBY_DEBIAN_PACKAGE_EXTRA_DEPENDS
-    "libqt6openglwidgets6, libqt6websockets6, libqt6svg6, qt6-svg-plugins" CACHE STRING
+    "${_qemby_default_extra_depends}" CACHE STRING
     "Additional Debian runtime dependencies appended to generated package dependencies")
 set(QEMBY_DEBIAN_PACKAGE_RELEASE "" CACHE STRING
     "Optional Debian package release suffix, e.g. jammy, noble, bookworm or trixie")
@@ -102,6 +116,8 @@ set(_qemby_launcher_file
     "${_qemby_packaging_build_dir}/${QEMBY_EXECUTABLE_NAME}")
 set(_qemby_debian_postinst
     "${_qemby_packaging_build_dir}/postinst")
+set(_qemby_debian_postrm
+    "${_qemby_packaging_build_dir}/postrm")
 set(_qemby_runtime_bundle_script
     "${_qemby_packaging_build_dir}/QEmbyBundleMpvRuntime.cmake")
 
@@ -149,6 +165,17 @@ if(UNIX AND NOT APPLE)
     )
 
     file(CHMOD "${_qemby_debian_postinst}"
+        PERMISSIONS
+            OWNER_READ OWNER_WRITE OWNER_EXECUTE
+            GROUP_READ GROUP_EXECUTE
+            WORLD_READ WORLD_EXECUTE)
+
+    configure_file(
+        "${_qemby_packaging_source_dir}/debian/postrm.in"
+        "${_qemby_debian_postrm}"
+        @ONLY
+    )
+    file(CHMOD "${_qemby_debian_postrm}"
         PERMISSIONS
             OWNER_READ OWNER_WRITE OWNER_EXECUTE
             GROUP_READ GROUP_EXECUTE
@@ -298,7 +325,8 @@ qt6_deploy_runtime_dependencies(
     set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${QEMBY_PACKAGE_VENDOR}")
     set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "${QEMBY_PACKAGE_DESCRIPTION}")
     set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "fcitx5-frontend-qt6")
-    set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${_qemby_debian_postinst}")
+    set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
+        "${_qemby_debian_postinst};${_qemby_debian_postrm}")
     set(CPACK_DEBIAN_PACKAGE_CONTROL_STRICT_PERMISSION TRUE)
     set(_qemby_debian_depends)
     foreach(_qemby_depends IN ITEMS

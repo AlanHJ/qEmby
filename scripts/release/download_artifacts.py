@@ -1,10 +1,10 @@
 """Download a test run's artifacts and verify packages and commit consistency."""
 import argparse
-import hashlib
 import json
 from pathlib import Path
 import re
 import subprocess
+from release_contract import GROUPS, validate_artifact
 
 
 def main():
@@ -15,6 +15,13 @@ def main():
     parser.add_argument("--allow-partial", action="store_true")
     parser.add_argument("--artifact-pattern", default="package-*")
     args = parser.parse_args()
+    run = json.loads(subprocess.check_output([
+        "gh", "run", "view", str(args.run_id), "--repo", args.repository,
+        "--json", "status,conclusion,headSha,databaseId"], text=True))
+    if not re.fullmatch(r"[0-9a-f]{40}", run.get("headSha", "")) or run.get("databaseId") != args.run_id:
+        raise SystemExit("Invalid GitHub run identity")
+    if not args.allow_partial and (run["status"] != "completed" or run["conclusion"] != "success"):
+        raise SystemExit("A complete download requires a successful completed workflow")
     destination = args.destination.resolve()
     if destination.exists() and any(destination.iterdir()):
         raise SystemExit("Use an empty destination to avoid mixing runs")
@@ -22,29 +29,19 @@ def main():
     subprocess.run(["gh", "run", "download", str(args.run_id), "--repo", args.repository,
                     "--pattern", args.artifact_pattern, "--dir", str(destination)], check=True)
     commits = set()
+    versions = set()
     verified = 0
-    groups = list(destination.glob("*/build-info.json"))
-    for info in groups:
-        metadata = json.loads(info.read_text(encoding="utf-8"))
-        if str(metadata["run"]) != str(args.run_id):
-            raise SystemExit("Artifact run ID mismatch")
+    groups = list(destination.iterdir())
+    for folder in groups:
+        metadata = validate_artifact(folder, args.run_id, run["headSha"])
         commits.add(metadata["commit"])
-        checksums = {}
-        for line in (info.parent / "SHA256SUMS.txt").read_text(encoding="utf-8").splitlines():
-            match = re.fullmatch(r"([a-f0-9]{64})  ([^/\\]+)", line)
-            if not match:
-                raise SystemExit("Invalid checksum entry")
-            checksums[match[2]] = match[1]
-        if set(checksums) != set(metadata["packages"]):
-            raise SystemExit("Package manifest mismatch")
-        for name, expected in checksums.items():
-            package = info.parent / name
-            if not package.is_file() or hashlib.sha256(package.read_bytes()).hexdigest() != expected:
-                raise SystemExit(f"Package checksum mismatch: {name}")
-            verified += 1
+        versions.add(metadata["version"])
+        verified += len(metadata["packages"])
     if len(commits) != 1:
         raise SystemExit("Artifacts do not refer to one source commit")
-    if not args.allow_partial and (len(groups) != 6 or verified != 7):
+    if len(versions) != 1:
+        raise SystemExit("Artifacts do not refer to one release version")
+    if not args.allow_partial and ({p.name for p in groups} != set(GROUPS) or verified != 7):
         raise SystemExit(f"Incomplete run: {len(groups)}/6 platform groups, {verified}/7 packages")
     print(f"Verified {verified} packages from commit {next(iter(commits))}")
     print(destination)

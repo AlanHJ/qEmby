@@ -41,6 +41,7 @@ python3 scripts/release/verify_source.py
 bash packaging/linux/build-deb.sh
 for deb in "$OUTPUT_DIR"/*.deb; do
   dpkg-deb --info "$deb"
-  apt-get install -y "$deb"
+  QEMBY_DEB_SAFETY_TEST=1 python3 scripts/release/check_deb_install.py \
+    --deb "$deb" --report "$BUILD_DIR/deb-safety-report.json"
 done
 python3 scripts/release/package.py --platform linux

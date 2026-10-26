@@ -3,6 +3,7 @@ import argparse
 from pathlib import Path
 import subprocess
 import sys
+from prepare_source import validate_worktree
 
 
 def main():
@@ -15,15 +16,28 @@ def main():
     args = parser.parse_args()
     scripts = Path(__file__).resolve().parent
     destination = args.destination.resolve()
+    validate_worktree(destination)
+    if args.push:
+        remote = subprocess.check_output(
+            ["git", "-C", str(destination), "remote", "get-url", "origin"], text=True).strip()
+        if remote.removesuffix(".git").lower() not in (
+                "https://github.com/alanhj/qemby", "git@github.com:alanhj/qemby"):
+            raise SystemExit("Origin does not match the authorized AlanHJ/qEmby repository")
 
     def checked(*command):
         subprocess.run(list(map(str, command)), check=True)
 
     checked(sys.executable, scripts / "check_comment_removal.py")
     checked(sys.executable, scripts / "check_package_helpers.py")
+    checked(sys.executable, scripts / "check_release_safety.py")
     checked(sys.executable, scripts / "prepare_source.py", "--destination", destination,
             "--packaging-source", args.packaging_source, "--strip-comments")
     checked(sys.executable, destination / "scripts/release/verify_source.py")
+    # Replace the original gitlink with the explicitly exported vendor sources.
+    vendor = subprocess.check_output(
+        ["git", "-C", str(destination), "ls-files", "--stage", "--", "libs/qwindowkit"], text=True)
+    if vendor.startswith("160000 "):
+        checked("git", "-C", destination, "rm", "--cached", "--", "libs/qwindowkit")
     checked("git", "-C", destination, "add", "-u", "--", "src", "cmake", "packaging",
             "libs/qwindowkit", "scripts/release", ".github", "installer")
     checked("git", "-C", destination, "add", "-f", "--pathspec-from-file=.backup/stage-paths.txt")

@@ -19,7 +19,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate source/export guards and artifact contracts
+        run: python3 scripts/release/check_release_safety.py
+      - name: Validate Linux packaging path guards
+        run: python3 scripts/release/check_linux_helpers.py
+
   windows:
+    needs: preflight
     if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'windows'
     runs-on: windows-2022
     timeout-minutes: 60
@@ -107,6 +118,7 @@ jobs:
           retention-days: 7
 
   linux:
+    needs: preflight
     if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'linux'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -144,6 +156,7 @@ jobs:
           retention-days: 7
 
   macos:
+    needs: preflight
     if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'macos'
     runs-on: macos-26
     timeout-minutes: 60

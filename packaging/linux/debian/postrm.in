@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+
+# Private qEmby libraries are not registered in the global loader cache.
+# Let dpkg remove package-owned files; leave system Qt and user data untouched.
+exit 0

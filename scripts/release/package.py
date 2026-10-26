@@ -1,6 +1,5 @@
 """Package an already-built Release. Does not configure or compile the project."""
 import argparse
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -8,7 +7,7 @@ import plistlib
 import re
 import shutil
 import subprocess
-import sys
+from release_contract import GROUPS, expected_packages, hash_file
 
 
 def run(*args):
@@ -27,7 +26,7 @@ def package_windows(root, build, dist, version):
     shutil.copy2(binaries / "qEmbyApp.exe", app)
     for path in binaries.glob("*.dll"):
         shutil.copy2(path, app)
-    for required in ("qEmbyCore.dll", "libmpv-2.dll", "vulkan-1.dll"):
+    for required in ("qEmbyCore.dll", "QWKCore.dll", "QWKWidgets.dll", "libmpv-2.dll", "vulkan-1.dll"):
         if not (app / required).is_file():
             raise RuntimeError(f"Missing runtime: {required}")
     run("windeployqt", "--release", "--compiler-runtime", app / "qEmbyApp.exe")
@@ -38,8 +37,9 @@ def package_windows(root, build, dist, version):
     # before we produce either distribution package.
     import ctypes
     with os.add_dll_directory(str(app)):
-        ctypes.WinDLL(str(app / "libmpv-2.dll"))
-    print("Validated libmpv native DLL loading", flush=True)
+        for name in ("qEmbyCore.dll", "QWKCore.dll", "QWKWidgets.dll", "libmpv-2.dll"):
+            ctypes.WinDLL(str(app / name))
+    print("Validated application and libmpv native DLL loading", flush=True)
     shutil.make_archive(str(dist / f"qEmby-v{version}-Win-x64"), "zip", dist, "qEmby")
     candidates = [shutil.which("ISCC"), r"C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
                   r"C:\Program Files\Inno Setup 6\ISCC.exe"]
@@ -151,8 +151,10 @@ def main():
     parser.add_argument("--platform", choices=["windows", "macos", "linux"], required=True)
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[2]
-    version = re.search(r"project\(qEmby VERSION ([\d.]+)", (root / "CMakeLists.txt").read_text())[1]
+    version = re.search(r"project\(qEmby VERSION ([\d.]+)", (root / "CMakeLists.txt").read_text(encoding="utf-8"))[1]
     dist = root / "dist/cloud"
+    if args.platform != "linux" and dist.exists() and any(dist.iterdir()):
+        raise RuntimeError("Use a fresh dist/cloud directory; existing files were preserved")
     dist.mkdir(parents=True, exist_ok=True)
     build = args.build_dir.resolve()
     if args.platform == "windows":
@@ -162,11 +164,24 @@ def main():
     artifacts = [p for p in dist.iterdir() if p.suffix in (".exe", ".zip", ".dmg", ".deb")]
     if not artifacts:
         raise RuntimeError("No packages generated")
-    hashes = "".join(f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}\n" for p in sorted(artifacts))
+    distro = os.environ.get("QEMBY_DEB_DIST_TAG") if args.platform == "linux" else None
+    group = next((name for name, target in GROUPS.items() if target == (args.platform, distro)), None)
+    if group is None or {p.name for p in artifacts} != expected_packages(group, version):
+        raise RuntimeError("Unexpected or stale distribution packages")
+    hashes = "".join(f"{hash_file(p)}  {p.name}\n" for p in sorted(artifacts))
     (dist / "SHA256SUMS.txt").write_text(hashes, encoding="utf-8")
-    metadata = {"version": version, "commit": os.environ.get("GITHUB_SHA", "local"),
+    metadata = {"schema_version": 1, "group": group, "version": version, "commit": os.environ.get("GITHUB_SHA", "local"),
                 "platform": args.platform, "run": os.environ.get("GITHUB_RUN_ID"),
                 "packages": [p.name for p in sorted(artifacts)]}
+    if args.platform == "linux":
+        validation = json.loads((build / "deb-safety-report.json").read_text(encoding="utf-8"))
+        if validation.get("deb_lifecycle") != "passed" or validation.get("qt_preserved") is not True:
+            raise RuntimeError("DEB lifecycle safety validation did not pass")
+        metadata["validation"] = validation
+    elif args.platform == "windows":
+        metadata["validation"] = {"native_dll_loading": "passed"}
+    else:
+        metadata["validation"] = {"codesign": "passed", "dmg_verify": "passed"}
     (dist / "build-info.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
 
 
