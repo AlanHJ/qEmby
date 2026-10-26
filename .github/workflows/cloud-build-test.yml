@@ -46,12 +46,38 @@ jobs:
       - name: Configure Release
         run: cmake -S . -B build/cloud -G Ninja -DCMAKE_BUILD_TYPE=Release "-DQEMBY_QT_ROOT=${{ env.QT_ROOT_DIR }}"
       - name: Build Release
-        run: cmake --build build/cloud --parallel 2
+        run: cmake --build build/cloud --parallel 4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-windows-x64
+          path: build/cloud/bin/
+          if-no-files-found: error
+          retention-days: 7
+
+  package_windows:
+    needs: windows
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.9.2'
+          arch: win64_msvc2022_64
+          modules: qtwebsockets qtimageformats
+          cache: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-windows-x64
+          path: build/cloud/bin
       - name: Package ZIP and installer
         run: python scripts/release/package.py --platform windows
       - uses: actions/upload-artifact@v4
         with:
-          name: windows-x64
+          name: package-windows-x64
           path: |
             dist/cloud/*.zip
             dist/cloud/*.exe
@@ -87,7 +113,7 @@ jobs:
         run: bash scripts/release/linux-build.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: linux-${{ matrix.codename }}-amd64
+          name: package-linux-${{ matrix.codename }}-amd64
           path: |
             dist/cloud/*.deb
             dist/cloud/*.txt
@@ -118,11 +144,42 @@ jobs:
           "-DQEMBY_QT_ROOT=$QT_ROOT_DIR"
       - name: Build Release
         run: cmake --build build/cloud --parallel 2
+      - name: Archive compiled application
+        run: tar -czf "$RUNNER_TEMP/macos-build.tar.gz" -C build/cloud bin
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-macos26-arm64
+          path: ${{ runner.temp }}/macos-build.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  package_macos:
+    needs: macos
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install runtime dependencies
+        run: brew install mpv
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.9.2'
+          arch: clang_64
+          modules: qtwebsockets qtimageformats
+          cache: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-macos26-arm64
+          path: ${{ runner.temp }}/compiled
+      - name: Restore compiled application
+        run: |
+          mkdir -p build/cloud
+          tar -xzf "$RUNNER_TEMP/compiled/macos-build.tar.gz" -C build/cloud
       - name: Package and verify ad-hoc signed DMG
         run: python3 scripts/release/package.py --platform macos
       - uses: actions/upload-artifact@v4
         with:
-          name: macos26-arm64
+          name: package-macos26-arm64
           path: |
             dist/cloud/*.dmg
             dist/cloud/*.txt

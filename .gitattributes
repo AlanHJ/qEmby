@@ -1,6 +1,10 @@
+# 默认所有文本文件都转换为 LF
 * text=auto eol=lf
+
+# 明确排除二进制文件（以防万一）
 *.png binary
 *.ico binary
 *.jpg binary
 *.jpeg binary
+*.dll binary
 *.woff2 binary

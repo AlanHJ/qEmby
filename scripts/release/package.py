@@ -64,7 +64,7 @@ def package_macos(root, build, dist, version):
     with info.open("wb") as stream:
         plistlib.dump(values, stream)
     brew = Path(output("brew", "--prefix"))
-    run("macdeployqt", app, "-no-codesign", f"-libpath={build / 'bin'}", f"-libpath={brew / 'lib'}")
+    run("macdeployqt", app, f"-libpath={build / 'bin'}", f"-libpath={brew / 'lib'}")
     # Resolve app libraries and the full Homebrew libmpv closure, including
     # libraries referenced by Qt plugins. No build-machine paths may remain.
     queue = []
@@ -116,6 +116,7 @@ def package_macos(root, build, dist, version):
         for dependency in mac_dependencies(binary):
             if dependency.startswith("/") and not dependency.startswith(("/System/Library/", "/usr/lib/")):
                 raise RuntimeError(f"External dependency remains: {binary.name}")
+    (app / "Contents/Resources").mkdir(exist_ok=True)
     shutil.copy2(root / "LICENSE", app / "Contents/Resources/LICENSE")
     # Test artifacts use ad-hoc signing; Developer ID/notarization is a later step.
     for binary in sorted(seen, key=lambda p: len(p.parts), reverse=True):

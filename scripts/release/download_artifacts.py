@@ -19,7 +19,7 @@ def main():
         raise SystemExit("Use an empty destination to avoid mixing runs")
     destination.mkdir(parents=True, exist_ok=True)
     subprocess.run(["gh", "run", "download", str(args.run_id), "--repo", args.repository,
-                    "--dir", str(destination)], check=True)
+                    "--pattern", "package-*", "--dir", str(destination)], check=True)
     commits = set()
     verified = 0
     groups = list(destination.glob("*/build-info.json"))

@@ -25,6 +25,10 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Static dependencies such as QCoro are linked into the shared qEmbyCore.
+# Set PIC before FetchContent creates those dependency targets.
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 if(MSVC)
     add_compile_options(/MP)
 endif()
