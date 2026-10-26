@@ -19,6 +19,7 @@ class PlayerWindow : public QWidget
     Q_OBJECT
 public:
     explicit PlayerWindow(QEmbyCore* core, QWidget *parent = nullptr);
+    ~PlayerWindow() override;
 
     void playMedia(const QString &mediaId, const QString &title,
                    const QString &streamUrl, long long startPositionTicks = 0,

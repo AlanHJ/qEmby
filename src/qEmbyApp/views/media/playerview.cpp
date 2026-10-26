@@ -2747,12 +2747,12 @@ void PlayerView::stopAndReport()
 
         
         
-        auto taskRoutine = [](MediaService *s, QString mId, QString sId, long long ticks,
+        auto taskRoutine = [](QPointer<MediaService> s, QString mId, QString sId, long long ticks,
                               QString sessId) -> QCoro::Task<void>
         {
             try
             {
-                co_await s->reportPlaybackProgress(mId, sId, ticks, true, sessId);
+                if (s) co_await s->reportPlaybackProgress(mId, sId, ticks, true, sessId);
             }
             catch (const std::exception &e)
             {
@@ -2760,7 +2760,7 @@ void PlayerView::stopAndReport()
             }
             try
             {
-                co_await s->reportPlaybackStopped(mId, sId, ticks, sessId);
+                if (s) co_await s->reportPlaybackStopped(mId, sId, ticks, sessId);
             }
             catch (const std::exception &e)
             {
@@ -2770,11 +2770,8 @@ void PlayerView::stopAndReport()
 
         
         
-        auto *lingeringTask = new QCoro::Task<void>(taskRoutine(service, mediaId, sourceId, currentTicks, sessionId));
-
-        
-        
-        QTimer::singleShot(10000, m_core, [lingeringTask]() { delete lingeringTask; });
+        QCoro::connect(taskRoutine(QPointer<MediaService>(service), mediaId,
+                                  sourceId, currentTicks, sessionId), m_core, []() {});
     }
 
     if (m_mpvWidget)

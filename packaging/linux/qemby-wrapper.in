@@ -9,9 +9,18 @@ fi
 
 bindir="$(CDPATH= cd -- "$(dirname -- "$self")" && pwd)"
 prefix="$(dirname "$bindir")"
+executable="$prefix/@QEMBY_PRIVATE_APP_RELATIVE_PATH@"
+runtime_dir="$(dirname "$executable")"
+
+if [ -f "$runtime_dir/qt.conf" ]; then
+    # A private Qt must not load the desktop's Qt/KDE plugins of another build.
+    export QT_PLUGIN_PATH="$runtime_dir/plugins"
+    export QT_QPA_PLATFORM_PLUGIN_PATH="$runtime_dir/plugins/platforms"
+    unset QT_QPA_PLATFORMTHEME
+fi
 
 if [ -n "${QEMBY_QPA_PLATFORM:-}" ]; then
     export QT_QPA_PLATFORM="$QEMBY_QPA_PLATFORM"
 fi
 
-exec "$prefix/@QEMBY_PRIVATE_APP_RELATIVE_PATH@" "$@"
+exec "$executable" "$@"

@@ -63,6 +63,22 @@ void PlaybackManager::init(QEmbyCore* core)
     });
 }
 
+void PlaybackManager::shutdown(QEmbyCore* core)
+{
+    if (m_core != core)
+        return;
+    ++m_playIntent;
+    m_videoPending = false;
+    stopExternalPlayer();
+    
+    
+    auto *window = m_independentWindow.data();
+    m_independentWindow.clear();
+    delete window;
+    m_core = nullptr;
+    qInfo() << "[PlaybackManager] Players released before Core teardown";
+}
+
 quint64 PlaybackManager::beginVideoIntent()
 {
     m_videoPending = true;

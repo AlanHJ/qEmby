@@ -69,6 +69,16 @@ PlayerWindow::PlayerWindow(QEmbyCore* core, QWidget *parent)
     });
 }
 
+PlayerWindow::~PlayerWindow()
+{
+    
+    
+    if (m_playerView)
+        disconnect(m_playerView, nullptr, this, nullptr);
+    delete m_playerView;
+    m_playerView = nullptr;
+}
+
 void PlayerWindow::playMedia(const QString &mediaId, const QString &title,
                               const QString &streamUrl, long long startPositionTicks,
                               const QVariant& sourceInfoVar)

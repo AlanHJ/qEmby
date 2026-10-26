@@ -6,6 +6,7 @@
 #include "components/searchcompleterpopup.h"
 #include "components/searchhistorypopup.h"
 #include "managers/thememanager.h" 
+#include "managers/playbackmanager.h"
 #include "managers/searchhistorymanager.h"
 #include "managers/traymanager.h"  
 #include "managers/updatemanager.h"
@@ -824,8 +825,25 @@ void MainWindow::showUpdateConfirmation()
 
 MainWindow::~MainWindow()
 {
+    m_windowTransitioning = true;
+    if (m_homeView) {
+        disconnect(PlaybackManager::instance(), nullptr, m_homeView, nullptr);
+        disconnect(m_homeView, nullptr, this, nullptr);
+    }
+    PlaybackManager::instance()->shutdown(m_core);
+    
+    
+    
+    if (m_viewStack)
+        m_viewStack->blockSignals(true);
+    delete takeCentralWidget();
+    m_viewStack = nullptr;
+    m_homeView = nullptr;
     
     delete m_loginWindow;
+    m_loginWindow = nullptr;
+    m_loginView = nullptr;
+    qInfo() << "[MainWindow] Views released before Core and native window teardown";
 }
 
 void MainWindow::showCurrentWindow()

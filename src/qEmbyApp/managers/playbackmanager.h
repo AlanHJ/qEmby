@@ -26,6 +26,8 @@ public:
 
     
     void init(QEmbyCore* core);
+    
+    void shutdown(QEmbyCore* core);
     quint64 beginVideoIntent();
     void cancelVideoIntent(quint64 generation);
     bool isCurrentVideoIntent(quint64 generation) const { return generation == m_playIntent; }
