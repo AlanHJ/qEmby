@@ -42,7 +42,7 @@ set(QEMBY_QT_ROOT "" CACHE PATH
 qemby_append_default_qt_prefixes()
 
 # 寻找 Qt6 (不再允许降级)
-find_package(Qt6 REQUIRED COMPONENTS Widgets Core Network Concurrent OpenGLWidgets LinguistTools WebSockets)
+find_package(Qt6 6.2 REQUIRED COMPONENTS Widgets Core Network Concurrent OpenGLWidgets LinguistTools WebSockets)
 if(UNIX AND NOT APPLE)
     find_package(Qt6 QUIET COMPONENTS DBus)
 endif()

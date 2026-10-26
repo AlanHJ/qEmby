@@ -2792,7 +2792,7 @@ QCoro::Task<PlaybackInfo> MediaService::getPlaybackInfo(QString itemId, bool liv
         co_return PlaybackInfo{};
     }
     if (liveTv) {
-        if (info.mediaSources.size() > 1) info.mediaSources = {info.mediaSources.first()};
+        if (info.mediaSources.size() > 1) info.mediaSources = info.mediaSources.mid(0, 1);
         for (qsizetype index = 0; index < info.mediaSources.size(); ++index) {
             auto source = info.mediaSources[index];
             if (source.requiresOpening && !source.openToken.isEmpty()) {
@@ -2807,7 +2807,11 @@ QCoro::Task<PlaybackInfo> MediaService::getPlaybackInfo(QString itemId, bool liv
                 source = MediaSourceInfo::fromJson(opened["MediaSource"].toObject());
                 if (!guard || !client || (hasContext && !contextGuard) || guard->m_serverManager->activeProfile().id != profile.id ||
                     guard->m_serverManager->activeProfile().userId != profile.userId) {
-                    if (guard) co_await guard->releaseLiveStreams({source}, client);
+                    if (guard) {
+                        QList<MediaSourceInfo> staleSources;
+                        staleSources.append(source);
+                        co_await guard->releaseLiveStreams(staleSources, client);
+                    }
                     co_return PlaybackInfo{};
                 }
             }
@@ -2837,8 +2841,10 @@ QCoro::Task<void> MediaService::releaseLiveStreams(QList<MediaSourceInfo> source
     for (auto source : sources) {
         if (source.liveStreamId.isEmpty() || !source.requiresClosing) continue;
         try {
-            co_await client->post(QStringLiteral("/LiveStreams/Close?LiveStreamId=%1")
-                .arg(QString::fromUtf8(QUrl::toPercentEncoding(source.liveStreamId))), {});
+            const QString closePath = QStringLiteral("/LiveStreams/Close?LiveStreamId=%1")
+                .arg(QString::fromUtf8(QUrl::toPercentEncoding(source.liveStreamId)));
+            QJsonObject closePayload;
+            co_await client->post(closePath, closePayload);
         } catch (...) { qWarning() << "[MediaService] Stale live stream cleanup failed"; }
     }
 }
