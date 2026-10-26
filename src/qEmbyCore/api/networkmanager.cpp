@@ -71,8 +71,9 @@ bool tryParseJsonWithEncoding(const QByteArray &responseData,
                               QJsonDocument &jsonDoc,
                               QJsonParseError &parseError)
 {
+    const QByteArray encodingNameBytes = encodingName.toLatin1();
     const auto encoding =
-        QStringConverter::encodingForName(encodingName);
+        QStringConverter::encodingForName(encodingNameBytes.constData());
     if (!encoding.has_value()) {
         return false;
     }
@@ -467,7 +468,8 @@ QString NetworkManager::parseReplyAsText(QNetworkReply* reply) {
 
     
     if (!charsetName.isEmpty() && !isUtf8Charset(charsetName)) {
-        auto encoding = QStringConverter::encodingForName(charsetName);
+        const QByteArray charsetNameBytes = charsetName.toLatin1();
+        auto encoding = QStringConverter::encodingForName(charsetNameBytes.constData());
         if (encoding.has_value()) {
             QStringDecoder decoder(*encoding);
             return decoder(responseData);

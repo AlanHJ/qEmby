@@ -2,6 +2,12 @@ name: Cloud package test
 
 on:
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Platforms to test
+        type: choice
+        default: all
+        options: [all, windows, linux, macos]
   push:
     branches: [codex/cloud-build-test]
 
@@ -9,11 +15,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: cloud-package-test-${{ github.ref }}
+  group: cloud-package-test-${{ github.ref }}-${{ inputs.platform || 'all' }}
   cancel-in-progress: true
 
 jobs:
   windows:
+    if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'windows'
     runs-on: windows-2022
     timeout-minutes: 60
     steps:
@@ -87,6 +94,7 @@ jobs:
           retention-days: 7
 
   linux:
+    if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'linux'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:
@@ -122,6 +130,7 @@ jobs:
           retention-days: 7
 
   macos:
+    if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'macos'
     runs-on: macos-26
     timeout-minutes: 60
     steps:

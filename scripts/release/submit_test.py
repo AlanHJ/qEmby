@@ -11,6 +11,7 @@ def main():
     parser.add_argument("--packaging-source", type=Path, required=True)
     parser.add_argument("--push", action="store_true")
     parser.add_argument("--message", default="ci: update verified cloud package test")
+    parser.add_argument("--platform", choices=["all", "windows", "linux", "macos"], default="all")
     args = parser.parse_args()
     scripts = Path(__file__).resolve().parent
     destination = args.destination.resolve()
@@ -28,11 +29,17 @@ def main():
     checked("git", "-C", destination, "add", "-f", "--pathspec-from-file=.backup/stage-paths.txt")
     changed = subprocess.run(["git", "-C", str(destination), "diff", "--cached", "--quiet"])
     if changed.returncode == 1:
-        checked("git", "-C", destination, "commit", "--quiet", "-m", args.message)
+        message = args.message + (" [skip ci]" if args.platform != "all" else "")
+        checked("git", "-C", destination, "commit", "--quiet", "-m", message)
     elif changed.returncode != 0:
         changed.check_returncode()
     if args.push:
         checked("git", "-C", destination, "push", "-u", "origin", "HEAD")
+        if args.platform != "all":
+            branch = subprocess.check_output(
+                ["git", "-C", str(destination), "branch", "--show-current"], text=True).strip()
+            checked("gh", "workflow", "run", "cloud-build-test.yml", "--repo", "AlanHJ/qEmby",
+                    "--ref", branch, "--field", f"platform={args.platform}")
 
 
 if __name__ == "__main__":
