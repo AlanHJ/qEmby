@@ -7,7 +7,7 @@ on:
         description: Platforms to test
         type: choice
         default: all
-        options: [all, windows, linux, macos, appimage, nixos, ubuntu26, ubuntu24]
+        options: [all, windows, linux, macos, appimage, nixos, ubuntu26, ubuntu24, debs]
       source_run:
         description: Existing AppImage run ID (required only for nixos)
         type: string
@@ -237,7 +237,7 @@ jobs:
 
   linux:
     needs: preflight
-    if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'linux' || inputs.platform == 'ubuntu26' || inputs.platform == 'ubuntu24'
+    if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'linux' || inputs.platform == 'debs' || inputs.platform == 'ubuntu26' || inputs.platform == 'ubuntu24'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:
@@ -261,6 +261,7 @@ jobs:
           arch: linux_gcc_64
           modules: qtwebsockets qtimageformats
           cache: true
+          install-deps: false
       - name: Build private Qt DEB and verify real video playback
         shell: bash
         run: bash scripts/release/linux-build.sh

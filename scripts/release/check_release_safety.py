@@ -96,6 +96,22 @@ class ArtifactSafety(unittest.TestCase):
     def test_valid_artifact(self):
         self.assertEqual(validate_artifact(self.folder, 42, "a" * 40)["version"], "0.0.9")
 
+    def test_private_qt_requires_real_playback_in_both_window_modes(self):
+        validation = self.info['validation']
+        validation.update(qt_runtime='private', qt_version='6.9.3')
+        self.save()
+        with self.assertRaises(ValueError):
+            validate_artifact(self.folder, 42, 'a' * 40)
+        validation['video_playback'] = [
+            {'platform': p, 'mode': m, 'result': 'passed'}
+            for p in ('xcb', 'wayland') for m in ('embedded', 'independent')]
+        self.save()
+        validate_artifact(self.folder, 42, 'a' * 40)
+        validation['video_playback'][0]['result'] = 'failed'
+        self.save()
+        with self.assertRaises(ValueError):
+            validate_artifact(self.folder, 42, 'a' * 40)
+
     def test_mixed_run_and_commit_are_rejected(self):
         for run, commit in ((43, "a" * 40), (42, "b" * 40)):
             with self.assertRaises(ValueError):
