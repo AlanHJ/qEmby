@@ -299,6 +299,32 @@ qt6_deploy_runtime_dependencies(
         ")
     endif()
 
+    if(QEMBY_ENABLE_QT_DEPLOY AND TARGET qEmbyApp)
+        find_program(QEMBY_DEPLOY_PYTHON_EXECUTABLE python3 REQUIRED)
+        set(_qemby_wayland_plugins "")
+        foreach(_plugins IN LISTS _qemby_qt6_plugin_dirs)
+            if(EXISTS "${_plugins}/platforms/libqwayland-generic.so")
+                set(_qemby_wayland_plugins "${_plugins}")
+                break()
+            endif()
+        endforeach()
+        if(NOT _qemby_wayland_plugins)
+            message(FATAL_ERROR "The private Qt SDK must include Wayland client plugins")
+        endif()
+        install(CODE "
+            execute_process(
+                COMMAND \"${QEMBY_DEPLOY_PYTHON_EXECUTABLE}\"
+                    \"${CMAKE_SOURCE_DIR}/scripts/release/deploy_qt_wayland.py\"
+                    --qt-lib-dir \"${_qemby_qt6_lib_dir}\"
+                    --qt-plugin-dir \"${_qemby_wayland_plugins}\"
+                    --private-dir \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${_qemby_private_lib_dir}\"
+                RESULT_VARIABLE _wayland_result)
+            if(NOT _wayland_result EQUAL 0)
+                message(FATAL_ERROR \"Private Qt Wayland deployment failed\")
+            endif()
+        ")
+    endif()
+
     if(QEMBY_BUNDLE_MPV_RUNTIME AND TARGET qEmbyApp)
         install(SCRIPT "${_qemby_runtime_bundle_script}")
     endif()

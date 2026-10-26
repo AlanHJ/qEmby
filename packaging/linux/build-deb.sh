@@ -28,7 +28,7 @@ default_manual_depends_for_dist() {
     esac
 
     printf '%s' \
-        "libc6 (>= 2.34), libdbus-1-3 (>= 1.9.14), libdrm2 (>= 2.4.62), libegl1, libfontconfig1 (>= 2.12.6), libfreetype6 (>= 2.9.1), libgbm1 (>= 17.1.0~rc2), libgcc-s1 (>= 3.4), libgl1, libglib2.0-0 (>= 2.45.6), libglx0, libgssapi-krb5-2 (>= 1.17), ${mpv_dep}, libopengl0, libstdc++6 (>= 12), libx11-6, libx11-xcb1 (>= 2:1.7.5), libxcb-cursor0 (>= 0.0.99), libxcb-glx0, libxcb-icccm4 (>= 0.4.1), libxcb-image0 (>= 0.2.1), libxcb-keysyms1 (>= 0.4.0), libxcb-randr0 (>= 1.12), libxcb-render-util0, libxcb-render0, libxcb-shape0, libxcb-shm0 (>= 1.10), libxcb-sync1, libxcb-util1 (>= 0.4.0), libxcb-xfixes0, libxcb-xkb1, libxcb1 (>= 1.8), libxkbcommon-x11-0 (>= 0.5.0), libxkbcommon0 (>= 0.5.0), libzstd1 (>= 1.4.0), zlib1g (>= 1:1.2.3.4)"
+        "libc6 (>= 2.34), libdbus-1-3 (>= 1.9.14), libdrm2 (>= 2.4.62), libegl1, libfontconfig1 (>= 2.12.6), libfreetype6 (>= 2.9.1), libgbm1 (>= 17.1.0~rc2), libgcc-s1 (>= 3.4), libgl1, libglib2.0-0 (>= 2.45.6), libglx0, libgssapi-krb5-2 (>= 1.17), ${mpv_dep}, libopengl0, libstdc++6 (>= 12), libwayland-client0, libwayland-cursor0, libwayland-egl1, libx11-6, libx11-xcb1 (>= 2:1.7.5), libxcb-cursor0 (>= 0.0.99), libxcb-glx0, libxcb-icccm4 (>= 0.4.1), libxcb-image0 (>= 0.2.1), libxcb-keysyms1 (>= 0.4.0), libxcb-randr0 (>= 1.12), libxcb-render-util0, libxcb-render0, libxcb-shape0, libxcb-shm0 (>= 1.10), libxcb-sync1, libxcb-util1 (>= 0.4.0), libxcb-xfixes0, libxcb-xkb1, libxcb1 (>= 1.8), libxkbcommon-x11-0 (>= 0.5.0), libxkbcommon0 (>= 0.5.0), libzstd1 (>= 1.4.0), zlib1g (>= 1:1.2.3.4)"
 }
 
 if [[ -z "$DEB_DIST_TAG" && -f /etc/os-release ]]; then

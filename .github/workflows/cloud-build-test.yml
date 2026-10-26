@@ -12,6 +12,10 @@ on:
         description: Existing AppImage run for nixos, or compiled DEB run for diagnostic replay
         type: string
         default: ''
+      reuse_run:
+        description: Repackage matching compiled DEBs from a previous run; compile missing distros
+        type: string
+        default: ''
   push:
     branches: [codex/cloud-build-test]
 
@@ -255,6 +259,21 @@ jobs:
       - name: Install build and playback test dependencies
         shell: bash
         run: bash scripts/release/linux-build.sh --prepare
+      - uses: actions/download-artifact@v4
+        if: inputs.reuse_run != ''
+        continue-on-error: true
+        with:
+          name: debug-linux-${{ matrix.codename }}
+          run-id: ${{ inputs.reuse_run }}
+          github-token: ${{ github.token }}
+          path: build/reuse
+      - name: Verify whether compiled application inputs are unchanged
+        id: reuse
+        if: inputs.reuse_run != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/release/reuse_deb.py --check --source-run '${{ inputs.reuse_run }}'
       - uses: jurplel/install-qt-action@v4
         if: inputs.source_run == ''
         with:
@@ -263,10 +282,15 @@ jobs:
           modules: qtwebsockets qtimageformats
           cache: true
           install-deps: false
+          setup-python: false
       - name: Build private Qt DEB and verify real video playback
-        if: inputs.source_run == ''
+        if: inputs.source_run == '' && steps.reuse.outputs.reusable != 'true'
         shell: bash
         run: bash scripts/release/linux-build.sh
+      - name: Repackage matching binaries and rerun all playback/safety checks
+        if: inputs.source_run == '' && steps.reuse.outputs.reusable == 'true'
+        shell: bash
+        run: bash scripts/release/linux-build.sh --reuse
       - uses: actions/download-artifact@v4
         if: inputs.source_run != ''
         with:

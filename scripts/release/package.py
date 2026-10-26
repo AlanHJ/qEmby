@@ -178,6 +178,9 @@ def main():
         from release_contract import validate_linux_report
         validate_linux_report(validation)
         metadata["validation"] = validation
+        provenance = build / 'compiled-provenance.json'
+        if provenance.is_file():
+            metadata['compilation'] = json.loads(provenance.read_text())
     elif args.platform == "windows":
         metadata["validation"] = {"native_dll_loading": "passed"}
     else:
