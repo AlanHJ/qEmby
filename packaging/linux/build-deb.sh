@@ -7,7 +7,7 @@ BUILD_DIR="${BUILD_DIR:-$ROOT_DIR/build-release-deb}"
 OUTPUT_DIR="${OUTPUT_DIR:-$ROOT_DIR/dist/deb}"
 GENERATOR="${CMAKE_GENERATOR:-Ninja}"
 DEB_SHLIBDEPS="${QEMBY_DEB_SHLIBDEPS:-}"
-DEB_DEPLOY_QT="${QEMBY_DEB_DEPLOY_QT:-OFF}"
+DEB_DEPLOY_QT="${QEMBY_DEB_DEPLOY_QT:-ON}"
 DEB_BUNDLE_MPV="${QEMBY_DEB_BUNDLE_MPV:-OFF}"
 DEB_MANUAL_DEPENDS="${QEMBY_DEB_MANUAL_DEPENDS:-}"
 DEB_EXTRA_DEPENDS="${QEMBY_DEB_EXTRA_DEPENDS-}"
@@ -22,7 +22,7 @@ default_manual_depends_for_dist() {
         jammy)
             mpv_dep="libmpv1 (>= 0.29)"
             ;;
-        noble|oracular|bookworm|trixie)
+        noble|oracular|resolute|bookworm|trixie)
             mpv_dep="libmpv2"
             ;;
     esac
@@ -77,10 +77,15 @@ cmake_args=(
 
 if [[ "${QEMBY_DEB_EXTRA_DEPENDS+x}" == x ]]; then
     cmake_args+=("-DQEMBY_DEBIAN_PACKAGE_EXTRA_DEPENDS=$DEB_EXTRA_DEPENDS")
+elif [[ "$DEB_DEPLOY_QT" == ON ]]; then
+    cmake_args+=("-DQEMBY_DEBIAN_PACKAGE_EXTRA_DEPENDS=")
 else
     # Refresh the distro-aware default rather than retaining an obsolete cached
     # qt6-svg-plugins dependency on distributions where that package is absent.
     cmake_args+=(-UQEMBY_DEBIAN_PACKAGE_EXTRA_DEPENDS)
+fi
+if [[ "${QEMBY_PLAYBACK_PROBE:-OFF}" == ON ]]; then
+    cmake_args+=(-DQEMBY_BUILD_PLAYBACK_PROBE=ON)
 fi
 
 if [[ -n "$DEB_MANUAL_DEPENDS" ]]; then

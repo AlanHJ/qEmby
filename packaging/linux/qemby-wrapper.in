@@ -12,10 +12,6 @@ prefix="$(dirname "$bindir")"
 
 if [ -n "${QEMBY_QPA_PLATFORM:-}" ]; then
     export QT_QPA_PLATFORM="$QEMBY_QPA_PLATFORM"
-elif [ -z "${APPDIR:-}" ] && [ -z "${QT_QPA_PLATFORM:-}" ] &&
-     [ "${XDG_SESSION_TYPE:-}" = "wayland" ] &&
-     [ -n "${DISPLAY:-}" ]; then
-    export QT_QPA_PLATFORM=xcb
 fi
 
 exec "$prefix/@QEMBY_PRIVATE_APP_RELATIVE_PATH@" "$@"

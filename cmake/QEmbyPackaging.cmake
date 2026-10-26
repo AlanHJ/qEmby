@@ -324,7 +324,9 @@ qt6_deploy_runtime_dependencies(
     set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
     set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${QEMBY_PACKAGE_VENDOR}")
     set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "${QEMBY_PACKAGE_DESCRIPTION}")
-    set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "fcitx5-frontend-qt6")
+    if(NOT QEMBY_ENABLE_QT_DEPLOY)
+        set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "fcitx5-frontend-qt6")
+    endif()
     set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
         "${_qemby_debian_postinst};${_qemby_debian_postrm}")
     set(CPACK_DEBIAN_PACKAGE_CONTROL_STRICT_PERMISSION TRUE)

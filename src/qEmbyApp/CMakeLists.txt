@@ -153,6 +153,21 @@ if(QT_VERSION_MAJOR EQUAL 6)
     qt_finalize_executable(qEmbyApp)
 endif()
 
+# CI-only executable, never installed or included in release packages.
+option(QEMBY_BUILD_PLAYBACK_PROBE "Build the offline playback regression driver" OFF)
+if(QEMBY_BUILD_PLAYBACK_PROBE AND UNIX AND NOT APPLE)
+    set(_probe_sources ${APP_SOURCES})
+    list(FILTER _probe_sources EXCLUDE REGEX "/main\\.cpp$")
+    qt_add_executable(qEmbyPlaybackProbe EXCLUDE_FROM_ALL
+        ${APP_HEADERS} ${_probe_sources} ${APP_QRC_FILES}
+        "${CMAKE_SOURCE_DIR}/scripts/release/playback-probe.cpp")
+    get_target_property(_probe_links qEmbyApp LINK_LIBRARIES)
+    get_target_property(_probe_defines qEmbyApp COMPILE_DEFINITIONS)
+    target_link_libraries(qEmbyPlaybackProbe PRIVATE ${_probe_links})
+    target_compile_definitions(qEmbyPlaybackProbe PRIVATE ${_probe_defines})
+    target_include_directories(qEmbyPlaybackProbe PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+endif()
+
 # ==========================================
 # 终极防弹方案：调用 windeployqt 自动补全所有 Qt 依赖
 # ==========================================

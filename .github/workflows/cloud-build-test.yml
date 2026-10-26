@@ -7,7 +7,7 @@ on:
         description: Platforms to test
         type: choice
         default: all
-        options: [all, windows, linux, macos, appimage, nixos, ubuntu26]
+        options: [all, windows, linux, macos, appimage, nixos, ubuntu26, ubuntu24]
       source_run:
         description: Existing AppImage run ID (required only for nixos)
         type: string
@@ -237,14 +237,14 @@ jobs:
 
   linux:
     needs: preflight
-    if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'linux' || inputs.platform == 'ubuntu26'
+    if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'linux' || inputs.platform == 'ubuntu26' || inputs.platform == 'ubuntu24'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:
       fail-fast: false
       max-parallel: 4
       matrix:
-        include: ${{ fromJSON(inputs.platform == 'ubuntu26' && '[{"image":"ubuntu:26.04","codename":"resolute"}]' || '[{"image":"ubuntu:22.04","codename":"jammy"},{"image":"ubuntu:24.04","codename":"noble"},{"image":"ubuntu:26.04","codename":"resolute"},{"image":"debian:12","codename":"bookworm"},{"image":"debian:13","codename":"trixie"}]') }}
+        include: ${{ fromJSON(inputs.platform == 'ubuntu24' && '[{"image":"ubuntu:24.04","codename":"noble"}]' || inputs.platform == 'ubuntu26' && '[{"image":"ubuntu:26.04","codename":"resolute"}]' || '[{"image":"ubuntu:22.04","codename":"jammy"},{"image":"ubuntu:24.04","codename":"noble"},{"image":"ubuntu:26.04","codename":"resolute"},{"image":"debian:12","codename":"bookworm"},{"image":"debian:13","codename":"trixie"}]') }}
     container:
       image: ${{ matrix.image }}
     env:
@@ -252,7 +252,16 @@ jobs:
       QEMBY_BUILD_KEEP_GOING: 'ON'
     steps:
       - uses: actions/checkout@v4
-      - name: Build and validate native DEB
+      - name: Install build and playback test dependencies
+        shell: bash
+        run: bash scripts/release/linux-build.sh --prepare
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.9.3'
+          arch: linux_gcc_64
+          modules: qtwebsockets qtimageformats
+          cache: true
+      - name: Build private Qt DEB and verify real video playback
         shell: bash
         run: bash scripts/release/linux-build.sh
       - uses: actions/upload-artifact@v4

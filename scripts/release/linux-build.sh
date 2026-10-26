@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
+if [[ "${1:-}" == --prepare ]]; then
 apt-get update
 available_package() {
   local candidate
@@ -27,21 +28,26 @@ apt-get install -y --no-install-recommends \
   libxcb-cursor-dev libxcb-icccm4-dev libxcb-image0-dev libxcb-keysyms1-dev \
   libxcb-randr0-dev libxcb-render-util0-dev libxcb-shape0-dev libxcb-sync-dev \
   libxcb-xfixes0-dev libxcb-xkb-dev libxcb-util-dev libx11-xcb-dev
+apt-get install -y --no-install-recommends xvfb xauth weston libgl1-mesa-dri fonts-dejavu-core ffmpeg
+exit 0
+fi
 git config --global --add safe.directory "$GITHUB_WORKSPACE"
 export BUILD_DIR="$GITHUB_WORKSPACE/build/cloud"
 export OUTPUT_DIR="$GITHUB_WORKSPACE/dist/cloud"
-export QEMBY_DEB_DEPLOY_QT=OFF
-export QEMBY_DEB_SHLIBDEPS=ON
-export QEMBY_DEB_EXTRA_DEPENDS="libqt6openglwidgets6, libqt6websockets6, libqt6svg6"
-if ((${#svg_plugins[@]})); then
-  QEMBY_DEB_EXTRA_DEPENDS+=", qt6-svg-plugins"
-fi
+export QEMBY_QT_ROOT="${QT_ROOT_DIR:?Install the pinned Qt 6.9.3 SDK first}"
+export QEMBY_DEB_DEPLOY_QT=ON
+export QEMBY_DEB_SHLIBDEPS=OFF
+export QEMBY_DEB_BUNDLE_MPV=OFF
+export QEMBY_DEB_EXTRA_DEPENDS=""
+export QEMBY_PLAYBACK_PROBE=ON
 export CMAKE_BUILD_PARALLEL_LEVEL=2
 python3 scripts/release/verify_source.py
 bash packaging/linux/build-deb.sh
+cmake --build "$BUILD_DIR" --config Release --target qEmbyPlaybackProbe
 for deb in "$OUTPUT_DIR"/*.deb; do
   dpkg-deb --info "$deb"
   QEMBY_DEB_SAFETY_TEST=1 python3 scripts/release/check_deb_install.py \
     --deb "$deb" --report "$BUILD_DIR/deb-safety-report.json"
 done
+python3 scripts/release/check_deb_playback.py --build-dir "$BUILD_DIR"
 python3 scripts/release/package.py --platform linux

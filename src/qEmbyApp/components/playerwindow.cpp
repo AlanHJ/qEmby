@@ -1,5 +1,6 @@
 #include "playerwindow.h"
 #include "../views/media/playerview.h"
+#include "../utils/windowutils.h"
 #include <QPoint>
 #include <QRect>
 #include <QSize>
@@ -9,6 +10,7 @@
 PlayerWindow::PlayerWindow(QEmbyCore* core, QWidget *parent)
     : QWidget(parent)
 {
+    WindowUtils::prepareOpenGLComposition(this);
 #if (defined(Q_OS_MACOS) || defined(Q_OS_MAC)) && \
     (QT_VERSION >= QT_VERSION_CHECK(6, 9, 0))
     setWindowFlag(Qt::ExpandedClientAreaHint, true);

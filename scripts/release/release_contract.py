@@ -35,6 +35,20 @@ def expected_packages(group, version):
     return {f"qemby_{version}-{distro}_amd64.deb"}
 
 
+def validate_linux_report(validation):
+    if (validation.get('deb_lifecycle') != 'passed' or validation.get('qt_preserved') is not True
+            or validation.get('global_probes_preserved') is not True):
+        raise ValueError('DEB safety validation is missing')
+    if validation.get('qt_runtime') == 'private':
+        reports = validation.get('video_playback', [])
+        expected = {(platform, mode) for platform in ('xcb', 'wayland')
+                    for mode in ('embedded', 'independent')}
+        if (validation.get('qt_version') != '6.9.3' or len(reports) != 4
+                or {(r.get('platform'), r.get('mode')) for r in reports} != expected
+                or any(r.get('result') != 'passed' for r in reports)):
+            raise ValueError('Private Qt DEB real playback validation is missing')
+
+
 def validate_artifact(folder, run_id, commit):
     folder = Path(folder)
     if folder.is_symlink() or folder.name not in GROUPS:
@@ -62,9 +76,7 @@ def validate_artifact(folder, run_id, commit):
                        for r in reports)):
             raise ValueError("AppImage compatibility validation is missing")
     if info["platform"] == "linux":
-        if (validation.get("deb_lifecycle") != "passed" or validation.get("qt_preserved") is not True
-                or validation.get("global_probes_preserved") is not True):
-            raise ValueError("DEB safety validation is missing")
+        validate_linux_report(validation)
     elif info["platform"] == "windows" and validation.get("native_dll_loading") != "passed":
         raise ValueError("Windows dependency validation is missing")
     elif info["platform"] == "macos" and (

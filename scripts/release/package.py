@@ -175,8 +175,8 @@ def main():
                 "packages": [p.name for p in sorted(artifacts)]}
     if args.platform == "linux":
         validation = json.loads((build / "deb-safety-report.json").read_text(encoding="utf-8"))
-        if validation.get("deb_lifecycle") != "passed" or validation.get("qt_preserved") is not True:
-            raise RuntimeError("DEB lifecycle safety validation did not pass")
+        from release_contract import validate_linux_report
+        validate_linux_report(validation)
         metadata["validation"] = validation
     elif args.platform == "windows":
         metadata["validation"] = {"native_dll_loading": "passed"}

@@ -7,6 +7,10 @@ namespace WindowUtils {
 
 
 
+void prepareOpenGLComposition(QWidget *window);
+
+
+
 void syncNativeMaximizeCapability(QWidget *window, bool enabled);
 
 } 

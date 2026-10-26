@@ -4,6 +4,7 @@ import hashlib
 import io
 import json
 import os
+import posixpath
 from pathlib import Path, PurePosixPath
 import stat
 import subprocess
@@ -22,6 +23,8 @@ def capture(*command):
 
 def validate_package(package, root):
     files = []
+    private_qt = False
+    private_conf = False
     with tarfile.open(fileobj=io.BytesIO(capture("dpkg-deb", "--fsys-tarfile", package)), mode="r:") as archive:
         for member in archive.getmembers():
             if member.isdir():
@@ -34,8 +37,23 @@ def validate_package(package, root):
                 "usr/lib/qemby/", "usr/share/doc/qEmby/")) or name in {
                 "usr/share/applications/qemby.desktop", "usr/share/metainfo/qemby.metainfo.xml",
                 "usr/share/icons/hicolor/scalable/apps/qemby.svg"}
-            if not permitted or path.name.startswith(("libQt6", "libmpv")) or path.name == "qt.conf":
-                raise RuntimeError(f"Native package writes outside its private payload: {name}")
+            if not permitted or path.name.startswith("libmpv"):
+                raise RuntimeError(f"Package writes outside its private payload: {name}")
+            if path.name.startswith('libQt6'):
+                if not name.startswith('usr/lib/qemby/'):
+                    raise RuntimeError('Bundled Qt escaped its private directory')
+                private_qt = private_qt or path.name.startswith('libQt6Core.so')
+            if path.name == 'qt.conf':
+                if name != 'usr/lib/qemby/qt.conf':
+                    raise RuntimeError('Global qt.conf is forbidden')
+                private_conf = True
+            if member.issym():
+                target = posixpath.normpath(posixpath.join(str(path.parent), member.linkname))
+                if (not name.startswith('usr/lib/qemby/') or member.linkname.startswith('/')
+                        or not target.startswith('usr/lib/qemby/')):
+                    raise RuntimeError(f'Unsafe private library link: {name}')
+                files.append('/' + name)
+                continue
             if not member.isfile():
                 raise RuntimeError(f"Unexpected linked or special package entry: {name}")
             files.append("/" + name)
@@ -58,9 +76,14 @@ def validate_package(package, root):
     if capture("dpkg-deb", "--field", package, "Package").strip() != b"qemby":
         raise RuntimeError("Unexpected package identity")
     depends = capture("dpkg-deb", "--field", package, "Depends").decode()
-    if "libqt6core6" not in depends or "libmpv" not in depends:
-        raise RuntimeError("Missing native Qt/mpv dependencies")
-    return files
+    if 'libmpv' not in depends:
+        raise RuntimeError('Missing system mpv dependency')
+    if private_qt:
+        if not private_conf or 'libqt6core6' in depends:
+            raise RuntimeError('Private Qt deployment is incomplete or depends on system Qt')
+    elif 'libqt6core6' not in depends or private_conf:
+        raise RuntimeError('Missing native Qt dependencies or mismatched qt.conf')
+    return files, private_qt
 
 
 def fingerprint(path):
@@ -124,7 +147,7 @@ def main():
     for name in ("qemby", "qemby-qt-safety-fixture"):
         if subprocess.run(["dpkg-query", "--status", name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
             raise SystemExit("Safety test requires a clean container without fixture or qemby packages")
-    payload = validate_package(package, root)
+    payload, private_qt = validate_package(package, root)
     probes = {
         Path("/usr/lib/libQt6Core.so.6.987654"): b"unowned Qt library sentinel\n",
         Path("/usr/plugins/imageformats/libqsvg.so"): b"unowned SVG plugin sentinel\n",
@@ -177,6 +200,7 @@ def main():
         "cases": ["upgrade", "reinstall", "remove", "install", "purge"],
         "protected_entries": len(baseline), "private_runpath": "$ORIGIN",
         "obsolete_owned_files_removed": True,
+        "qt_runtime": "private" if private_qt else "system",
     }, indent=2) + "\n", encoding="utf-8")
     print("DEB lifecycle and Qt isolation checks passed", flush=True)
 
