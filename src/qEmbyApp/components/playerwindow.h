@@ -2,6 +2,7 @@
 #define PLAYERWINDOW_H
 
 #include <QWidget>
+#include <QVariant>
 #include <QPointer>
 
 class QEmbyCore;

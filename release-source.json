@@ -167,7 +167,7 @@
     "src/qEmbyApp/components/playersubtitlesettingsdialog.cpp": "43cf34b0f756c7cd8bf2d8a8add5c07e46c69c597dd99dc776a6841b1022fd51",
     "src/qEmbyApp/components/playersubtitlesettingsdialog.h": "cced91eeb70edc196109229a78c45110f0193829b1ff818c1106be5ed6c0e9dd",
     "src/qEmbyApp/components/playerwindow.cpp": "fd6689cd9a99627616a8599f97d47a10b009dff0bfb32cd3ddef97518f5329d0",
-    "src/qEmbyApp/components/playerwindow.h": "52fcd70dca3c54ed0b6911d398ec81933e232f7a16c72beb4ab29b0680aab668",
+    "src/qEmbyApp/components/playerwindow.h": "b8f907366ca55d2ca08d15f6c08bcbb201cb683a8619f15d429ea01063ab5c94",
     "src/qEmbyApp/components/playlistcreateeditorrow.cpp": "16f18fb6e5c11444d1fb1197cd8f6d33791e3390bc3b820a2d6609f39962a19b",
     "src/qEmbyApp/components/playlistcreateeditorrow.h": "b7514092b686dc43b34534c5e0545c3575689ae57a3db7dc5a6912f32d3143aa",
     "src/qEmbyApp/components/proxysettingsdialog.cpp": "04eadb93a1509d032ae63f93702768466e022b27dd6a128905e0337c8fcd4735",
