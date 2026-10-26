@@ -1,0 +1,92 @@
+set(_qemby_install_prefix "@CMAKE_INSTALL_PREFIX@")
+if(DEFINED CMAKE_INSTALL_PREFIX AND NOT CMAKE_INSTALL_PREFIX STREQUAL "")
+    set(_qemby_install_prefix "${CMAKE_INSTALL_PREFIX}")
+endif()
+
+set(_qemby_install_root "$ENV{DESTDIR}${_qemby_install_prefix}")
+set(_qemby_executable_path
+    "${_qemby_install_root}/@CMAKE_INSTALL_LIBDIR@/@QEMBY_RUNTIME_LIB_SUBDIR@/@_qemby_runtime_executable_name@")
+set(_qemby_runtime_install_destination
+    "${_qemby_install_prefix}/@CMAKE_INSTALL_LIBDIR@/@QEMBY_RUNTIME_LIB_SUBDIR@")
+set(_qemby_runtime_dir
+    "$ENV{DESTDIR}${_qemby_runtime_install_destination}")
+
+if(NOT EXISTS "${_qemby_executable_path}")
+    message(FATAL_ERROR
+        "QEmby bundled runtime install step could not find ${_qemby_executable_path}")
+endif()
+
+file(MAKE_DIRECTORY "${_qemby_runtime_dir}")
+
+execute_process(
+    COMMAND ldd "${_qemby_executable_path}"
+    RESULT_VARIABLE _qemby_ldd_result
+    OUTPUT_VARIABLE _qemby_ldd_output
+    ERROR_VARIABLE _qemby_ldd_error
+)
+
+if(NOT _qemby_ldd_result EQUAL 0)
+    message(FATAL_ERROR
+        "QEmby bundled runtime step failed to inspect dependencies with ldd.\n"
+        "stdout:\n${_qemby_ldd_output}\n"
+        "stderr:\n${_qemby_ldd_error}")
+endif()
+
+string(REPLACE "\r\n" "\n" _qemby_ldd_output "${_qemby_ldd_output}")
+string(REPLACE "\n" ";" _qemby_ldd_lines "${_qemby_ldd_output}")
+
+set(_qemby_exclude_name_regexes
+    "^ld-linux.*\\.so"
+    "^lib(c|m|pthread|dl|rt|gcc_s|stdc\\+\\+)\\.so"
+    "^libQt6.*\\.so"
+    "^lib(qEmbyCore|QWKCore|QWKWidgets)\\.so"
+    "^lib(GL|EGL|GLX|OpenGL|GLdispatch|drm|gbm|epoxy).*\\.so"
+    "^lib(xcb.*|X11.*|Xau|Xdmcp|Xcursor|Xext|Xfixes|Xi|Xinerama|Xrandr|Xrender|Xss|Xv|Xxf86vm|xkbcommon.*)\\.so"
+    "^lib(wayland|va|vdpau|vulkan|decor).*\\.so"
+    "^lib(asound|jack|pulse|pulsecommon|sndio)\\.so"
+    "^lib(dbus-1|systemd|udev|apparmor)\\.so"
+)
+
+foreach(_qemby_ldd_line IN LISTS _qemby_ldd_lines)
+    if(_qemby_ldd_line MATCHES "=> not found")
+        message(WARNING "Unresolved runtime dependency while bundling mpv: ${_qemby_ldd_line}")
+        continue()
+    endif()
+
+    set(_qemby_dependency "")
+    if(_qemby_ldd_line MATCHES "=> (/[^ ]+)")
+        set(_qemby_dependency "${CMAKE_MATCH_1}")
+    elseif(_qemby_ldd_line MATCHES "^[ \t]*(/[^ ]+)")
+        set(_qemby_dependency "${CMAKE_MATCH_1}")
+    endif()
+
+    if(_qemby_dependency STREQUAL "")
+        continue()
+    endif()
+
+    string(FIND "${_qemby_dependency}" "${_qemby_install_root}/" _qemby_install_root_position)
+    if(_qemby_install_root_position EQUAL 0)
+        continue()
+    endif()
+
+    get_filename_component(_qemby_dependency_name "${_qemby_dependency}" NAME)
+    set(_qemby_skip_dependency FALSE)
+
+    foreach(_qemby_exclude_regex IN LISTS _qemby_exclude_name_regexes)
+        if(_qemby_dependency_name MATCHES "${_qemby_exclude_regex}")
+            set(_qemby_skip_dependency TRUE)
+            break()
+        endif()
+    endforeach()
+
+    if(_qemby_skip_dependency)
+        continue()
+    endif()
+
+    message(STATUS "Bundling runtime dependency: ${_qemby_dependency_name}")
+    file(INSTALL
+        DESTINATION "${_qemby_runtime_install_destination}"
+        TYPE SHARED_LIBRARY
+        FOLLOW_SYMLINK_CHAIN
+        FILES "${_qemby_dependency}")
+endforeach()

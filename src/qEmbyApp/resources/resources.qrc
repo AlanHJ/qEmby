@@ -7,6 +7,7 @@
         <file>svg/light/maximize.svg</file>
         <file>svg/light/minimize.svg</file>
         <file>svg/light/more-line.svg</file>
+        <file>svg/light/more-thin.svg</file>
         <file>svg/light/pin.svg</file>
         <file>svg/light/pin-fill.svg</file>
         <file>svg/light/restore.svg</file>
@@ -15,6 +16,7 @@
         <file>svg/dark/maximize.svg</file>
         <file>svg/dark/minimize.svg</file>
         <file>svg/dark/more-line.svg</file>
+        <file>svg/dark/more-thin.svg</file>
         <file>svg/dark/pin.svg</file>
         <file>svg/dark/pin-fill.svg</file>
         <file>svg/dark/restore.svg</file>
@@ -97,6 +99,7 @@
         <file>svg/player/fast-rewind.svg</file>
         <file>svg/player/forward.svg</file>
         <file>svg/player/fullscreen.svg</file>
+        <file>svg/player/fullscreen-exit.svg</file>
         <file>svg/player/info.svg</file>
         <file>svg/player/next.svg</file>
         <file>svg/player/pause.svg</file>
@@ -173,6 +176,7 @@
         <file>svg/dark/player-mouse-edge-long-press.svg</file>
         <file>svg/dark/player-seek-step.svg</file>
         <file>svg/dark/home-section-order.svg</file>
+        <file>svg/dark/media-carousel.svg</file>
         <file>svg/dark/home-section-drag.svg</file>
         <file>svg/dark/search-history-recent.svg</file>
         <file>svg/dark/search-history-hot.svg</file>
@@ -226,6 +230,7 @@
         <file>svg/light/player-mouse-edge-long-press.svg</file>
         <file>svg/light/player-seek-step.svg</file>
         <file>svg/light/home-section-order.svg</file>
+        <file>svg/light/media-carousel.svg</file>
         <file>svg/light/home-section-drag.svg</file>
         <file>svg/light/search-history-recent.svg</file>
         <file>svg/light/search-history-hot.svg</file>

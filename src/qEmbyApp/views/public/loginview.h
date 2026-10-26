@@ -2,6 +2,7 @@
 #define LOGINVIEW_H
 
 #include <QWidget>
+#include <QPointer>
 #include <qcorotask.h>
 #include "../../managers/thememanager.h" 
 #include "models/profile/proxyconfig.h"  
@@ -20,7 +21,8 @@ class QUrl;
 
 class LoadingOverlay;
 class ModernComboBox;
-class ModernSwitch;
+class TrailingWidgetLineEdit;
+class SslVerificationButton;
 class ServerWheelView;
 class WebdavProfileStore;
 
@@ -41,7 +43,7 @@ protected:
 private Q_SLOTS:
     
     QCoro::Task<void> onLoginClicked();
-    QCoro::Task<void> onServerCardClicked(const QString& serverId);
+    QCoro::Task<void> onServerCardClicked(QString serverId);
 
     void showAddPage();
     void showListPage();
@@ -55,6 +57,10 @@ private Q_SLOTS:
     void onThemeChanged(ThemeManager::Theme theme);
 
 private:
+    void setLoginBusy(bool busy);
+    void beginLogin(const QString& status);
+    void completeLogin();
+    void cancelLogin();
     void updateSslOptionsVisibility();
     void syncProtocolSelectionFromUrlText(const QString& text);
     QUrl buildNormalizedServerUrl(QString* errorMessage) const;
@@ -72,10 +78,9 @@ private:
     ServerWheelView* m_wheelView;
 
     ModernComboBox* m_protocolInput;
-    QLineEdit* m_serverAddressInput;
+    TrailingWidgetLineEdit* m_serverAddressInput;
     QLineEdit* m_portInput = nullptr;
-    QWidget* m_sslOptionsRow = nullptr;
-    ModernSwitch* m_ignoreSslSwitch = nullptr;
+    SslVerificationButton* m_ignoreSslButton = nullptr;
 
     QLineEdit* m_usernameInput;
     QLineEdit* m_passwordInput;
@@ -91,6 +96,9 @@ private:
     LoadingOverlay* m_loadingOverlay = nullptr;
 
     bool m_autoLoginAttempted = false;
+    bool m_loginInProgress = false;
+    quint64 m_loginAttempt = 0;
+    QPointer<QWidget> m_loginFocusWidget;
 
     
     QPushButton* m_networkSettingsBtn = nullptr;

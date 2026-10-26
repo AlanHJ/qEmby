@@ -20,6 +20,8 @@ public:
 
     void setInfo(const MediaItem& item, const QList<MediaSourceInfo>& sources);
     void clear();
+    
+    void setLeadingContentInset(int inset);
 
 signals:
     void filterClicked(const QString& filterType, const QString& filterValue);
@@ -34,34 +36,37 @@ private:
     QString formatSize(long long bytes);
     void addInfoRow(QGridLayout* layout, int& row, const QString& key, const QString& value);
     QWidget* wrapMaxWidth(QWidget* child, int maxW);
+    QWidget* createSection(QLabel* title, const QList<QWidget*>& contents);
     int resolveFlowLayoutWidth(QWidget* widget) const;
     void updateFlowLayoutHeight(QWidget* widget, FlowLayout* layout);
     void updateFlowLayoutHeights();
     void scheduleFlowLayoutHeightUpdate();
+    void updateSectionSpacing();
 
-    QLabel* m_tagsBottomTitle;
+    QWidget* m_tagsSection;
     QWidget* m_tagsBottomWidget;
     QWidget* m_tagsBottomWrapper;
     FlowLayout* m_tagsBottomLayout;
 
-    QLabel* m_studiosTitle;
+    QWidget* m_studiosSection;
     QWidget* m_studiosWidget;
     QWidget* m_studiosWrapper;
     FlowLayout* m_studiosLayout;
 
     
-    QLabel* m_externalLinksTitle;
+    QWidget* m_externalLinksSection;
     QWidget* m_externalLinksWidget;
     QWidget* m_externalLinksWrapper;
     FlowLayout* m_externalLinksLayout;
 
-    QLabel* m_mediaInfoTitle;
+    QWidget* m_mediaInfoSection;
     QWidget* m_fileInfoWidget;
     QLabel* m_filePathLabel;
     QLabel* m_fileMetaLabel;
     HorizontalWidgetGallery* m_mediaInfoGallery;
 
     bool m_flowLayoutHeightUpdatePending = false;
+    int m_leadingContentInset = 0;
 };
 
 #endif 

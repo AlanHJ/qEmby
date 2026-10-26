@@ -4,6 +4,8 @@
 #include "../baseview.h"
 #include "models/media/mediaitem.h"
 #include <qcorotask.h>
+#include <QHash>
+#include <QSet>
 
 class QScrollArea;
 class QVBoxLayout;
@@ -13,6 +15,7 @@ class QPushButton;
 class QLineEdit;
 class QIntValidator;
 class FlowLayout;
+class MusicTrackListWidget;
 class ModernMenuButton;
 class SmoothScrollController;
 
@@ -39,6 +42,7 @@ public Q_SLOTS:
   void endOptimisticPlayedUpdate() override;
 
 protected:
+  void onMediaItemRemoved(const QString &itemId) override;
   void resizeEvent(QResizeEvent *event) override;
   bool eventFilter(QObject *obj, QEvent *event) override;
   void showEvent(QShowEvent *event) override;
@@ -50,9 +54,14 @@ private slots:
 
 private:
   void setupUi();
+  MusicTrackListWidget* m_musicTracks = nullptr;
+  QString m_owningLibraryId;
+  QCoro::Task<void> resolveArtworkContext(MediaItem item);
+  void applyPosterPresentation();
   void updateBackdrop();
   void updateOverviewElidedText();
   void updateTagLayoutHeight();
+  void updateSectionSpacing();
   void updateMetaRow(const MediaItem &item,
                      const QString &leadingMeta = QString());
   QString formatRunTime(long long ticks);
@@ -89,6 +98,7 @@ private:
   
   void buildTagButtons(const QStringList &genres);
   void applyCastSection(const MediaItem &item);
+  QCoro::Task<void> refreshCastItems(QStringList personIds, int generation);
   void applyCollectionGalleryLayout(const QList<MediaItem> &collections);
   QCoro::Task<void> executePlay(MediaItem targetItem, long long startTicks);
   QCoro::Task<void> executePlaySeason(MediaItem seasonItem);
@@ -202,6 +212,9 @@ private:
   bool m_appliedCachedCollectionsToUi = false;
   bool m_appliedCachedAdditionalPartsToUi = false;
   QString m_appliedCastFingerprint;
+  QHash<QString, MediaItem> m_castItems;
+  QSet<QString> m_loadedCastItemIds;
+  int m_castGeneration = 0;
   QString m_appliedSeriesPlayableFingerprint;
 
   

@@ -1,0 +1,128 @@
+name: Cloud package test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/cloud-build-test]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloud-package-test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.9.2'
+          arch: win64_msvc2022_64
+          modules: qtwebsockets qtimageformats
+          cache: true
+      - name: Install pinned libmpv SDK
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $url = 'https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20261021/mpv-dev-x86_64-20261021-git-e471496c56.7z'
+          Invoke-WebRequest $url -OutFile "$env:RUNNER_TEMP\mpv.7z"
+          $hash = (Get-FileHash "$env:RUNNER_TEMP\mpv.7z" -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -ne 'efc719eff3dc5954b4a5efc800632808bcec01cc9034940dd14e5eb7fe9ea633') { throw 'libmpv SHA256 mismatch' }
+          7z x "$env:RUNNER_TEMP\mpv.7z" "-o$env:RUNNER_TEMP\mpv" -y
+          if ($LASTEXITCODE -ne 0) { throw 'libmpv extraction failed' }
+          New-Item -ItemType Directory -Force libs/libmpv/bin,libs/libmpv/lib,libs/libmpv/include/mpv | Out-Null
+          Copy-Item "$env:RUNNER_TEMP\mpv\libmpv-2.dll" libs/libmpv/bin/
+          Copy-Item "$env:RUNNER_TEMP\mpv\libmpv.dll.a" libs/libmpv/lib/
+          Copy-Item "$env:RUNNER_TEMP\mpv\include\mpv\*.h" libs/libmpv/include/mpv/
+      - name: Configure Release
+        run: cmake -S . -B build/cloud -G Ninja -DCMAKE_BUILD_TYPE=Release "-DQEMBY_QT_ROOT=${{ env.QT_ROOT_DIR }}"
+      - name: Build Release
+        run: cmake --build build/cloud --parallel 2
+      - name: Package ZIP and installer
+        run: python scripts/release/package.py --platform windows
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: |
+            dist/cloud/*.zip
+            dist/cloud/*.exe
+            dist/cloud/*.txt
+            dist/cloud/*.json
+          if-no-files-found: error
+          retention-days: 7
+
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - image: ubuntu:22.04
+            codename: jammy
+          - image: ubuntu:24.04
+            codename: noble
+          - image: debian:12
+            codename: bookworm
+          - image: debian:13
+            codename: trixie
+    container:
+      image: ${{ matrix.image }}
+    env:
+      QEMBY_DEB_DIST_TAG: ${{ matrix.codename }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and validate native DEB
+        shell: bash
+        run: bash scripts/release/linux-build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.codename }}-amd64
+          path: |
+            dist/cloud/*.deb
+            dist/cloud/*.txt
+            dist/cloud/*.json
+          if-no-files-found: error
+          retention-days: 7
+
+  macos:
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          test "$(uname -m)" = arm64
+          brew install mpv ninja pkg-config
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.9.2'
+          arch: clang_64
+          modules: qtwebsockets qtimageformats
+          cache: true
+      - name: Configure Release arm64
+        run: >-
+          cmake -S . -B build/cloud -G Ninja -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=26.0
+          "-DQEMBY_QT_ROOT=$QT_ROOT_DIR"
+      - name: Build Release
+        run: cmake --build build/cloud --parallel 2
+      - name: Package and verify ad-hoc signed DMG
+        run: python3 scripts/release/package.py --platform macos
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos26-arm64
+          path: |
+            dist/cloud/*.dmg
+            dist/cloud/*.txt
+            dist/cloud/*.json
+          if-no-files-found: error
+          retention-days: 7

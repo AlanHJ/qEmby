@@ -2,6 +2,7 @@
 #include "shimmerwidget.h"
 #include "../utils/textwraputils.h"
 #include "../views/media/medialistmodel.h"
+#include "../managers/libraryartworkmanager.h"
 #include <QListView>
 #include <QVBoxLayout>
 #include <QPushButton>
@@ -63,7 +64,7 @@ HorizontalListViewGallery::HorizontalListViewGallery(QEmbyCore* core, QWidget* p
     m_listView->setSpacing(0);
     m_listView->setMovement(QListView::Static);
     m_listView->setResizeMode(QListView::Adjust);
-    m_listView->setUniformItemSizes(true);
+    m_listView->setUniformItemSizes(false);
 
     m_listView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_listView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -105,6 +106,21 @@ HorizontalListViewGallery::HorizontalListViewGallery(QEmbyCore* core, QWidget* p
     
     
     m_listModel = new MediaListModel(400, m_core, this);
+    m_listModel->setProperty("variableArtworkLayout", true);
+    connect(LibraryArtworkManager::instance(), &LibraryArtworkManager::policyChanged, this,
+            [this]() {
+        const int scroll = m_listView->horizontalScrollBar()->value();
+        QModelIndex anchor;
+        for (int x = 0; x < m_listView->viewport()->width() && !anchor.isValid(); x += 16)
+            anchor = m_listView->indexAt(QPoint(x, m_listView->viewport()->height() / 2));
+        const int offset = anchor.isValid() ? m_listView->visualRect(anchor).left() : 0;
+        m_listView->doItemsLayout();
+        auto* bar = m_listView->horizontalScrollBar();
+        bar->setValue(anchor.isValid() ? bar->value() + m_listView->visualRect(anchor).left() - offset : scroll);
+        updateVisibleImagePriority();
+        m_listView->viewport()->update();
+        updateImageRequestSize();
+    }, Qt::QueuedConnection);
     m_listDelegate = new MediaCardDelegate(MediaCardDelegate::Poster, this);
 
     m_listView->setModel(m_listModel);
@@ -275,6 +291,13 @@ void HorizontalListViewGallery::clearFailedImageItems()
     }
 }
 
+void HorizontalListViewGallery::setLibraryArtworkPolicyEnabled(bool enabled)
+{
+    m_listModel->setProperty("variableArtworkLayout", enabled);
+    m_listModel->setProperty("artworkPolicyEligible", enabled);
+    m_listView->doItemsLayout();
+}
+
 void HorizontalListViewGallery::setCardStyle(MediaCardDelegate::CardStyle style)
 {
     m_cardStyle = style; 
@@ -292,6 +315,8 @@ void HorizontalListViewGallery::setCardStyle(MediaCardDelegate::CardStyle style)
             m_listDelegate->setTileSize(QSize(cardWidth, cardHeight));
         } else if (style == MediaCardDelegate::Poster) {
             m_listDelegate->setTileSize(QSize(160, 270));
+        } else if (style == MediaCardDelegate::AlbumCover) {
+            m_listDelegate->setTileSize(QSize(190, 240));
         }
 
         
@@ -600,7 +625,9 @@ void HorizontalListViewGallery::updateImageRequestSize()
     }
 
     QStyleOptionViewItem option;
-    const QSize cardSize = m_listDelegate->sizeHint(option, QModelIndex());
+    QSize cardSize = m_listDelegate->sizeHint(option, QModelIndex());
+    for (int row = 0; row < m_listModel->rowCount(); ++row)
+        cardSize = cardSize.expandedTo(m_listDelegate->sizeHint(option, m_listModel->index(row, 0)));
     const int displayWidth =
         qMax(1, cardSize.width() - m_listDelegate->contentPadding() * 2);
     const int requestWidth = qBound(

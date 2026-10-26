@@ -2,7 +2,8 @@
 #include "../../components/loadingoverlay.h"
 #include "../../components/moderncombobox.h"
 #include "../../components/modernmessagebox.h"
-#include "../../components/modernswitch.h"
+#include "../../components/trailingwidgetlineedit.h"
+#include "../../components/sslverificationbutton.h"
 #include "../../components/proxysettingsdialog.h"
 #include "../../components/useragentsettingsdialog.h"
 #include "../../components/serverwheelview.h"
@@ -82,14 +83,18 @@ LoginView::LoginView(QEmbyCore *core, QWidget *parent)
   
   connect(ThemeManager::instance(), &ThemeManager::themeChanged, this,
           &LoginView::onThemeChanged);
+  connect(this, &QObject::destroyed, m_core->authService(),
+          &AuthService::cancelPendingAuthentication);
 }
 
 void LoginView::showEvent(QShowEvent *event) {
   QWidget::showEvent(event);
-  
-  if (m_loadingOverlay) {
-    m_loadingOverlay->hide();
+  if (m_loginInProgress) {
+    m_loadingOverlay->start();
+    return;
   }
+  m_loadingOverlay->forceStop();
+  setLoginBusy(false);
   refreshServerList();
 
   
@@ -127,26 +132,8 @@ void LoginView::showEvent(QShowEvent *event) {
         
         qDebug() << "LoginView::showEvent: setting up QTimer::singleShot(0)";
         QTimer::singleShot(0, this, [this, lastServerId]() {
-          qDebug() << "LoginView::showEvent delayed: starting m_loadingOverlay";
-          
-          m_loadingOverlay->start();
-
-          qDebug() << "LoginView::showEvent delayed: setting up "
-                      "QTimer::singleShot(800)";
-          
-          QTimer::singleShot(800, this, [this, lastServerId]() {
-            
-            qDebug() << "LoginView::showEvent 800ms delayed: checking 'this' "
-                        "pointer";
-            if (this) {
-              qDebug() << "LoginView::showEvent 800ms delayed: calling "
-                          "onServerCardClicked";
-              onServerCardClicked(lastServerId);
-            } else {
-              qDebug() << "LoginView::showEvent 800ms delayed: 'this' pointer "
-                          "is null, aborting";
-            }
-          });
+          if (isVisible() && !m_loginInProgress)
+            onServerCardClicked(lastServerId);
         });
       }
     }
@@ -191,7 +178,7 @@ void LoginView::onThemeChanged(ThemeManager::Theme theme) {
 
   
   
-  if (m_pageSwitcher->currentWidget() == m_listPage) {
+  if (!m_loginInProgress && m_pageSwitcher->currentWidget() == m_listPage) {
     refreshServerList();
   }
 }
@@ -214,19 +201,14 @@ void LoginView::onCloudSyncClicked() {
 }
 
 void LoginView::updateSslOptionsVisibility() {
-    const bool isHttps =
-        m_protocolInput != nullptr &&
-        m_protocolInput->currentText().compare("https://", Qt::CaseInsensitive) ==
-            0;
-  
-    if (m_sslOptionsRow != nullptr) {
-      m_sslOptionsRow->setVisible(isHttps);
-    }
-  
-    if (!isHttps && m_ignoreSslSwitch != nullptr) {
-      m_ignoreSslSwitch->setChecked(false);
-    }
+  const bool isHttps =
+      m_protocolInput != nullptr &&
+      m_protocolInput->currentText().compare("https://", Qt::CaseInsensitive) == 0;
+
+  if (m_ignoreSslButton != nullptr) {
+    m_ignoreSslButton->setHttpsEnabled(isHttps);
   }
+}
 
 void LoginView::syncProtocolSelectionFromUrlText(const QString &text) {
   if (m_protocolInput == nullptr) {
@@ -367,8 +349,8 @@ void LoginView::applyServerUrlToForm(const QUrl &url,
     m_portInput->setText(port > 0 ? QString::number(port) : QString());
   }
 
-  if (m_ignoreSslSwitch != nullptr) {
-    m_ignoreSslSwitch->setChecked(ignoreSslVerification);
+  if (m_ignoreSslButton != nullptr) {
+    m_ignoreSslButton->setChecked(ignoreSslVerification);
   }
   updateSslOptionsVisibility();
 }
@@ -437,6 +419,64 @@ void LoginView::setupUi() {
 
   
   m_loadingOverlay = new LoadingOverlay(this);
+  m_loadingOverlay->setObjectName("login-loading-overlay");
+  m_loadingOverlay->setAmbientMode(true);
+  m_loadingOverlay->setCancellable(true, 5000);
+  connect(m_loadingOverlay, &LoadingOverlay::cancelRequested,
+          this, &LoginView::cancelLogin);
+  connect(m_loadingOverlay, &LoadingOverlay::completed, this, [this]() {
+    if (!m_loginInProgress)
+      return;
+    m_loginInProgress = false;
+    m_wheelView->setTransitionMode(true);
+    qInfo() << "[LoginView] Login feedback completed; navigating to home";
+    Q_EMIT loginCompleted();
+  });
+}
+
+void LoginView::setLoginBusy(bool busy) {
+  m_loginInProgress = busy;
+  
+  m_pageSwitcher->setEnabled(!busy);
+  m_cloudSyncBtn->setEnabled(!busy);
+}
+
+void LoginView::beginLogin(const QString& status) {
+  ++m_loginAttempt;
+  m_loginFocusWidget = QApplication::focusWidget();
+  setLoginBusy(true);
+  m_loadingOverlay->setReducedMotion(
+      ConfigStore::instance()->get<bool>(ConfigKeys::UiAnimations, false));
+  m_loadingOverlay->setStatusText(status);
+  m_loadingOverlay->setGeometry(rect());
+  m_loadingOverlay->start();
+  qInfo() << "[LoginView] Login started | form:"
+          << (m_pageSwitcher->currentWidget() == m_addPage);
+}
+
+void LoginView::cancelLogin() {
+  if (!m_loginInProgress)
+    return;
+
+  
+  ++m_loginAttempt;
+  m_loadingOverlay->forceStop();
+  setLoginBusy(false);
+  m_core->authService()->cancelPendingAuthentication();
+  m_loginButton->setText(m_editingServerId.isEmpty() ? tr("Login")
+                                                    : tr("Save & Login"));
+  if (m_pageSwitcher->currentWidget() == m_listPage)
+    refreshServerList();
+  if (m_loginFocusWidget && m_loginFocusWidget->isVisible() &&
+      m_loginFocusWidget->isEnabled())
+    m_loginFocusWidget->setFocus(Qt::OtherFocusReason);
+  qInfo() << "[LoginView] Login cancelled; restored previous page";
+}
+
+void LoginView::completeLogin() {
+  qInfo() << "[LoginView] Authentication succeeded; completing feedback";
+  m_loadingOverlay->setStatusText(tr("Connected"));
+  m_loadingOverlay->complete();
 }
 
 void LoginView::setupListPage() {
@@ -484,10 +524,14 @@ void LoginView::setupAddPage() {
   
   const QString serverAddressTooltip = tr(
       "Server Address (e.g. example.com/emby or 192.168.1.1/jellyfin)");
-  m_serverAddressInput = new QLineEdit(this);
+  m_serverAddressInput = new TrailingWidgetLineEdit(this);
   m_serverAddressInput->setPlaceholderText(tr("Server Address"));
   m_serverAddressInput->setToolTip(serverAddressTooltip);
   m_serverAddressInput->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+
+  
+  m_ignoreSslButton = new SslVerificationButton(m_serverAddressInput);
+  m_serverAddressInput->setTrailingWidget(m_ignoreSslButton);
   layout->addWidget(m_serverAddressInput);
 
     auto *protoPortLayout = new QHBoxLayout();
@@ -531,30 +575,6 @@ void LoginView::setupAddPage() {
           &LoginView::openNetworkSettingsMenu);
 
   refreshNetworkSettingsTooltip();
-
-    m_sslOptionsRow = new QWidget(this);
-    m_sslOptionsRow->setObjectName("login-ssl-card");
-    m_sslOptionsRow->setAttribute(Qt::WA_StyledBackground, true);
-    auto *sslOptionsLayout = new QHBoxLayout(m_sslOptionsRow);
-    sslOptionsLayout->setContentsMargins(14, 8, 10, 8);
-    sslOptionsLayout->setSpacing(10);
-  
-    const QString sslTooltip = tr(
-        "Use this only for trusted self-signed or private CA HTTPS servers.");
-
-  auto *sslTitleLabel =
-      new QLabel(tr("Ignore SSL certificate verification"), m_sslOptionsRow);
-  sslTitleLabel->setObjectName("login-ssl-title");
-  sslTitleLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-  sslTitleLabel->setToolTip(sslTooltip);
-
-  m_ignoreSslSwitch = new ModernSwitch(m_sslOptionsRow);
-  m_ignoreSslSwitch->setToolTip(sslTooltip);
-
-  sslOptionsLayout->addWidget(sslTitleLabel, 1);
-  sslOptionsLayout->addWidget(m_ignoreSslSwitch, 0, Qt::AlignVCenter);
-  m_sslOptionsRow->setToolTip(sslTooltip);
-  layout->addWidget(m_sslOptionsRow);
 
   m_usernameInput = new QLineEdit(this);
   m_usernameInput->setPlaceholderText(tr("Username"));
@@ -876,8 +896,8 @@ void LoginView::showAddPage() {
   }
   m_usernameInput->clear();
   m_passwordInput->clear();
-  if (m_ignoreSslSwitch) {
-    m_ignoreSslSwitch->setChecked(false);
+  if (m_ignoreSslButton) {
+    m_ignoreSslButton->setChecked(false);
   }
   updateSslOptionsVisibility();
 
@@ -920,8 +940,8 @@ void LoginView::onEditServerClicked(const QString &serverId) {
         if (m_portInput) {
           m_portInput->clear();
         }
-        if (m_ignoreSslSwitch) {
-          m_ignoreSslSwitch->setChecked(server.ignoreSslVerification);
+        if (m_ignoreSslButton) {
+          m_ignoreSslButton->setChecked(server.ignoreSslVerification);
         }
         updateSslOptionsVisibility();
       }
@@ -970,48 +990,45 @@ void LoginView::onRemoveServerClicked(const QString &serverId) {
 }
 
 
-QCoro::Task<void> LoginView::onServerCardClicked(const QString &serverId) {
-  
-  
-  
-  QString safeServerId = serverId;
+QCoro::Task<void> LoginView::onServerCardClicked(QString serverId) {
+  if (m_loginInProgress)
+    co_return;
 
   
   QPointer<LoginView> guard(this);
 
-  
-  m_loadingOverlay->start();
+  beginLogin(tr("Connecting to server..."));
+  const quint64 attempt = m_loginAttempt;
 
   try {
-    co_await m_core->authService()->validateSession(safeServerId);
-    if (!guard)
+    co_await m_core->authService()->validateSession(serverId);
+    if (!guard || attempt != m_loginAttempt)
       co_return;
 
-    m_loadingOverlay->stop();
-    m_loadingOverlay->hide();
-
-    ConfigStore::instance()->set(ConfigKeys::LastSelectedServerId, safeServerId);
-
-    
-    
-    m_wheelView->setTransitionMode(true);
-    Q_EMIT loginCompleted();
+    ConfigStore::instance()->set(ConfigKeys::LastSelectedServerId, serverId);
+    completeLogin();
   } catch (const std::exception &e) {
-    if (!guard)
+    if (!guard || attempt != m_loginAttempt)
       co_return;
 
     m_loadingOverlay->stop();
+    setLoginBusy(false);
+    qInfo() << "[LoginView] Session validation failed; restoring login form";
     refreshServerList();
     ModernMessageBox::warning(this, tr("Connection Failed"),
                               tr("Failed to connect or session expired. Please "
                                  "log in again.\nError: ") +
                                   QString::fromStdString(e.what()));
-    onEditServerClicked(safeServerId);
+    if (guard)
+      onEditServerClicked(serverId);
   }
 }
 
 
 QCoro::Task<void> LoginView::onLoginClicked() {
+  if (m_loginInProgress)
+    co_return;
+
   
   QPointer<LoginView> guard(this);
 
@@ -1034,7 +1051,7 @@ QCoro::Task<void> LoginView::onLoginClicked() {
 
   const bool ignoreSslVerification =
       normalizedUrl.scheme().compare("https", Qt::CaseInsensitive) == 0 &&
-      m_ignoreSslSwitch != nullptr && m_ignoreSslSwitch->isChecked();
+      m_ignoreSslButton != nullptr && m_ignoreSslButton->isChecked();
   applyServerUrlToForm(normalizedUrl, ignoreSslVerification);
 
   const QString fullUrl = normalizedUrl.toString(QUrl::FullyEncoded);
@@ -1043,21 +1060,18 @@ QCoro::Task<void> LoginView::onLoginClicked() {
            << "| ignoreSslVerification:" << ignoreSslVerification;
 
   m_errorLabel->hide();
-  m_loginButton->setEnabled(false);
   m_loginButton->setText(tr("Connecting..."));
 
-  m_loadingOverlay->start();
+  beginLogin(tr("Signing in..."));
+  const quint64 attempt = m_loginAttempt;
 
   try {
     ServerProfile profile =
         co_await m_core->authService()->login(fullUrl, user, pass,
                                               ignoreSslVerification);
 
-    if (!guard)
+    if (!guard || attempt != m_loginAttempt)
       co_return;
-
-    m_loadingOverlay->stop();
-    m_loadingOverlay->hide(); 
 
     ConfigStore::instance()->set(ConfigKeys::LastSelectedServerId, profile.id);
 
@@ -1092,19 +1106,17 @@ QCoro::Task<void> LoginView::onLoginClicked() {
     m_pendingUserAgent = UserAgentConfig{};
     m_pendingUseGlobalUserAgent = false;
 
-    m_loginButton->setEnabled(true);
     m_loginButton->setText(tr("Login"));
 
-    
-    m_wheelView->setTransitionMode(true);
-    Q_EMIT loginCompleted();
+    completeLogin();
 
   } catch (const std::exception &e) {
-    if (!guard)
+    if (!guard || attempt != m_loginAttempt)
       co_return;
 
     m_loadingOverlay->stop();
-    m_loginButton->setEnabled(true);
+    setLoginBusy(false);
+    qInfo() << "[LoginView] Authentication failed; restoring login form";
     m_loginButton->setText(m_editingServerId.isEmpty() ? tr("Login")
                                                        : tr("Save & Login"));
     m_errorLabel->setText(QString::fromStdString(e.what()));
@@ -1228,5 +1240,3 @@ void LoginView::openUserAgentDialogForCurrentEntry() {
   }
   dialog->deleteLater();
 }
-
-

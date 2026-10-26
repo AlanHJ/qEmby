@@ -10,6 +10,7 @@
 class MediaGridWidget;
 class ElidedLabel;
 class ModernSortButton;
+class ArtworkViewButton;
 class QPushButton;
 class QLabel;
 class QHBoxLayout;
@@ -58,7 +59,7 @@ private:
     bool isProgressiveDashboardCategory(const QString& categoryType) const;
     QString currentViewPreferenceCategoryId() const;
     void applyViewMode(bool isTile);
-    void saveViewPreference();
+    void saveViewPreference(QString viewMode);
     void restoreViewPreference();
     int dashboardCategoryRequestLimit(const QString& categoryType) const;
     DashboardCategoryQuery buildDashboardCategoryQuery(const QString& sortBy,
@@ -77,7 +78,7 @@ private:
     
     ElidedLabel* m_titleLabel;
     ModernSortButton* m_sortButton; 
-    QPushButton* m_viewSwitchBtn;
+    ArtworkViewButton* m_viewSwitchBtn;
     QPushButton* m_refreshBtn;   
     QLabel* m_statsLabel;
     

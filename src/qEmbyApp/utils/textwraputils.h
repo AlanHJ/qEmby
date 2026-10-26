@@ -11,6 +11,9 @@ class QEvent;
 namespace TextWrapUtils {
 
 QString wrapPlainText(const QString& text, const QFont& font, int maxWidth);
+
+QString elideWrappedPlainText(const QString& text, const QFont& font,
+                              int maxWidth, int maxLines, bool* elided = nullptr);
 QSize measureWrappedPlainText(const QString& text, const QFont& font,
                               int maxWidth);
 bool showWrappedMediaItemToolTip(QAbstractItemView* view, QEvent* event,

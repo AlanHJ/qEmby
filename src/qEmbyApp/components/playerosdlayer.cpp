@@ -1,5 +1,6 @@
 #include "playerosdlayer.h"
 #include "danmakuheatmapwidget.h"
+#include "playerseekindicator.h"
 #include <QAbstractAnimation>
 #include <QGraphicsOpacityEffect>
 #include <QIcon>
@@ -14,12 +15,6 @@ namespace
 {
 constexpr int kSeekLineHeight = 4;
 constexpr int kSeekHeatmapHeight = 28;
-constexpr int kSeekLabelMinWidth = 80;
-constexpr int kSeekLabelMaxWidth = 148;
-constexpr int kSeekLabelHeight = 28;
-constexpr int kSeekLabelBottomOffset = 46;
-constexpr int kSeekHorizontalMargin = 10;
-constexpr int kSeekMarkerSize = 7;
 constexpr int kVolumePanelWidth = 292;
 constexpr int kVolumePanelHeight = 46;
 constexpr int kVolumePanelMargin = 16;
@@ -75,18 +70,7 @@ PlayerOsdLayer::PlayerOsdLayer(QWidget *parent)
     m_seekHeatmap->setObjectName(QStringLiteral("osdSeekHeatmap"));
     m_seekHeatmap->hide();
 
-    
-    m_seekTimeLabel = new QLabel(m_container);
-    m_seekTimeLabel->setObjectName("osdSeekTimeLabel");
-    m_seekTimeLabel->setAlignment(Qt::AlignCenter);
-    m_seekTimeLabel->setMinimumWidth(kSeekLabelMinWidth);
-
-    
-    m_seekStem = new QWidget(m_container);
-    m_seekStem->setObjectName("osdSeekStem");
-
-    m_seekMarker = new QWidget(m_container);
-    m_seekMarker->setObjectName("osdSeekMarker");
+    m_seekIndicator = new PlayerSeekIndicator(m_container);
 
     
     m_volumePanel = new QWidget(m_container);
@@ -122,9 +106,7 @@ void PlayerOsdLayer::showSeek(double position, double duration, const QString &t
 
     m_seekLine->show();
     m_seekHeatmap->setVisible(m_hasSeekHeatmap);
-    m_seekTimeLabel->show();
-    m_seekStem->show();
-    m_seekMarker->show();
+    m_seekIndicator->show();
     m_volumePanel->hide();
 
     m_seekDuration = std::isfinite(duration) && duration > 0.0 ? duration : 0.0;
@@ -141,7 +123,7 @@ void PlayerOsdLayer::showSeek(double position, double duration, const QString &t
     const int maximum = qMax(1, static_cast<int>(std::ceil(m_seekDuration)));
     m_seekLine->setRange(0, maximum);
     m_seekLine->setValue(qBound(0, static_cast<int>(std::round(m_seekPosition)), maximum));
-    m_seekTimeLabel->setText(timeText);
+    m_seekIndicator->setTimeText(timeText);
     updateSeekLayout();
 
     m_hideTimer->start(1500); 
@@ -153,9 +135,7 @@ void PlayerOsdLayer::showVolume(int volumePercent, const QString &text, bool mut
 
     m_seekLine->hide();
     m_seekHeatmap->hide();
-    m_seekTimeLabel->hide();
-    m_seekStem->hide();
-    m_seekMarker->hide();
+    m_seekIndicator->hide();
     m_volumePanel->show();
 
     m_volumePercent = qBound(0, volumePercent, 100);
@@ -269,7 +249,7 @@ void PlayerOsdLayer::updateSeekPosition(int position, const QString &timeText)
 
     const int maximum = qMax(1, m_seekLine->maximum());
     m_seekLine->setValue(qBound(0, static_cast<int>(std::round(m_seekPosition)), maximum));
-    m_seekTimeLabel->setText(timeText);
+    m_seekIndicator->setTimeText(timeText);
     updateSeekLayout();
 }
 
@@ -299,7 +279,7 @@ bool PlayerOsdLayer::canStartAnimation() const
 
 void PlayerOsdLayer::updateSeekLayout()
 {
-    if (!m_seekTimeLabel || !m_seekStem || !m_seekMarker || m_parentWidth <= 0 || m_parentHeight <= 0)
+    if (!m_seekIndicator || m_parentWidth <= 0 || m_parentHeight <= 0)
     {
         return;
     }
@@ -308,32 +288,7 @@ void PlayerOsdLayer::updateSeekLayout()
     const int progressX = qBound(0, static_cast<int>(std::round(progressRatio * (m_parentWidth - 1))),
                                  qMax(0, m_parentWidth - 1));
 
-    const int preferredWidth = m_seekTimeLabel->sizeHint().width();
-    const int labelWidth = qBound(kSeekLabelMinWidth, preferredWidth, kSeekLabelMaxWidth);
-    const int labelY = qMax(12, m_parentHeight - kSeekLabelBottomOffset);
-
-    int labelX = 0;
-    if (m_parentWidth <= labelWidth + kSeekHorizontalMargin * 2)
-    {
-        labelX = qMax(0, (m_parentWidth - labelWidth) / 2);
-    }
-    else
-    {
-        labelX = qBound(kSeekHorizontalMargin, progressX - labelWidth / 2,
-                        m_parentWidth - labelWidth - kSeekHorizontalMargin);
-    }
-
-    m_seekTimeLabel->setGeometry(labelX, labelY, labelWidth, kSeekLabelHeight);
-
-    const int markerX = qBound(0, progressX - kSeekMarkerSize / 2, qMax(0, m_parentWidth - kSeekMarkerSize));
-    const int markerY = qMax(labelY + kSeekLabelHeight + 3, m_parentHeight - kSeekLineHeight - kSeekMarkerSize - 1);
-    m_seekMarker->setGeometry(markerX, markerY, kSeekMarkerSize, kSeekMarkerSize);
-
-    const int stemTop = labelY + kSeekLabelHeight + 2;
-    const int stemBottom = qMax(stemTop, markerY - 1);
-    const int stemHeight = qMax(2, stemBottom - stemTop);
-    const int stemX = qBound(0, progressX, qMax(0, m_parentWidth - 1));
-    m_seekStem->setGeometry(stemX, stemTop, 1, stemHeight);
+    m_seekIndicator->setAnchor(QPoint(progressX, qMax(0, m_parentHeight - kSeekLineHeight - 4)));
 }
 
 void PlayerOsdLayer::updateVolumeLayout()

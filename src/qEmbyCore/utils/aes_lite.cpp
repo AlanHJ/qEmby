@@ -8,7 +8,7 @@
 
 
 
-
+// SPDX-License-Identifier: Unlicense / Public Domain（与 tiny-AES-c 上游一致，详见
 
 
 

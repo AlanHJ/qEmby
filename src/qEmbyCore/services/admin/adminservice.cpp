@@ -1,10 +1,13 @@
 #include "adminservice.h"
 #include "../manager/servermanager.h"
 #include "../../api/apiclient.h"
+#include "../../api/networkrequesterror.h"
 #include <QDebug>
 #include <QDateTime>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QMimeDatabase>
+#include <QPointer>
 #include <QStringList>
 #include <QUrl>
 #include <QUrlQuery>
@@ -1534,6 +1537,55 @@ QCoro::Task<void> AdminService::applyRemoteSearchResult(
         path, payload);
 }
 
+QCoro::Task<void> AdminService::removePersonIdentification(QString itemId)
+{
+    ensureValidProfile();
+    itemId = itemId.trimmed();
+    const ServerProfile profile = m_serverManager->activeProfile();
+    if (itemId.isEmpty() || !profile.isAdmin) {
+        throw std::runtime_error(
+            tr("Removing identification requires an actor ID and administrator privileges.")
+                .toStdString());
+    }
+
+    QPointer<ServerManager> manager(m_serverManager);
+    QPointer<ApiClient> client(m_serverManager->activeClient());
+    
+    QJsonObject itemData = co_await client->get(
+        QStringLiteral("/Users/%1/Items/%2").arg(profile.userId, itemId));
+    if (!manager || !client || manager->activeProfile().id != profile.id ||
+        manager->activeProfile().userId != profile.userId) {
+        throw std::runtime_error(
+            tr("The server session changed. Please try again.").toStdString());
+    }
+    if (itemData.value(QStringLiteral("Type")).toString() != QLatin1String("Person") ||
+        itemData.value(QStringLiteral("Id")).toString() != itemId) {
+        throw std::runtime_error(
+            tr("The selected item is not a valid actor.").toStdString());
+    }
+
+    const bool isJellyfin = profile.type == ServerProfile::Jellyfin;
+    qDebug() << "[AdminService] removePersonIdentification"
+             << "| itemId:" << itemId
+             << "| providerCount:" << itemData.value(QStringLiteral("ProviderIds")).toObject().size()
+             << "| strategy:" << (isJellyfin ? "clear-provider-ids" : "reset-metadata");
+    if (isJellyfin) {
+        
+        
+        itemData.insert(QStringLiteral("ProviderIds"), QJsonObject());
+        co_await client->post(QStringLiteral("/Items/%1").arg(itemId), itemData);
+    } else {
+        QUrlQuery query;
+        query.addQueryItem(QStringLiteral("ItemIds"), itemId);
+        co_await client->post(
+            QStringLiteral("/Items/Metadata/Reset?%1")
+                .arg(query.toString(QUrl::FullyEncoded)), QJsonObject());
+    }
+    qDebug() << "[AdminService] removePersonIdentification completed"
+             << "| itemId:" << itemId
+             << "| strategy:" << (isJellyfin ? "clear-provider-ids" : "reset-metadata");
+}
+
 QCoro::Task<void> AdminService::updateItemMetadata(const QString& itemId, const QJsonObject& itemData)
 {
     ensureValidProfile();
@@ -1655,12 +1707,22 @@ QCoro::Task<void> AdminService::uploadItemImage(QString itemId,
         co_return;
     }
 
-    if (mimeType.isEmpty()) {
-        mimeType = QStringLiteral("application/octet-stream");
+    const ServerProfile profile = m_serverManager->activeProfile();
+    const QString detectedMimeType = QMimeDatabase().mimeTypeForData(imageData).name();
+    const bool embyJpgUpload =
+        profile.type == ServerProfile::Emby &&
+        mimeType.compare(QLatin1String("image/jpg"), Qt::CaseInsensitive) == 0 &&
+        detectedMimeType == QLatin1String("image/jpeg");
+    if (!embyJpgUpload && detectedMimeType.startsWith(QStringLiteral("image/"))) {
+        mimeType = detectedMimeType;
+    }
+    if (!mimeType.startsWith(QStringLiteral("image/"))) {
+        throw std::runtime_error(
+            tr("Unable to determine the image format. Please choose a valid image file.")
+                .toStdString());
     }
 
     const QString path = buildItemImagePath(itemId, imageType, imageIndex);
-    const ServerProfile profile = m_serverManager->activeProfile();
     const QByteArray encodedBody = imageData.toBase64();
 
     qDebug() << "[AdminService] uploadItemImage"
@@ -1668,6 +1730,8 @@ QCoro::Task<void> AdminService::uploadItemImage(QString itemId,
              << "| imageType:" << imageType
              << "| imageIndex:" << imageIndex
              << "| mimeType:" << mimeType
+             << "| detectedMimeType:" << detectedMimeType
+             << "| embyJpgUpload:" << embyJpgUpload
              << "| dataSize:" << imageData.size()
              << "| base64Size:" << encodedBody.size()
              << "| serverType:"
@@ -1675,40 +1739,38 @@ QCoro::Task<void> AdminService::uploadItemImage(QString itemId,
                                                          : "Emby")
              << "| requestBody: raw-base64";
 
+    
+    
     try {
-        qDebug() << "[AdminService] uploadItemImage primary attempt"
-                 << "| itemId:" << itemId
-                 << "| imageType:" << imageType
-                 << "| imageIndex:" << imageIndex
-                 << "| contentType: text/plain";
-        co_await m_serverManager->activeClient()->postBytes(
-            path, encodedBody, QStringLiteral("text/plain"));
-        co_return;
-    } catch (const std::exception& e) {
-        qWarning() << "[AdminService] uploadItemImage primary attempt failed"
-                   << "| itemId:" << itemId
-                   << "| imageType:" << imageType
-                   << "| imageIndex:" << imageIndex
-                   << "| contentType: text/plain"
-                   << "| error:" << e.what();
-    }
-
-    try {
-        qWarning() << "[AdminService] uploadItemImage retrying with fallback header"
-                   << "| itemId:" << itemId
-                   << "| imageType:" << imageType
-                   << "| imageIndex:" << imageIndex
-                   << "| contentType:" << mimeType;
         co_await m_serverManager->activeClient()->postBytes(
             path, encodedBody, mimeType);
 
-        qWarning() << "[AdminService] uploadItemImage fallback header succeeded"
+        qDebug() << "[AdminService] uploadItemImage completed"
                    << "| itemId:" << itemId
                    << "| imageType:" << imageType
                    << "| imageIndex:" << imageIndex
                    << "| contentType:" << mimeType;
+    } catch (const NetworkRequestError& e) {
+        const QByteArray response = e.responseBody().toLower();
+        const bool missingStoragePath =
+            (e.httpStatus() == 404 || e.httpStatus() == 500) &&
+            (response.contains("could not find a part of the path") ||
+             response.contains("directorynotfoundexception"));
+        qWarning() << "[AdminService] uploadItemImage rejected"
+                   << "| itemId:" << itemId
+                   << "| imageType:" << imageType
+                   << "| imageIndex:" << imageIndex
+                   << "| contentType:" << mimeType
+                   << "| httpStatus:" << e.httpStatus()
+                   << "| missingStoragePath:" << missingStoragePath;
+        if (missingStoragePath) {
+            throw std::runtime_error(
+                tr("The server could not find the image storage directory. Check the server's image paths, container mounts and directory permissions, then retry the upload.")
+                    .toStdString());
+        }
+        throw;
     } catch (const std::exception& e) {
-        qWarning() << "[AdminService] uploadItemImage fallback header failed"
+        qWarning() << "[AdminService] uploadItemImage failed"
                    << "| itemId:" << itemId
                    << "| imageType:" << imageType
                    << "| imageIndex:" << imageIndex

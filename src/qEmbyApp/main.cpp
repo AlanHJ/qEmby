@@ -67,18 +67,12 @@ int main(int argc, char *argv[]) {
 
   MainWindow w;
   QObject::connect(&singleApplication,
-                   &SingleApplicationManager::activationRequested, &w, [&w]() {
-                     if (w.isMinimized()) {
-                       w.setWindowState(w.windowState() & ~Qt::WindowMinimized);
-                     }
-                     w.show();
-                     w.raise();
-                     w.activateWindow();
-                   });
+                   &SingleApplicationManager::activationRequested,
+                   &w, &MainWindow::showCurrentWindow);
 #if !defined(Q_OS_MACOS) && !defined(Q_OS_MAC)
   w.setWindowIcon(appIcon);
 #endif
-  w.show();
+  w.showCurrentWindow();
 
   
   

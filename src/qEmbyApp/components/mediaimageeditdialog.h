@@ -2,16 +2,19 @@
 #define MEDIAIMAGEEDITDIALOG_H
 
 #include "moderndialogbase.h"
+#include "mediaimageeditcard.h"
 
 #include <models/admin/adminmodels.h>
 
 #include <QList>
 #include <QString>
+#include <QPointer>
 #include <optional>
 #include <qcorotask.h>
 
 class QLabel;
-class QListWidget;
+class QScrollArea;
+class FlowLayout;
 class QMimeData;
 class QPixmap;
 class QPushButton;
@@ -80,28 +83,28 @@ private:
         }
     };
 
-    QCoro::Task<void> reloadImages(QString preferredType = QString());
+    QCoro::Task<void> reloadImages();
     QCoro::Task<void> loadPreview(ImageSlotState slot,
+                                  QPointer<MediaImageEditCard> card,
                                   quint64 requestGeneration);
-    QCoro::Task<void> chooseAndUploadImage();
-    QCoro::Task<void> promptAndUploadImageUrl();
-    QCoro::Task<void> saveSelectedImage();
-    QCoro::Task<void> uploadLocalImageFile(QString filePath);
-    QCoro::Task<void> uploadRemoteImage(QString imageUrl);
+    QCoro::Task<void> loadPreviews(int worker, quint64 requestGeneration);
+    QCoro::Task<void> chooseAndUploadImage(ImageSlotState slot);
+    QCoro::Task<void> viewImage(ImageSlotState slot);
+    QCoro::Task<void> promptAndUploadImageUrl(ImageSlotState slot);
+    QCoro::Task<void> saveImage(ImageSlotState slot);
+    QCoro::Task<void> uploadLocalImageFile(ImageSlotState slot, QString filePath);
+    QCoro::Task<void> uploadRemoteImage(ImageSlotState slot, QString imageUrl);
     QCoro::Task<void> uploadImageData(ImageSlotState slot,
                                       QByteArray imageData, QString mimeType);
-    QCoro::Task<void> handleDroppedImage(DroppedImagePayload payload);
-    QCoro::Task<void> removeSelectedImage();
+    QCoro::Task<void> handleDroppedImage(ImageSlotState slot, DroppedImagePayload payload);
+    QCoro::Task<void> removeImage(ImageSlotState slot);
 
-    const ImageSlotState* currentSlot() const;
     bool canAcceptDroppedImage(const QMimeData* mimeData) const;
     DroppedImagePayload parseDroppedImagePayload(const QMimeData* mimeData) const;
-    void rebuildTypeList(QString preferredType = QString());
-    void refreshPreview();
-    void setPreviewDropActive(bool active);
-    void updatePreviewMessage(const QString& text);
-    void updatePreviewPixmap(const QPixmap& pixmap);
-    void updatePreviewDetails();
+    void rebuildCards();
+    void startPreviews();
+    void handleCardAction(int index, MediaImageEditCard::Action action);
+    void invalidateEditedImages(QString imageType);
     void updateStatusText(const QString& text);
     void updateUiState();
 
@@ -110,23 +113,21 @@ private:
 
     QLabel* m_promptLabel = nullptr;
     QLabel* m_statusLabel = nullptr;
-    QLabel* m_previewLabel = nullptr;
-    QLabel* m_previewInfoLabel = nullptr;
-    QListWidget* m_typeList = nullptr;
-    QPushButton* m_chooseButton = nullptr;
-    QPushButton* m_urlButton = nullptr;
-    QPushButton* m_downloadButton = nullptr;
-    QPushButton* m_removeButton = nullptr;
+    QScrollArea* m_scrollArea = nullptr;
+    FlowLayout* m_imagesLayout = nullptr;
+    FlowLayout* m_backdropsLayout = nullptr;
+    QWidget* m_backdropsSection = nullptr;
+    QPushButton* m_retryButton = nullptr;
+    QList<QPointer<MediaImageEditCard>> m_cards;
 
     bool m_loaded = false;
+    bool m_hasImageInfo = false;
     bool m_isBusy = false;
     bool m_hasChanges = false;
-    bool m_isPreviewDropActive = false;
     quint64 m_previewLoadGeneration = 0;
     QList<ItemImageInfo> m_itemImages;
     QList<ImageSlotState> m_slots;
     std::optional<QCoro::Task<void>> m_pendingTask;
-    std::optional<QCoro::Task<void>> m_pendingPreviewTask;
 };
 
 #endif 

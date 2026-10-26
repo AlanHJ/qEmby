@@ -10,6 +10,7 @@
 #include <QStringList>
 #include <QTimer>
 #include <qcorotask.h>
+#include "../../utils/artworkpolicyutils.h"
 
 class QEmbyCore;
 
@@ -18,7 +19,8 @@ class MediaListModel : public QAbstractListModel {
 public:
     enum MediaRoles {
         ItemDataRole = Qt::UserRole + 1,
-        PosterPixmapRole
+        PosterPixmapRole,
+        ArtworkLayoutRole 
     };
 
     explicit MediaListModel(int imageMaxWidth, QEmbyCore* core, QObject *parent = nullptr);
@@ -30,6 +32,7 @@ public:
     void setItems(const QList<MediaItem>& items);
     MediaItem getItem(const QModelIndex& index) const;
     QList<MediaItem> items() const { return m_items; }
+    ArtworkPolicyUtils::State loadedArtworkState() const;
 
     
     void setPreferThumb(bool prefer);
@@ -58,6 +61,9 @@ public:
     
     
     void clearFailedImageItems();
+
+signals:
+    void artworkEvidenceChanged();
 
 private:
     struct ImageCandidate {
@@ -91,6 +97,10 @@ private:
     bool isImageRequestCurrent(const QString& itemId,
                                const PendingImageRequest& request) const;
     void invalidateItemImageRequest(const QString& itemId);
+    void ensureRatingRequested(const MediaItem& item);
+    void reportVisibleArtworkEvidence();
+    void scheduleRatingFetches();
+    QCoro::Task<void> fetchRating(QString itemId, int generation);
 
     
     static QCoro::Task<void> executeImageFetch(
@@ -104,6 +114,10 @@ private:
     QList<MediaItem> m_items;
 
     mutable QHash<QString, QPixmap> m_imageCache;
+    QHash<QString, QString> m_animationKeys;
+    QHash<QString, QPair<QString, QString>> m_imageEvidence;
+    
+    QHash<QString, QPair<QString, QSize>> m_artworkSizes;
     mutable QSet<QString> m_loadingImages;
     mutable QSet<QString> m_failedImageItems;
     QHash<QString, PendingImageRequest> m_pendingImageRequests;
@@ -115,6 +129,11 @@ private:
     int m_imageRequestGeneration = 0;
     QObject* m_imageRequestContext = nullptr;
     bool m_imageRequestsSuspended = false;
+    QHash<QString, double> m_ratingCache;
+    QSet<QString> m_loadingRatings;
+    QStringList m_pendingRatingIds;
+    int m_activeRatingFetches = 0;
+    int m_ratingRequestGeneration = 0;
 };
 
 #endif 

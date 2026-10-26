@@ -6,6 +6,7 @@
 #include <QVariant>
 #include <QPoint>
 #include <QPointer> 
+#include <QSet>
 #include <optional>
 #include <qcorotask.h>
 #include "../components/cardcontextmenurequest.h"
@@ -95,15 +96,18 @@ protected:
 
     
     QCoro::Task<void> refreshAndBroadcastItem(
-        const QString& itemId,
+        QString itemId,
         std::optional<MediaUserDataInfo> playbackStateOverride = std::nullopt);
 
     QEmbyCore* m_core;
 
 private:
+    QSet<QString> m_pendingFavoriteIds;
+    QSet<QString> m_pendingIdentificationIds;
     void launchTask(QCoro::Task<void>&& task);
 
     QCoro::Task<void> executeToggleFavorite(MediaItem item);
+    QCoro::Task<void> executePersonMenu(MediaItem item, QPoint globalPos);
     QCoro::Task<void> executePlay(MediaItem item);
     QCoro::Task<void> executeExternalPlay(MediaItem item, QString playerPath);
     QCoro::Task<void> executeMarkPlayed(MediaItem item);
@@ -114,6 +118,7 @@ private:
     QCoro::Task<void> executeRemoveFromPlaylist(MediaItem item);
     QCoro::Task<void> executeDeletePlaylist(MediaItem item);
     QCoro::Task<void> executeEditMetadata(MediaItem item);
+    QCoro::Task<void> executeRemoveIdentification(MediaItem item);
     QCoro::Task<void> executeServerRefreshAndReloadItem(
         QString itemId, QString itemName, bool triggerServerRefresh,
         bool replaceAllMetadata = false, bool replaceAllImages = false);

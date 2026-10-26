@@ -2,6 +2,7 @@
 #include <QJsonObject>
 #include <QUuid>
 #include <QUrl>
+#include <QScopeGuard>
 #include <qcoronetwork.h>
 #include <stdexcept>
 
@@ -20,11 +21,36 @@ AuthService::AuthService(NetworkManager* networkManager, ServerManager* serverMa
 {
 }
 
+QPointer<QObject> AuthService::beginAuthentication()
+{
+    cancelPendingAuthentication();
+    m_authenticationContext = new QObject(this);
+    return m_authenticationContext;
+}
+
+void AuthService::cancelPendingAuthentication()
+{
+    QPointer<QObject> context = m_authenticationContext;
+    m_authenticationContext.clear();
+    if (context) {
+        qInfo() << "[AuthService] Cancelling pending authentication requests";
+        delete context.data();
+    }
+}
+
 QCoro::Task<ServerProfile> AuthService::login(QString serverUrl,
                                               QString username,
                                               QString password,
                                               bool ignoreSslVerification)
 {
+    QPointer<AuthService> guard(this);
+    const QPointer<QObject> requestContext = beginAuthentication();
+    const auto contextCleanup = qScopeGuard([guard, requestContext]() {
+        if (guard && guard->m_authenticationContext == requestContext)
+            guard->m_authenticationContext.clear();
+        if (requestContext)
+            requestContext->deleteLater();
+    });
     QString cleanUrl = serverUrl;
     while (cleanUrl.endsWith('/')) {
         cleanUrl.chop(1);
@@ -32,6 +58,7 @@ QCoro::Task<ServerProfile> AuthService::login(QString serverUrl,
 
     NetworkRequestOptions requestOptions;
     requestOptions.ignoreSslErrors = ignoreSslVerification;
+    requestOptions.cancellationContext = requestContext;
 
     
     
@@ -60,6 +87,9 @@ QCoro::Task<ServerProfile> AuthService::login(QString serverUrl,
     QJsonObject infoResp = co_await m_networkManager->get(
         cleanUrl + "/System/Info/Public", QMap<QString, QString>(),
         requestOptions);
+
+    if (!guard || !requestContext)
+        co_return ServerProfile{};
 
     
     ServerProfile tempProfile;
@@ -93,12 +123,16 @@ QCoro::Task<ServerProfile> AuthService::login(QString serverUrl,
 
     
     ApiClient tempClient(tempProfile, m_networkManager);
+    tempClient.setCancellationContext(requestContext.data());
     QJsonObject payload;
     payload["Username"] = username;
     payload["Pw"] = password;
 
     
     QJsonObject authResp = co_await tempClient.post("/Users/AuthenticateByName", payload);
+
+    if (!guard || !requestContext)
+        co_return ServerProfile{};
 
     
     tempProfile.accessToken = authResp["AccessToken"].toString();
@@ -137,11 +171,13 @@ QCoro::Task<ServerProfile> AuthService::login(QString serverUrl,
                  << "| type:" << (tempProfile.type == ServerProfile::Jellyfin ? "Jellyfin" : "Emby")
                  << "| candidates:" << iconCandidates.size();
 
-        for (const QString &iconPath : iconCandidates) {
+        for (const QString iconPath : iconCandidates) {
             try {
                 const QByteArray iconBytes = co_await m_networkManager->getBytes(
                     tempProfile.url + iconPath, QMap<QString, QString>(),
                     requestOptions);
+                if (!guard || !requestContext)
+                    co_return ServerProfile{};
                 if (!iconBytes.isEmpty()) {
                     tempProfile.iconBase64 =
                         QString::fromUtf8(iconBytes.toBase64());
@@ -151,10 +187,14 @@ QCoro::Task<ServerProfile> AuthService::login(QString serverUrl,
                     break;
                 }
             } catch (const std::exception &e) {
+                if (!guard || !requestContext)
+                    co_return ServerProfile{};
                 qDebug() << "[AuthService] Icon fetch failed, trying next"
                          << "| path:" << iconPath
                          << "| error:" << e.what();
             } catch (...) {
+                if (!guard || !requestContext)
+                    co_return ServerProfile{};
                 qDebug() << "[AuthService] Icon fetch failed (unknown error)"
                          << "| path:" << iconPath;
             }
@@ -177,6 +217,7 @@ QCoro::Task<ServerProfile> AuthService::login(QString serverUrl,
 
 void AuthService::logout()
 {
+    cancelPendingAuthentication();
     
     m_serverManager->clearActiveSession();
 
@@ -184,8 +225,16 @@ void AuthService::logout()
     Q_EMIT userLoggedOut();
 }
 
-QCoro::Task<ServerProfile> AuthService::validateSession(const QString& serverId)
+QCoro::Task<ServerProfile> AuthService::validateSession(QString serverId)
 {
+    QPointer<AuthService> guard(this);
+    const QPointer<QObject> requestContext = beginAuthentication();
+    const auto contextCleanup = qScopeGuard([guard, requestContext]() {
+        if (guard && guard->m_authenticationContext == requestContext)
+            guard->m_authenticationContext.clear();
+        if (requestContext)
+            requestContext->deleteLater();
+    });
     
     QList<ServerProfile> servers = m_serverManager->servers();
     ServerProfile targetProfile;
@@ -204,14 +253,20 @@ QCoro::Task<ServerProfile> AuthService::validateSession(const QString& serverId)
 
     
     ApiClient tempClient(targetProfile, m_networkManager);
+    tempClient.setCancellationContext(requestContext.data());
 
     
     
     co_await tempClient.get("/System/Info");
 
+    if (!guard || !requestContext)
+        co_return ServerProfile{};
+
     try {
         const QJsonObject userResp =
             co_await tempClient.get(QStringLiteral("/Users/%1").arg(targetProfile.userId));
+        if (!guard || !requestContext)
+            co_return ServerProfile{};
         const QJsonObject policyObj = userResp.value(QStringLiteral("Policy")).toObject();
         targetProfile.userName = userResp.value(QStringLiteral("Name")).toString(
             targetProfile.userName);
@@ -221,6 +276,8 @@ QCoro::Task<ServerProfile> AuthService::validateSession(const QString& serverId)
             resolveContentDownloadPermission(policyObj);
         m_serverManager->addServer(targetProfile);
     } catch (const std::exception& e) {
+        if (!guard || !requestContext)
+            co_return ServerProfile{};
         qWarning() << "[AuthService] Failed to refresh current user policy during"
                       " session validation"
                    << "| userId:" << targetProfile.userId

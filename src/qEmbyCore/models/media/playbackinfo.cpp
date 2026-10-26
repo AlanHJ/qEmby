@@ -81,6 +81,18 @@ MediaSourceInfo MediaSourceInfo::fromJson(const QJsonObject& json) {
     info.path = json["Path"].toString();
     info.container = json["Container"].toString();
     info.directStreamUrl = json["DirectStreamUrl"].toString();
+    info.transcodingUrl = json["TranscodingUrl"].toString();
+    info.liveStreamId = json["LiveStreamId"].toString();
+    info.openToken = json["OpenToken"].toString();
+    info.requiresOpening = json["RequiresOpening"].toBool();
+    info.requiresClosing = json["RequiresClosing"].toBool();
+    info.supportsDirectPlay = json["SupportsDirectPlay"].toBool();
+    info.supportsDirectStream = json["SupportsDirectStream"].toBool();
+    info.supportsTranscoding = json["SupportsTranscoding"].toBool();
+    info.isInfiniteStream = json["IsInfiniteStream"].toBool();
+    const QJsonObject headers = json["RequiredHttpHeaders"].toObject();
+    for (auto it = headers.begin(); it != headers.end(); ++it)
+        info.requiredHttpHeaders.insert(it.key(), it.value().toString());
 
     if (json.contains("Size")) {
         info.size = json["Size"].toVariant().toLongLong();

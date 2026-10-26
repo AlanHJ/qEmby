@@ -23,6 +23,9 @@ public:
 
   ~SettingsCard() override;
 
+  
+  void setConfigKey(const QString &configKey);
+
 private:
   void setupUi(const QString &title, const QString &description);
   void setupDataBinding();

@@ -9,6 +9,9 @@
 
 namespace PlayerPreferenceUtils {
 
+const QList<double> &playbackSpeedOptions();
+double defaultPlaybackSpeed();
+
 struct RememberedStreamSelection {
     std::optional<int> audioIndex;
     std::optional<int> subtitleIndex;

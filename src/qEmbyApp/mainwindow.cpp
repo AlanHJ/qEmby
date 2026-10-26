@@ -12,6 +12,8 @@
 #include "config/configstore.h"    
 #include "config/config_keys.h"    
 #include "utils/contextmenuutils.h"
+#include "utils/layoututils.h"
+#include "utils/windowutils.h"
 #include <services/manager/servermanager.h>
 #include <QStackedWidget>
 #include <QDebug>
@@ -35,6 +37,7 @@
 #include <QGraphicsOpacityEffect>
 #include <services/auth/authservice.h>
 #include "components/themetransitionwidget.h"
+#include "components/standaloneloginwindow.h"
 #include "components/moderntoast.h" 
 #include "components/modernmessagebox.h"
 #include "components/updatedialog.h"
@@ -113,9 +116,7 @@ MainWindow::MainWindow(QWidget *parent)
         
         
         
-        show();
-        raise();
-        activateWindow();
+        showCurrentWindow();
 
         
         if (m_hadPlayerWhenHiddenToTray) {
@@ -658,17 +659,12 @@ MainWindow::MainWindow(QWidget *parent)
         showMinimized();
     });
     connect(windowBar, &QWK::WindowBar::maximizeRequested, this, [this, maxButton](bool max) {
+        if (m_windowSizeMode != WindowSizeMode::Home || m_windowTransitioning)
+            return;
         if (max) {
             showMaximized();
         } else {
             showNormal();
-            
-            QRect screenGeo = screen()->availableGeometry();
-            int w = 1280, h = 800;
-            setGeometry(
-                screenGeo.x() + (screenGeo.width() - w) / 2,
-                screenGeo.y() + (screenGeo.height() - h) / 2,
-                w, h);
         }
         emulateLeaveEvent(maxButton);
     });
@@ -700,7 +696,7 @@ MainWindow::MainWindow(QWidget *parent)
         hideGlobalSearchTransientUi();
 
         
-        if (m_themeAnimating) {
+        if (m_themeAnimating || !isVisible()) {
             ThemeManager::instance()->applyThemeMode(mode);
             bool dark = ThemeManager::instance()->isDarkMode();
             themeButton->blockSignals(true);
@@ -771,7 +767,29 @@ MainWindow::MainWindow(QWidget *parent)
         macTitlebarNavSpacer->hide();
     }
 #endif
-    resize(m_defaultWidth, m_defaultHeight);
+    if (QGuiApplication::platformName().startsWith(QStringLiteral("wayland"))) {
+        
+        
+        m_viewStack->removeWidget(m_loginView);
+        m_loginWindow = new StandaloneLoginWindow(
+            m_loginView, QSize(m_defaultWidth, m_defaultHeight));
+        connect(m_loginWindow, &StandaloneLoginWindow::closeRequested, this, [this]() {
+            if (close()) {
+                m_loginWindow->hide();
+                QCoreApplication::quit();
+            }
+        });
+        const QSize available = screen()->availableGeometry().size();
+        applyWindowSizeMode(WindowSizeMode::Home);
+        resize(QSize(1280, 800).boundedTo(available));
+        minButton->show();
+        maxButton->show();
+        qInfo() << "[MainWindow] Independent Wayland windows initialized | loginSize:"
+                << m_loginWindow->size() << "| mainSize:" << size();
+    } else {
+        m_homeView->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
+        applyWindowSizeMode(WindowSizeMode::Login);
+    }
 
     
     
@@ -818,7 +836,22 @@ void MainWindow::showUpdateConfirmation()
     m_updateButton->hide();
 }
 
-MainWindow::~MainWindow() {}
+MainWindow::~MainWindow()
+{
+    
+    delete m_loginWindow;
+}
+
+void MainWindow::showCurrentWindow()
+{
+    QWidget *window = m_loginWindow && m_showingLoginWindow
+        ? static_cast<QWidget *>(m_loginWindow) : this;
+    if (window->isMinimized())
+        window->setWindowState(window->windowState() & ~Qt::WindowMinimized);
+    window->show();
+    window->raise();
+    window->activateWindow();
+}
 
 void MainWindow::setupGlobalSearchHistory()
 {
@@ -1007,21 +1040,77 @@ QString MainWindow::currentSearchServerId() const
     return m_core->serverManager()->activeProfile().id;
 }
 
+void MainWindow::applyWindowSizeMode(WindowSizeMode mode)
+{
+    m_windowSizeMode = mode;
+    
+    
+    setMinimumSize(0, 0);
+    setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
+    if (mode == WindowSizeMode::Login) {
+        LayoutUtils::fixWindowToContents(this, QSize(m_defaultWidth, m_defaultHeight));
+    } else if (mode == WindowSizeMode::Home) {
+        setMinimumSize(QSize(900, 600).boundedTo(screen()->availableGeometry().size()));
+    }
+    WindowUtils::syncNativeMaximizeCapability(this, mode == WindowSizeMode::Home);
+    qInfo() << "[MainWindow] Window size mode | mode:" << static_cast<int>(mode)
+            << "| platform:" << QGuiApplication::platformName()
+            << "| Qt:" << qVersion()
+            << "| minimum:" << minimumSize() << "| maximum:" << maximumSize()
+            << "| size:" << size() << "| state:" << windowState()
+            << "| nativeMinimum:" << (windowHandle() ? windowHandle()->minimumSize() : QSize())
+            << "| nativeMaximum:" << (windowHandle() ? windowHandle()->maximumSize() : QSize());
+}
+
+void MainWindow::switchStandaloneWindow(bool toHome)
+{
+    if (!m_loginWindow || m_showingLoginWindow == !toHome)
+        return;
+
+    hideGlobalSearchTransientUi();
+    m_showingLoginWindow = !toHome;
+    if (toHome) {
+        m_viewStack->setCurrentWidget(m_homeView);
+        const bool shouldMaximize = ConfigStore::instance()->get<QString>(
+            ConfigKeys::StartupWindowState, "normal") == "maximized";
+        
+        
+        setWindowState(shouldMaximize ? Qt::WindowMaximized : Qt::WindowNoState);
+        showCurrentWindow();
+        m_loginWindow->hide();
+    } else {
+        m_core->authService()->logout();
+        hide();
+        showCurrentWindow();
+    }
+    qInfo() << "[MainWindow] Independent window switch | toHome:" << toHome
+            << "| loginVisible:" << m_loginWindow->isVisible()
+            << "| mainVisible:" << isVisible()
+            << "| loginSize:" << m_loginWindow->size() << "| mainSize:" << size();
+}
+
 void MainWindow::navigateToHome()
 {
+    if (m_loginWindow) {
+        switchStandaloneWindow(true);
+        return;
+    }
+    if (m_windowTransitioning || m_windowSizeMode == WindowSizeMode::Home)
+        return;
+    m_windowTransitioning = true;
+    m_viewStack->setEnabled(false);
+    applyWindowSizeMode(WindowSizeMode::Transition);
     
     m_homeView->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
     
     bool reduceAnimations = ConfigStore::instance()->get<bool>(ConfigKeys::UiAnimations, false);
     if (reduceAnimations) {
-        setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
-
         QString windowState = ConfigStore::instance()->get<QString>(
             ConfigKeys::StartupWindowState, "normal");
         bool shouldMaximize = (windowState == "maximized");
 
-        setMinimumSize(900, 600);
+        applyWindowSizeMode(WindowSizeMode::Home);
 #if !defined(Q_OS_MACOS) && !defined(Q_OS_MAC)
         if (auto* minBtn = findChild<QWidget*>("min-button")) minBtn->show();
         if (auto* maxBtn = findChild<QWidget*>("max-button")) maxBtn->show();
@@ -1029,16 +1118,16 @@ void MainWindow::navigateToHome()
 
         m_viewStack->setCurrentWidget(m_homeView);
 
-        if (shouldMaximize) {
+        const QRect screenGeo = screen()->availableGeometry();
+        const QSize homeSize = QSize(1280, 800).boundedTo(screenGeo.size());
+        
+        
+        setGeometry(QRect(screenGeo.center() - QPoint(homeSize.width() / 2,
+                                                     homeSize.height() / 2), homeSize));
+        if (shouldMaximize)
             showMaximized();
-        } else {
-            QRect screenGeo = screen()->availableGeometry();
-            int w = 1280, h = 800;
-            setGeometry(
-                screenGeo.x() + (screenGeo.width() - w) / 2,
-                screenGeo.y() + (screenGeo.height() - h) / 2,
-                w, h);
-        }
+        m_windowTransitioning = false;
+        m_viewStack->setEnabled(true);
         return;
     }
 
@@ -1054,7 +1143,6 @@ void MainWindow::navigateToHome()
 
     connect(fadeOut, &QPropertyAnimation::finished, this, [this]() {
         
-        setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
 
         
         QString windowState = ConfigStore::instance()->get<QString>(
@@ -1062,31 +1150,26 @@ void MainWindow::navigateToHome()
         bool shouldMaximize = (windowState == "maximized");
 
         QRect startGeo = this->geometry();
-        QRect targetGeo;
-        if (shouldMaximize) {
-            
-            targetGeo = screen()->availableGeometry();
-        } else {
-            
-            int targetWidth = 1280;
-            int targetHeight = 800;
-            targetGeo = QRect(
-                startGeo.x() - (targetWidth - startGeo.width()) / 2,
-                startGeo.y() - (targetHeight - startGeo.height()) / 2,
-                targetWidth, targetHeight);
+        const QRect screenGeo = screen()->availableGeometry();
+        const QSize homeSize = QSize(1280, 800).boundedTo(screenGeo.size());
+        
+        
+        const int targetWidth = homeSize.width();
+        const int targetHeight = homeSize.height();
+        QRect targetGeo(
+            startGeo.x() - (targetWidth - startGeo.width()) / 2,
+            startGeo.y() - (targetHeight - startGeo.height()) / 2,
+            targetWidth, targetHeight);
 
-            
-            
-            QRect screenGeo = screen()->availableGeometry();
-            if (targetGeo.left() < screenGeo.left())
-                targetGeo.moveLeft(screenGeo.left());
-            if (targetGeo.top() < screenGeo.top())
-                targetGeo.moveTop(screenGeo.top());
-            if (targetGeo.right() > screenGeo.right())
-                targetGeo.moveRight(screenGeo.right());
-            if (targetGeo.bottom() > screenGeo.bottom())
-                targetGeo.moveBottom(screenGeo.bottom());
-        }
+        
+        if (targetGeo.left() < screenGeo.left())
+            targetGeo.moveLeft(screenGeo.left());
+        if (targetGeo.top() < screenGeo.top())
+            targetGeo.moveTop(screenGeo.top());
+        if (targetGeo.right() > screenGeo.right())
+            targetGeo.moveRight(screenGeo.right());
+        if (targetGeo.bottom() > screenGeo.bottom())
+            targetGeo.moveBottom(screenGeo.bottom());
 
         auto *geoAnim = new QPropertyAnimation(this, "geometry", this);
         
@@ -1097,7 +1180,7 @@ void MainWindow::navigateToHome()
 
         connect(geoAnim, &QPropertyAnimation::finished, this, [this, shouldMaximize]() {
             
-            setMinimumSize(900, 600);
+            applyWindowSizeMode(WindowSizeMode::Home);
             
 #if !defined(Q_OS_MACOS) && !defined(Q_OS_MAC)
             if (auto* minBtn = findChild<QWidget*>("min-button")) minBtn->show();
@@ -1128,6 +1211,8 @@ void MainWindow::navigateToHome()
 
             connect(fadeIn, &QPropertyAnimation::finished, this, [this]() {
                 m_homeView->setGraphicsEffect(nullptr); 
+                m_windowTransitioning = false;
+                m_viewStack->setEnabled(true);
             });
             fadeIn->start(QAbstractAnimation::DeleteWhenStopped);
         });
@@ -1137,6 +1222,15 @@ void MainWindow::navigateToHome()
 }
 
 void MainWindow::navigateToLogin() {
+    if (m_loginWindow) {
+        switchStandaloneWindow(false);
+        return;
+    }
+    if (m_windowTransitioning || m_windowSizeMode == WindowSizeMode::Login)
+        return;
+    m_windowTransitioning = true;
+    m_viewStack->setEnabled(false);
+    applyWindowSizeMode(WindowSizeMode::Transition);
     
     
     m_homeView->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
@@ -1149,20 +1243,19 @@ void MainWindow::navigateToLogin() {
         if (auto* x = findChild<QWidget*>("max-button")) x->hide();
 #endif
 
-        if (isMaximized()) showNormal();
-
-        setMinimumSize(0, 0);
-        setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
+        if (isMaximized() || isFullScreen()) showNormal();
 
         m_viewStack->setCurrentWidget(m_loginView);
-        resize(m_defaultWidth, m_defaultHeight);
+        applyWindowSizeMode(WindowSizeMode::Login);
 
         
         QRect screenGeo = screen()->availableGeometry();
-        move(screenGeo.x() + (screenGeo.width() - m_defaultWidth) / 2,
-             screenGeo.y() + (screenGeo.height() - m_defaultHeight) / 2);
+        move(screenGeo.x() + (screenGeo.width() - width()) / 2,
+             screenGeo.y() + (screenGeo.height() - height()) / 2);
 
         m_core->authService()->logout();
+        m_windowTransitioning = false;
+        m_viewStack->setEnabled(true);
         return;
     }
 
@@ -1184,15 +1277,13 @@ void MainWindow::navigateToLogin() {
 #endif
 
         
-        if (isMaximized()) {
+        if (isMaximized() || isFullScreen()) {
             QRect maxGeo = geometry(); 
             showNormal();
             setGeometry(maxGeo);       
         }
 
         
-        setMinimumSize(0, 0); 
-        setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
         
         QRect startGeo = geometry();
         int targetWidth = m_defaultWidth;
@@ -1211,9 +1302,6 @@ void MainWindow::navigateToLogin() {
         geoAnim->setEasingCurve(QEasingCurve::InOutCubic);
 
         connect(geoAnim, &QPropertyAnimation::finished, this, [this]() {
-            
-            
-            
             m_homeView->setGraphicsEffect(nullptr);
             
             
@@ -1222,6 +1310,7 @@ void MainWindow::navigateToLogin() {
             m_loginView->setGraphicsEffect(loginOpacity);
             
             m_viewStack->setCurrentWidget(m_loginView);
+            applyWindowSizeMode(WindowSizeMode::Login);
 
             auto *fadeIn = new QPropertyAnimation(loginOpacity, "opacity", this);
             fadeIn->setDuration(250);
@@ -1234,6 +1323,8 @@ void MainWindow::navigateToLogin() {
                 
                 
                 m_core->authService()->logout();
+                m_windowTransitioning = false;
+                m_viewStack->setEnabled(true);
             });
             fadeIn->start(QAbstractAnimation::DeleteWhenStopped);
         });
@@ -1244,6 +1335,23 @@ void MainWindow::navigateToLogin() {
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 {
+    if (watched == this && (event->type() == QEvent::WinIdChange ||
+                           event->type() == QEvent::Show)) {
+        
+        
+        QTimer::singleShot(0, this, [this]() {
+            WindowUtils::syncNativeMaximizeCapability(this, m_windowSizeMode == WindowSizeMode::Home);
+        });
+    }
+    if (watched == this && event->type() == QEvent::LayoutRequest &&
+        m_windowSizeMode == WindowSizeMode::Login) {
+        
+        
+        QTimer::singleShot(0, this, [this]() {
+            if (m_windowSizeMode == WindowSizeMode::Login)
+                LayoutUtils::fixWindowToContents(this, QSize(m_defaultWidth, m_defaultHeight));
+        });
+    }
     if (watched == this && (event->type() == QEvent::WinIdChange ||
                             event->type() == QEvent::Show || event->type() == QEvent::Hide)) {
         
@@ -1377,6 +1485,7 @@ void MainWindow::closeEvent(QCloseEvent *event)
             }
         }
 
+        if (m_loginWindow) m_loginWindow->hide();
         hide();             
         event->ignore();    
     } else {

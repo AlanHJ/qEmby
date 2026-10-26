@@ -27,7 +27,10 @@ public:
                                      bool ignoreSslVerification);
 
     
-    QCoro::Task<ServerProfile> validateSession(const QString& serverId);
+    QCoro::Task<ServerProfile> validateSession(QString serverId);
+
+    
+    void cancelPendingAuthentication();
 
     
     void logout();
@@ -37,6 +40,8 @@ Q_SIGNALS:
     void userLoggedOut();
 
 private:
+    QPointer<QObject> beginAuthentication();
+    QPointer<QObject> m_authenticationContext;
     NetworkManager* m_networkManager;
     ServerManager* m_serverManager;
 };

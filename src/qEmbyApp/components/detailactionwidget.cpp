@@ -24,7 +24,7 @@ DetailActionWidget::DetailActionWidget(QWidget *parent) : QWidget(parent) {
   
   auto *actionsLayout = new QHBoxLayout();
   actionsLayout->setSpacing(12);
-  actionsLayout->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+  actionsLayout->setAlignment(Qt::AlignVCenter);
 
   m_resumeBtn = new QPushButton(tr("▶ Resume"), this);
   m_resumeBtn->setObjectName("detail-resume-btn");
@@ -48,6 +48,14 @@ DetailActionWidget::DetailActionWidget(QWidget *parent) : QWidget(parent) {
   m_playedBtn->setIconSize(QSize(20, 20));
   m_playedBtn->setFixedSize(36, 36);
   m_playedBtn->setCursor(Qt::PointingHandCursor);
+
+  m_moreBtn = new QPushButton(this);
+  m_moreBtn->setObjectName("detail-more-btn");
+  m_moreBtn->setIconSize(QSize(20, 20));
+  m_moreBtn->setFixedSize(36, 36);
+  m_moreBtn->setCursor(Qt::PointingHandCursor);
+  m_moreBtn->setToolTip(tr("More"));
+  m_moreBtn->setAccessibleName(tr("More"));
 
   m_progressWidget = new QWidget(this);
   m_progressWidget->setMaximumWidth(450);
@@ -83,6 +91,7 @@ DetailActionWidget::DetailActionWidget(QWidget *parent) : QWidget(parent) {
   actionsLayout->addWidget(m_playedBtn);
   actionsLayout->addWidget(m_progressWidget);
   actionsLayout->addStretch();
+  actionsLayout->addWidget(m_moreBtn);
 
   
   auto *streamSelectorsLayout = new QHBoxLayout();
@@ -109,6 +118,9 @@ DetailActionWidget::DetailActionWidget(QWidget *parent) : QWidget(parent) {
           &DetailActionWidget::favoriteRequested);
   connect(m_playedBtn, &QPushButton::clicked, this,
           &DetailActionWidget::playedToggleRequested);
+  connect(m_moreBtn, &QPushButton::clicked, this, [this]() {
+    Q_EMIT moreMenuRequested(m_moreBtn->mapToGlobal(QPoint(0, m_moreBtn->height())));
+  });
   connect(m_versionComboBox, &ModernMenuButton::currentIndexChanged, this,
           [this](int visualIndex) {
             if (visualIndex >= 0 && visualIndex < m_sourceIndexes.size())

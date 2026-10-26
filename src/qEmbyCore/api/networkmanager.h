@@ -11,6 +11,7 @@
 #include <QJsonDocument>
 #include <QList>
 #include <QMap>
+#include <QPointer>
 #include <QSslError>
 #include <QUrlQuery>
 #include <qcorotask.h>
@@ -20,6 +21,8 @@ struct NetworkRequestOptions {
     int timeoutMs = 0;
     
     QString userAgentServerId;
+    
+    QPointer<QObject> cancellationContext;
 };
 
 struct NetworkJsonGetRequest {
@@ -51,9 +54,10 @@ public:
                                           int httpStatus);
 
     
-    QCoro::Task<QJsonObject> get(const QString& url,
-                                 const QMap<QString, QString>& headers,
-                                 const NetworkRequestOptions& options = {});
+    
+    QCoro::Task<QJsonObject> get(QString url,
+                                 QMap<QString, QString> headers,
+                                 NetworkRequestOptions options = {});
     QCoro::Task<QList<NetworkJsonResult>> getBatch(
         QList<NetworkJsonGetRequest> requests);
 

@@ -4,6 +4,10 @@
 #include <QOpenGLWidget>
 #include <QOpenGLFunctions>
 #include <QString>
+#include <QVariantMap>
+#include <QMap>
+#include <QUrl>
+#include <utility>
 #include <QPointer>
 #include <QTimer>
 #include <QElapsedTimer>
@@ -27,6 +31,8 @@ public:
     void shutdown();
 
     void loadMedia(const QString &url, const QString &serverId = QString());
+    void setHttpHeaders(QMap<QString, QString> headers) { m_httpHeaders = std::move(headers); }
+    void setTlsPolicy(QUrl origin, bool ignoreErrors) { m_tlsOrigin = std::move(origin); m_ignoreTlsErrors = ignoreErrors; }
     void play();
     void resumeAfterContextRestore();
     void pause();
@@ -45,6 +51,7 @@ signals:
     void videoPresentationChanged(bool presented);
     void networkSpeedChanged(qint64 bytesPerSecond);
     void relayActiveChanged(bool active);
+    void previewSourceChanged(const QString &url, const QVariantMap &networkOptions);
     void errorOccurred(const QString &errorMsg);
 
 protected:
@@ -61,6 +68,7 @@ private:
     static void *getProcAddress(void *ctx, const char *name);
     void loadMediaNow(const QString &url, const QString &serverId, bool wasPending);
     void applyUserAgentConfig(const UserAgentConfig &config);
+    void publishPreviewSource();
     bool paintNativeComposite(int width, int height);
     void releaseVideoCache();
     void checkCompositeGlErrors(const char *stage);
@@ -70,6 +78,9 @@ private:
 
     MpvController *m_controller;
     MpvHttpStreamRelay *m_streamRelay = nullptr;
+    QMap<QString, QString> m_httpHeaders;
+    QUrl m_tlsOrigin;
+    bool m_ignoreTlsErrors = false;
     bool m_usingStreamRelay = false;
     bool m_resumeWhenRenderReady = false;
     mpv_render_context *m_mpv_gl;
@@ -107,6 +118,7 @@ private:
     QString m_pendingUrl;
     QString m_pendingServerId;  
     QString m_currentUrl;
+    QString m_previewUrl;
     QString m_currentServerId;
     QString m_defaultUserAgent;
     bool m_customUserAgentApplied = false;

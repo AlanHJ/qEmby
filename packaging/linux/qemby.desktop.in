@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=@QEMBY_DESKTOP_NAME@
+Comment=@QEMBY_PACKAGE_DESCRIPTION@
+Exec=@QEMBY_EXECUTABLE_NAME@ %U
+Icon=@QEMBY_DESKTOP_FILE_BASENAME@
+Terminal=false
+Categories=AudioVideo;Player;
+Keywords=Emby;Jellyfin;Media;Streaming;
+StartupWMClass=@QEMBY_DESKTOP_FILE_BASENAME@

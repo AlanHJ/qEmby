@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+
+HERE="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+export APPDIR="$HERE"
+export LD_LIBRARY_PATH="$HERE/usr/lib/qemby:$HERE/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+exec "$HERE/usr/bin/qEmbyApp" "$@"

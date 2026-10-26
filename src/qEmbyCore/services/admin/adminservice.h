@@ -146,6 +146,7 @@ public:
     QCoro::Task<QList<ItemImageInfo>> getItemImages(QString itemId);
     QCoro::Task<void> applyRemoteSearchResult(QString itemId,
                                               RemoteSearchResult result);
+    QCoro::Task<void> removePersonIdentification(QString itemId);
     QCoro::Task<void> updateItemMetadata(const QString& itemId, const QJsonObject& itemData);
     QCoro::Task<void> refreshItemMetadata(const QString& itemId,
                                           bool replaceAllMetadata = false,

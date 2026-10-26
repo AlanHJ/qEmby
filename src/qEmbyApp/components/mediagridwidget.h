@@ -21,6 +21,8 @@ public:
 
     
     void setCardStyle(MediaCardDelegate::CardStyle style);
+    void setLibraryArtworkPolicyEnabled(bool enabled);
+    void setAutomaticArtworkLayout(bool enabled);
 
     
     void setLoading(bool loading);
@@ -38,6 +40,14 @@ public:
     
     int saveScrollPosition() const;
     void restoreScrollPosition(int pos);
+    struct ViewAnchor {
+        QString itemId;
+        QString currentItemId;
+        int offset = 0;
+        int scrollPosition = 0;
+    };
+    ViewAnchor captureViewAnchor() const;
+    void restoreViewAnchor(const ViewAnchor& anchor);
 
 Q_SIGNALS:
     void itemClicked(const MediaItem& item);
@@ -51,6 +61,8 @@ Q_SIGNALS:
     void moreMenuRequested(const MediaItem& item, const QPoint& globalPos);
 
 protected:
+    void hideEvent(QHideEvent* event) override;
+    void showEvent(QShowEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
     bool eventFilter(QObject* obj, QEvent* event) override;
 
@@ -58,9 +70,11 @@ private:
     void adjustGrid();
     void notifyLoadMoreIfNeeded();
     void updateVisibleImagePriority();
+    void updateAutomaticArtworkLayout();
 
     int m_basePadding;
     MediaCardDelegate::CardStyle m_currentStyle;
+    bool m_automaticArtworkLayout = false;
 
     QEmbyCore* m_core;
     QListView* m_listView;

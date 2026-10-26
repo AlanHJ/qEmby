@@ -7,6 +7,8 @@
 #include "../../components/settingscard.h"
 #include "../../components/settingssubpanel.h"
 #include "../../utils/dashboardsectionorderutils.h"
+#include "../../utils/featuredmediautils.h"
+#include "../../managers/libraryartworkmanager.h"
 #include "config/config_keys.h"
 #include "config/configstore.h"
 #include "fileutils.h"
@@ -14,6 +16,8 @@
 #include "services/manager/servermanager.h"
 #include "services/media/mediaservice.h"
 #include <QLabel>
+#include <QSignalBlocker>
+#include <QComboBox>
 #include <QPushButton>
 #include <QStandardPaths>
 #include <QDir>
@@ -37,6 +41,57 @@ PageLibrary::PageLibrary(QEmbyCore *core, QWidget *parent)
     : SettingsPageBase(core, tr("Library"), parent) {
   
   QString sid = m_core->serverManager()->activeProfile().id;
+
+  auto *carouselCard = new SettingsCard(
+      ":/svg/dark/media-carousel.svg", tr("Show Media Carousel"),
+      tr("Display the media carousel at the top of the home screen for this server"),
+      new ModernSwitch(this),
+      ConfigKeys::forServer(sid, ConfigKeys::ShowMediaCarousel), this,
+      QVariant(true));
+  m_mainLayout->addWidget(carouselCard);
+  auto *carouselCountInput = new ModernNumberInput(this);
+  carouselCountInput->setRange(FeaturedMediaUtils::MinimumSlides,
+                               FeaturedMediaUtils::MaximumSlides);
+  carouselCountInput->setAccessibleName(tr("Carousel Slide Count"));
+  auto *carouselCountCard = new SettingsCard(
+      ":/svg/dark/media-carousel.svg", tr("Carousel Slide Count"),
+      tr("Number of carousel slides for this server (%1–%2, default %3)")
+          .arg(FeaturedMediaUtils::MinimumSlides)
+          .arg(FeaturedMediaUtils::MaximumSlides)
+          .arg(FeaturedMediaUtils::DefaultSlides),
+      carouselCountInput,
+      ConfigKeys::forServer(sid, ConfigKeys::MediaCarouselCount), this,
+      QVariant(FeaturedMediaUtils::DefaultSlides));
+  m_mainLayout->addWidget(carouselCountCard);
+  auto *carouselHeightCombo = new ModernComboBox(this);
+  carouselHeightCombo->addItem(tr("35%"), QStringLiteral("35"));
+  carouselHeightCombo->addItem(tr("50% (Default)"), QStringLiteral("50"));
+  carouselHeightCombo->addItem(tr("65%"), QStringLiteral("65"));
+  carouselHeightCombo->setAccessibleName(tr("Carousel Height"));
+  auto *carouselHeightCard = new SettingsCard(
+      ":/svg/dark/media-carousel.svg", tr("Carousel Height"),
+      tr("Height relative to the home area below the title bar, capped at two-thirds of the displayed backdrop height. Applies to this server."),
+      carouselHeightCombo,
+      ConfigKeys::forServer(sid, ConfigKeys::MediaCarouselHeightPercent), this,
+      QVariant(QStringLiteral("50")));
+  m_mainLayout->addWidget(carouselHeightCard);
+  carouselCard->setEnabled(!sid.isEmpty());
+  carouselCountCard->setEnabled(!sid.isEmpty());
+  carouselHeightCard->setEnabled(!sid.isEmpty());
+  connect(m_core->serverManager(), &ServerManager::activeServerChanged,
+          this, [carouselCard, carouselCountCard, carouselHeightCard](const ServerProfile &profile) {
+            carouselCard->setEnabled(!profile.id.isEmpty());
+            carouselCountCard->setEnabled(!profile.id.isEmpty());
+            carouselHeightCard->setEnabled(!profile.id.isEmpty());
+            if (!profile.id.isEmpty()) {
+              carouselCard->setConfigKey(ConfigKeys::forServer(
+                  profile.id, ConfigKeys::ShowMediaCarousel));
+              carouselCountCard->setConfigKey(ConfigKeys::forServer(
+                  profile.id, ConfigKeys::MediaCarouselCount));
+              carouselHeightCard->setConfigKey(ConfigKeys::forServer(
+                  profile.id, ConfigKeys::MediaCarouselHeightPercent));
+            }
+          });
 
   m_mainLayout->addWidget(new SettingsCard(
       ":/svg/dark/play-history.svg", tr("Show Continue Watching"),
@@ -112,8 +167,80 @@ PageLibrary::PageLibrary(QEmbyCore *core, QWidget *parent)
       this, QVariant(0)));
 
   m_mainLayout->addWidget(new SettingsCard(
-      ":/svg/dark/adaptive-image.svg", tr("Adaptive Images"),
-      tr("When a specific image type is missing, automatically use another available type as fallback"),
+      ":/svg/dark/library.svg", tr("Show Live TV"), tr("Display available TV channels on the home screen"),
+      new ModernSwitch(this), ConfigKeys::forServer(sid, ConfigKeys::ShowLiveTv), this, QVariant(true)));
+  m_mainLayout->addWidget(new SettingsCard(
+      ":/svg/dark/library.svg", tr("Show Music"), tr("Display available music albums on the home screen"),
+      new ModernSwitch(this), ConfigKeys::forServer(sid, ConfigKeys::ShowMusic), this, QVariant(true)));
+  auto *viewCombo = new ModernComboBox(this);
+  viewCombo->addItem(tr("Automatic detection"), QStringLiteral("auto"));
+  viewCombo->addItem(tr("Portrait posters"), QStringLiteral("poster"));
+  viewCombo->addItem(tr("Landscape tiles"), QStringLiteral("tile"));
+  viewCombo->setCurrentIndex(viewCombo->findData(LibraryArtworkManager::instance()->defaultLayoutMode()));
+  auto* layoutCard = new SettingsCard(
+      ":/svg/dark/appearance-library-view.svg", tr("Default cover layout"),
+      tr("Default layout for this server. Automatic detection uses loaded cover dimensions; manual choices on individual pages take priority."),
+      viewCombo, QString(), this);
+  layoutCard->setEnabled(!sid.isEmpty());
+  m_mainLayout->addWidget(layoutCard);
+
+  auto* scanLayout = new ModernSwitch(this);
+  auto* scanCard = new SettingsCard(
+      ":/svg/dark/scan-library.svg", tr("Check all library artwork in the background"),
+      tr("Automatic detection normally uses loaded items only. A full check reads all artwork information and may increase traffic and server load; use on fast connections."),
+      scanLayout, ConfigKeys::forServer(sid, ConfigKeys::ScanLibraryArtwork), this, QVariant(false));
+  scanCard->setEnabled(!sid.isEmpty() && viewCombo->currentData() == QStringLiteral("auto"));
+  m_mainLayout->addWidget(scanCard);
+  connect(viewCombo, &QComboBox::currentIndexChanged, this, [this, viewCombo](int) {
+      const QString serverId = m_core->serverManager()->activeProfile().id;
+      if (!serverId.isEmpty()) ConfigStore::instance()->set(
+          ConfigKeys::forServer(serverId, ConfigKeys::ArtworkLayoutMode), viewCombo->currentData().toString());
+  });
+  const auto syncLayout = [this, viewCombo, layoutCard, scanCard]() {
+      const bool hasServer = m_core->serverManager()->activeProfile().isValid();
+      const QSignalBlocker blocker(viewCombo);
+      viewCombo->setCurrentIndex(viewCombo->findData(LibraryArtworkManager::instance()->defaultLayoutMode()));
+      layoutCard->setEnabled(hasServer);
+      scanCard->setEnabled(hasServer && viewCombo->currentData() == QStringLiteral("auto"));
+  };
+  connect(LibraryArtworkManager::instance(), &LibraryArtworkManager::configurationChanged, this, syncLayout);
+  connect(scanLayout, &ModernSwitch::toggled, this, [this](bool enabled) {
+      const QString serverId = m_core->serverManager()->activeProfile().id;
+      if (enabled && !serverId.isEmpty()) ConfigStore::instance()->set(
+          ConfigKeys::forServer(serverId, ConfigKeys::ScanLibraryArtworkEndpoint),
+          LibraryArtworkManager::instance()->endpointFingerprint());
+  });
+  auto* scanProgress = new QLabel(this);
+  scanProgress->setObjectName("SettingsCardDesc");
+  m_mainLayout->addWidget(scanProgress);
+  connect(LibraryArtworkManager::instance(), &LibraryArtworkManager::configurationChanged,
+          scanProgress, [scanProgress]() {
+      if (!LibraryArtworkManager::instance()->enabled()) scanProgress->clear();
+  });
+  const auto showScanAuthorization = [scanProgress]() {
+      scanProgress->setText(tr("Server address changed. Turn background checking off and on to enable it here."));
+  };
+  connect(LibraryArtworkManager::instance(), &LibraryArtworkManager::scanAuthorizationRequired,
+          scanProgress, showScanAuthorization);
+  if (scanLayout->isChecked() && !LibraryArtworkManager::instance()->scanAuthorized()) showScanAuthorization();
+  connect(LibraryArtworkManager::instance(), &LibraryArtworkManager::scanProgress,
+          scanProgress, [scanProgress](const QString&, int checked, int total) {
+      scanProgress->setText(tr("Artwork checked: %1 / %2").arg(checked).arg(total));
+  });
+
+  connect(m_core->serverManager(), &ServerManager::activeServerChanged, this,
+          [scanCard, scanProgress, scanLayout, syncLayout, showScanAuthorization](const ServerProfile& profile) {
+      if (!profile.id.isEmpty()) scanCard->setConfigKey(
+          ConfigKeys::forServer(profile.id, ConfigKeys::ScanLibraryArtwork));
+      syncLayout();
+      scanProgress->clear();
+      if (profile.isValid() && scanLayout->isChecked() &&
+          !LibraryArtworkManager::instance()->scanAuthorized()) showScanAuthorization();
+  });
+
+  m_mainLayout->addWidget(new SettingsCard(
+      ":/svg/dark/adaptive-image.svg", tr("Use another image when artwork is missing"),
+      tr("When artwork such as a primary poster is missing, use another available image. This controls image selection; cover layout is set separately."),
       new ModernSwitch(this),
       ConfigKeys::AdaptiveImages, this,
       QVariant(true)));
@@ -126,20 +253,23 @@ PageLibrary::PageLibrary(QEmbyCore *core, QWidget *parent)
       QVariant(true)));
 
   m_mainLayout->addWidget(new SettingsCard(
+      ":/svg/dark/play-history.svg", tr("Show Playback Progress on Media Cards"),
+      tr("Display the playback progress at the bottom of media images"),
+      new ModernSwitch(this), ConfigKeys::ShowMediaPlaybackProgress, this,
+      QVariant(true)));
+
+  m_mainLayout->addWidget(new SettingsCard(
+      ":/svg/dark/star-filled.svg", tr("Show Cover Ratings"),
+      tr("Display media ratings on media card covers"),
+      new ModernSwitch(this), ConfigKeys::ShowCoverRating, this,
+      QVariant(true)));
+
+  m_mainLayout->addWidget(new SettingsCard(
       ":/svg/dark/folder-heart.svg", tr("Show Favorite Folders"),
       tr("Display favorite folders in the favorites page"),
       new ModernSwitch(this),
       ConfigKeys::forServer(sid, ConfigKeys::ShowFavoriteFolders), this,
       QVariant(false)));
-
-  auto *viewCombo = new ModernComboBox(this);
-  viewCombo->addItem(tr("Poster Wall"), "poster");
-  viewCombo->addItem(tr("List View"), "tile");
-  m_mainLayout->addWidget(
-      new SettingsCard(":/svg/dark/appearance-library-view.svg",
-                       tr("Default Library View"),
-                       tr("Choose how media items are presented by default"),
-                       viewCombo, ConfigKeys::DefaultLibraryView, this));
 
   auto *qualityCombo = new ModernComboBox(this);
   qualityCombo->addItem(tr("Low"), "low");
@@ -183,6 +313,7 @@ PageLibrary::PageLibrary(QEmbyCore *core, QWidget *parent)
   m_homeSectionOrderWidget =
       new DashboardSectionOrderWidget(m_homeSectionOrderPanel);
   m_homeSectionOrderWidget->setSectionOrder(initialHomeSectionOrder);
+  configStore->set(ConfigKeys::forServer(sid, ConfigKeys::HomeSectionOrderVersion), 2);
   m_homeSectionOrderPanel->contentLayout()->addWidget(
       m_homeSectionOrderWidget, 1);
   m_mainLayout->addWidget(m_homeSectionOrderPanel);

@@ -5,8 +5,34 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLayout>
+#include <QScreen>
+#include <QDebug>
 
 namespace LayoutUtils {
+
+void fixWindowToContents(QWidget *window, const QSize &preferredSize) {
+    if (!window || !window->isWindow()) {
+        return;
+    }
+
+    window->ensurePolished();
+    QSize target = preferredSize;
+    if (auto *layout = window->layout()) {
+        
+        
+        
+        
+        target = target.expandedTo(layout->totalMinimumSize());
+    }
+    if (auto *screen = window->screen()) {
+        target = target.boundedTo(screen->availableGeometry().size());
+    }
+    if (window->minimumSize() != target || window->maximumSize() != target) {
+        qInfo() << "[LayoutUtils] Fixed window size | preferred:" << preferredSize
+                << "| target:" << target << "| previous:" << window->size();
+        window->setFixedSize(target);
+    }
+}
 
 QHBoxLayout *createInfoRow(const QString &label, QLabel *&valueLabel) {
     auto *row = new QHBoxLayout();

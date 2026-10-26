@@ -76,6 +76,9 @@ constexpr const char* SnapshotNavigation = "appearance/snapshot_navigation";
 constexpr const char* SearchHistoryEnabled = "appearance/search_history_enabled";
 constexpr const char* SearchAutocompleteEnabled = "appearance/search_autocomplete_enabled";
 constexpr const char* ShowRecommended = "library/show_recommended";
+constexpr const char* ShowMediaCarousel = "library/show_media_carousel";
+constexpr const char* MediaCarouselCount = "library/media_carousel_count";
+constexpr const char* MediaCarouselHeightPercent = "library/media_carousel_height_percent";
 constexpr const char* ShowContinueWatching = "library/show_continue_watching";
 constexpr const char* ShowLatestAdded = "library/show_latest_added";
 constexpr const char* ShowCompletedWatching = "library/show_completed_watching";
@@ -89,6 +92,9 @@ constexpr const char* CompletedWatchingRequestLimit =
     "library/completed_watching_request_limit";
 constexpr const char* ShowMediaLibraries = "library/show_media_libraries";
 constexpr const char* ShowEachLibrary = "library/show_each_library";
+constexpr const char* ShowLiveTv = "library/show_live_tv";
+constexpr const char* ShowMusic = "library/show_music";
+constexpr const char* HomeSectionOrderVersion = "library/home_section_order_version";
 
 constexpr const char* HiddenHomeLibraries = "library/hidden_home_libraries";
 constexpr const char* ShowFavoriteFolders = "library/show_favorite_folders";
@@ -98,7 +104,13 @@ constexpr const char* HomeSectionOrder = "library/home_section_order";
 constexpr const char* ImageQuality = "library/image_quality";
 constexpr const char* ShimmerAnimation = "library/shimmer_animation";
 constexpr const char* AdaptiveImages = "library/adaptive_images";
+constexpr const char* AutoArtworkLayout = "library/auto_artwork_layout";
+  constexpr const char* ArtworkLayoutMode = "library/artwork_layout_mode";
+constexpr const char* ScanLibraryArtwork = "library/scan_library_artwork";
+constexpr const char* ScanLibraryArtworkEndpoint = "library/scan_library_artwork_endpoint";
 constexpr const char* ShowMediaTooltips = "library/show_media_tooltips";
+constexpr const char* ShowMediaPlaybackProgress = "library/show_media_playback_progress";
+constexpr const char* ShowCoverRating = "library/show_cover_rating";
 
 
 constexpr const char* LibrarySortIndex = "sort/index";
@@ -133,6 +145,8 @@ constexpr const char* PlayerSelectedAudioStream = "player/selected_audio_stream"
 constexpr const char* PlayerSelectedSubtitleStream = "player/selected_subtitle_stream";
 constexpr const char* PlayerVolNormal = "player/vol_normalization";
 constexpr const char* PlayerContinuousPlay = "player/continuous_play";
+constexpr const char* PlayerDefaultSpeed = "player/default_speed";
+constexpr const char* PlayerHoverPreviewMode = "player/hover_preview_mode";
 constexpr const char* PlayerSeekStep = "player/seek_step";
 constexpr const char* PlayerLongPressSeek = "player/long_press_seek";
 constexpr const char* PlayerLongPressMode = "player/long_press_mode";

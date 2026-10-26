@@ -2,6 +2,8 @@
 #include "../../components/elidedlabel.h"
 #include "../../components/mediagridwidget.h"
 #include "../../components/modernsortbutton.h"
+#include "../../components/artworkviewbutton.h"
+#include "../../managers/libraryartworkmanager.h"
 #include "../../managers/thememanager.h"
 #include "../../utils/dashboardrequestlimitutils.h"
 #include "../../utils/mediaitemutils.h"
@@ -81,6 +83,8 @@ CategoryView::CategoryView(QEmbyCore *core, QWidget *parent)
 
   
   m_mediaGrid = new MediaGridWidget(m_core, this);
+  
+  m_mediaGrid->setLibraryArtworkPolicyEnabled(false);
   mainLayout->addWidget(m_mediaGrid);
 
   
@@ -105,6 +109,12 @@ CategoryView::CategoryView(QEmbyCore *core, QWidget *parent)
           &BaseView::handleFavoriteRequested);
   connect(m_mediaGrid, &MediaGridWidget::moreMenuRequested, this,
           &BaseView::handleMoreMenuRequested);
+  connect(LibraryArtworkManager::instance(), &LibraryArtworkManager::configurationChanged, this, [this]() {
+    if (isCastStyleCategory(m_currentCategory)) return;
+    const auto anchor = m_mediaGrid->captureViewAnchor();
+    restoreViewPreference();
+    m_mediaGrid->restoreViewAnchor(anchor);
+  });
   
 }
 
@@ -184,19 +194,14 @@ void CategoryView::setupTopBar(QHBoxLayout *headerLayout) {
   connect(m_sortButton, &ModernSortButton::sortChanged, this,
           &CategoryView::onFilterChanged);
 
-  
-  m_viewSwitchBtn = new QPushButton(filterBarWidget);
-  m_viewSwitchBtn->setObjectName("icon-action-btn");
-  m_viewSwitchBtn->setCheckable(true);
-  m_viewSwitchBtn->setFixedSize(32, 32);
-  m_viewSwitchBtn->setCursor(Qt::PointingHandCursor);
-  m_viewSwitchBtn->setToolTip(tr("Toggle View Mode"));
-
-  connect(m_viewSwitchBtn, &QPushButton::clicked, this, [this](bool checked) {
-    m_mediaGrid->setCardStyle(checked ? MediaCardDelegate::LibraryTile
-                                      : MediaCardDelegate::Poster);
-    saveViewPreference();
-    onFilterChanged();
+  m_viewSwitchBtn = new ArtworkViewButton(filterBarWidget);
+  connect(m_viewSwitchBtn, &ArtworkViewButton::modeSelected, this,
+          [this](ArtworkViewButton::Mode mode) {
+    const auto anchor = m_mediaGrid->captureViewAnchor();
+    saveViewPreference(mode == ArtworkViewButton::FollowDefault ? QString() :
+        mode == ArtworkViewButton::Landscape ? QStringLiteral("tile") : QStringLiteral("poster"));
+    restoreViewPreference();
+    m_mediaGrid->restoreViewAnchor(anchor);
   });
 
   m_statsLabel = new QLabel(tr("0 Items"), filterBarWidget);
@@ -231,14 +236,11 @@ QString CategoryView::currentViewPreferenceCategoryId() const {
 }
 
 void CategoryView::applyViewMode(bool isTile) {
-  m_viewSwitchBtn->blockSignals(true);
-  m_viewSwitchBtn->setChecked(isTile);
-  m_viewSwitchBtn->blockSignals(false);
   m_mediaGrid->setCardStyle(isTile ? MediaCardDelegate::LibraryTile
                                    : MediaCardDelegate::Poster);
 }
 
-void CategoryView::saveViewPreference() {
+void CategoryView::saveViewPreference(QString viewMode) {
   if (!m_core || !m_core->serverManager()) {
     return;
   }
@@ -249,9 +251,6 @@ void CategoryView::saveViewPreference() {
     return;
   }
 
-  const QString viewMode = m_viewSwitchBtn->isChecked()
-                               ? QStringLiteral("tile")
-                               : QStringLiteral("poster");
   auto *store = ConfigStore::instance();
   store->set(
       ConfigKeys::forCategory(serverId, categoryId, ConfigKeys::CategoryViewMode),
@@ -264,17 +263,21 @@ void CategoryView::saveViewPreference() {
 
 void CategoryView::restoreViewPreference() {
   auto *store = ConfigStore::instance();
+  
+  
+  const QString defaultMode = LibraryArtworkManager::instance()->defaultLayoutMode();
   const QString defaultViewMode =
-      store->get<QString>(ConfigKeys::DefaultLibraryView, QStringLiteral("poster"));
+      m_currentCategory == QLatin1String("resume") || defaultMode == QLatin1String("tile")
+          ? QStringLiteral("tile")
+          : QStringLiteral("poster");
 
-  QString viewMode = defaultViewMode;
+  QString viewMode;
   if (m_core && m_core->serverManager()) {
     const QString serverId = m_core->serverManager()->activeProfile().id;
     const QString categoryId = currentViewPreferenceCategoryId();
     if (!serverId.isEmpty() && !categoryId.isEmpty()) {
       viewMode = store->get<QString>(
-          ConfigKeys::forCategory(serverId, categoryId, ConfigKeys::CategoryViewMode),
-          defaultViewMode);
+          ConfigKeys::forCategory(serverId, categoryId, ConfigKeys::CategoryViewMode));
       qDebug() << "[CategoryView] View preference restored:"
                << "server=" << serverId << "category=" << categoryId
                << "mode=" << viewMode << "default=" << defaultViewMode;
@@ -284,7 +287,18 @@ void CategoryView::restoreViewPreference() {
     }
   }
 
-  applyViewMode(viewMode == QLatin1String("tile"));
+  const bool followsDefault = viewMode.isEmpty();
+  m_viewSwitchBtn->setMode(followsDefault ? ArtworkViewButton::FollowDefault :
+      viewMode == QLatin1String("tile") ? ArtworkViewButton::Landscape : ArtworkViewButton::Portrait);
+  const QString resolvedMode = followsDefault ? defaultViewMode : viewMode;
+  const bool automaticPage = followsDefault && defaultMode == QLatin1String("auto") &&
+      m_currentCategory != QLatin1String("resume") && !isCastStyleCategory(m_currentCategory);
+  qDebug() << "[CategoryView] Uniform page layout applied"
+           << "| category=" << m_currentCategory << "| defaultMode=" << defaultMode
+           << "| followsDefault=" << followsDefault
+           << "| resolvedMode=" << (automaticPage ? QStringLiteral("auto") : resolvedMode);
+  m_mediaGrid->setAutomaticArtworkLayout(automaticPage);
+  if (!automaticPage) applyViewMode(resolvedMode == QLatin1String("tile"));
 }
 
 int CategoryView::dashboardCategoryRequestLimit(
@@ -543,6 +557,7 @@ QCoro::Task<void> CategoryView::loadCategory(const QString &categoryType,
 
   
   if (isCastStyleCategory(categoryType)) {
+    m_mediaGrid->setAutomaticArtworkLayout(false);
     m_mediaGrid->setCardStyle(MediaCardDelegate::Cast);
     m_viewSwitchBtn->setVisible(false); 
   } else {

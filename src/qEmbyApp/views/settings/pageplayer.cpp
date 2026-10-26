@@ -10,6 +10,7 @@
 #include "../../components/settingssubpanel.h"
 #include "../../utils/danmakuoptionutils.h"
 #include "../../utils/danmakurendererutils.h"
+#include "../../utils/playerpreferenceutils.h"
 #include "../../managers/externalplayerdetector.h"
 #include "../../managers/thememanager.h"
 #include "config/config_keys.h"
@@ -141,6 +142,25 @@ PagePlayer::PagePlayer(QEmbyCore *core, QWidget *parent)
       ":/svg/dark/video-version.svg", tr("Preferred Video Version"),
       tr("Choose keyword or sort rules in order; type custom keywords and press Enter"),
       versionInput, ConfigKeys::PlayerPreferredVersion, this));
+
+  auto *speedCombo = new ModernComboBox(this);
+  for (double speed : PlayerPreferenceUtils::playbackSpeedOptions()) {
+    speedCombo->addItem(tr("%1X").arg(speed), QString::number(speed));
+  }
+  speedCombo->setCurrentIndex(speedCombo->findData(QString::number(
+      PlayerPreferenceUtils::defaultPlaybackSpeed())));
+  m_mainLayout->addWidget(new SettingsCard(
+      ":/svg/dark/video-sync.svg", tr("Default Playback Speed"),
+      tr("Playback speed applied when starting media"), speedCombo,
+      ConfigKeys::PlayerDefaultSpeed, this, QVariant("1")));
+
+  auto *hoverPreviewCombo = new ModernComboBox(this);
+  hoverPreviewCombo->addItem(tr("Time Only"), "time");
+  hoverPreviewCombo->addItem(tr("Time and Preview"), "preview");
+  m_mainLayout->addWidget(new SettingsCard(
+      ":/svg/dark/video-output.svg", tr("Progress Hover Preview"),
+      tr("Choose what appears when hovering over the playback progress bar"),
+      hoverPreviewCombo, ConfigKeys::PlayerHoverPreviewMode, this, QVariant("time")));
 
   
   m_mainLayout->addWidget(new SettingsCard(

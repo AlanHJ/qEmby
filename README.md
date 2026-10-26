@@ -1,396 +1,109 @@
-<p align="center">
-  <img src="src/qEmbyApp/resources/svg/qemby_logo.svg" width="120" alt="qEmby Logo"/>
-</p>
+# qEmby - 基于 Qt 的 Emby/Jellyfin 客户端
 
-<h1 align="center">qEmby</h1>
+qEmby是一款使用 C++ 和 Qt 框架开发的跨平台多媒体桌面客户端。本项目不仅致力于提供具有现代视觉体验的无边框界面和流畅的本地播放体验，还**全面兼容 Emby 和 Jellyfin 服务器**，并支持**多服务器配置管理与无缝切换**。 
 
-<p align="center">
-  <b>A modern desktop client for Emby & Jellyfin media servers</b><br/>
-  <b>Emby & Jellyfin 媒体服务器的现代桌面客户端</b>
-</p>
+## 1. 项目结构说明
 
-<p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"/></a>
-  <a href="https://github.com/AlanHJ/qEmby/releases/latest"><img src="https://img.shields.io/github/v/release/AlanHJ/qEmby?include_prereleases&label=Download" alt="Release"/></a>
-  <img src="https://img.shields.io/badge/Qt-6.x-green.svg" alt="Qt 6"/>
-  <img src="https://img.shields.io/badge/C%2B%2B-20-orange.svg" alt="C++20"/>
-  <img src="https://img.shields.io/badge/Platform-Windows%20|%20Linux%20|%20macOS-lightgrey.svg" alt="Platform: Windows | Linux | macOS"/>
-</p>
+项目采用模块化设计，将核心逻辑与 UI 界面严格分离。以下是主要的目录结构及说明：
 
-<p align="center">
-  <a href="#中文">中文</a> | <a href="#english">English</a>
-</p>
-
----
-
-<a id="中文"></a>
-
-## 📸 应用截图
-
-<p align="center">
-  <img src="screenshots/2.png" width="45%" alt="首页"/>
-  <img src="screenshots/5.png" width="45%" alt="影片详情"/>
-</p>
-<p align="center">
-  <img src="screenshots/3.png" width="45%" alt="设置"/>
-  <img src="screenshots/4.png" width="45%" alt="管理仪表盘"/>
-</p>
-
-## 📥 下载
-
-最新版本：**v0.0.8**
-
-| 安装包 | 说明 |
-|---|---|
-| [qEmby-0.0.8-Win-x64-Setup.exe](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qEmby-0.0.8-Win-x64-Setup.exe) | Windows 10/11 x64 安装包 |
-| [qEmby-0.0.8-Win-x64.zip](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qEmby-0.0.8-Win-x64.zip) | Windows 10/11 x64 绿色便携版 |
-| [qemby-0.0.8-macos-arm64.dmg](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qemby-0.0.8-macos-arm64.dmg) | macOS 26+ (Apple 芯片) |
-| [qemby-0.0.8-x86_64.AppImage](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qemby-0.0.8-x86_64.AppImage) | Linux x64 通用 AppImage |
-| [qemby_0.0.8-jammy_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qemby_0.0.8-jammy_amd64.deb) | Ubuntu 22.04 (Jammy) 安装包 |
-| [qemby_0.0.8-noble_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qemby_0.0.8-noble_amd64.deb) | Ubuntu 24.04 (Noble) 安装包 |
-| [qemby_0.0.8-resolute_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qemby_0.0.8-resolute_amd64.deb) | Ubuntu 26.04 (Resolute) 安装包，使用系统 Qt 依赖 |
-| [qemby_0.0.8-bookworm_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qemby_0.0.8-bookworm_amd64.deb) | Debian 12 (Bookworm) 安装包 |
-| [qemby_0.0.8-trixie_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qemby_0.0.8-trixie_amd64.deb) | Debian 13 (Trixie) 安装包 |
-
-旧版本可以在 [Releases](https://github.com/AlanHJ/qEmby/releases) 页面下载。
-
-## 🚀 v0.0.8 更新内容
-
-- 播放进度条新增弹幕密度热图，改进原生弹幕时钟、布局与 OpenGL 合成。
-- 改进视频首帧显示和播放窗口切换。
-- 支持全局或按服务器配置 User-Agent，并应用到网络和播放请求；重新登录时保留本地网络设置。
-- 侧边栏新增媒体库显示控制，改进首页媒体库刷新，记住媒体库当前标签。
-- 完善人物简介展示，并调整播放器控件、对话框及主题样式。
-
-## ✨ 功能特性
-
-- 🎬 浏览和管理你的 Emby / Jellyfin 媒体库
-- ▶️ 内置 **libmpv** 驱动的视频播放器
-- 💬 弹幕播放，支持弹弹Play与 LogVar / danmu_api、搜索、匹配、缓存和原生覆盖层渲染
-- 🧩 支持元数据编辑、媒体识别、图片更新和播放列表管理
-- 📥 下载管理器
-- 🔄 自动检查更新和 Windows 应用内升级
-- 🖥️ 可选单例应用模式
-- 🌗 深色 / 浅色主题切换
-- 🌐 国际化支持（中文 / 英文 / 法语）
-- 🔍 支持搜索历史的媒体搜索
-- 📺 当前支持电视剧、电影媒体类型
-- 📦 提供 Windows 安装包 / 绿色版、Linux AppImage / deb 包和 macOS DMG
-- ⚡ 基于 C++20 协程的异步操作（QCoro）
-- 🪟 原生风格的自定义窗口边框（QWindowKit）
-
-## 💻 平台支持
-
-| 平台 | 状态 |
-|---|---|
-| Windows 10/11 x64 | ✅ 已适配 |
-| Linux x64 (AppImage / deb) | ✅ 已适配 |
-| macOS 26+ (Apple Silicon) | ✅ 已适配 |
-
-## 📋 开发路线图
-
-- [x] Emby / Jellyfin 媒体库浏览
-- [x] 内置视频播放器（libmpv）
-- [x] 深色 / 浅色主题
-- [x] 国际化支持（中文 / 英文）
-- [x] 媒体搜索与搜索历史
-- [x] 电视剧、电影支持
-- [x] 服务器管理仪表盘
-- [x] 支持添加到播放列表和从播放列表中移除
-- [x] 支持识别来更新元数据
-- [x] 支持修改元数据和图片
-- [x] 弹幕系统（搜索、匹配、设置、渲染）
-- [x] 下载管理器
-- [x] 自动检查更新和 Windows 应用内升级
-- [x] 单例应用模式
-- [x] 多弹幕源支持（弹弹Play / danmu_api）
-- [ ] AI 字幕生成
-- [x] Linux 平台适配
-- [x] macOS 平台适配
-
-> 本项目为个人兴趣开发，欢迎贡献和反馈！
-
-## 🛠️ 技术栈
-
-| 组件 | 技术 |
-|---|---|
-| 框架 | Qt 6.x (Widgets) |
-| 语言 | C++20 |
-| 视频播放 | libmpv |
-| 异步 | QCoro (Qt C++20 协程) |
-| 日志 | spdlog |
-| 窗口框架 | QWindowKit |
-| 构建系统 | CMake |
-
-## 📦 环境要求
-
-- **Qt 6.x**（包含 Widgets、Core、Network、Concurrent、OpenGLWidgets、LinguistTools、WebSockets 模块）
-- **CMake** ≥ 3.16
-- 支持 **C++20** 的编译器（推荐 MSVC 2022）
-- **libmpv** 开发文件（见下方说明）
-- **Git**（用于克隆子模块）
-
-## 🚀 构建指南
-
-### 1. 克隆仓库
-
-```bash
-git clone --recursive https://github.com/AlanHJ/qEmby.git
-cd qEmby
+```text
+qEmby/
+├── CMakeLists.txt              # 根项目 CMake 配置文件 
+├── libs/                       # 第三方依赖库
+│   └── qwindowkit/             # 跨平台窗口自定义套件（实现现代无边框窗口） 
+├── src/                        # 源代码目录
+│   ├── qEmbyCore/              # 核心库：负责业务逻辑、API 通讯、多服务器管理等
+│   │   ├── CMakeLists.txt
+│   │   ├── qembycore.h/cpp
+│   │   └── qEmbyCore_global.h  # 库导出定义
+│   └── qEmbyApp/               # 主程序：负责 UI 界面与用户交互
+│       ├── CMakeLists.txt
+│       ├── main.cpp            # 程序入口，处理多语言加载等
+│       ├── mainwindow.h/cpp    # 主窗口实现，包含自定义标题栏逻辑
+│       └── qEmby_zh_CN.ts      # 国际化翻译源文件
+└── build/                      # 构建输出目录（由编译工具自动生成）
 ```
 
-### 2. 获取 libmpv
+### 关键模块说明：
 
-下载 libmpv 开发包，并放置到 `libs/libmpv/` 目录下，结构如下：
+- **qEmbyCore**: 编译为共享库（Shared Library），作为项目的后端支撑。内部包含 `ServerManager`（负责多服务器配置管理）和 `ApiClient`（负责抹平 Emby 与 Jellyfin 的 API 及认证差异）。
+- **qEmbyApp**: 可执行程序客户端，依赖于 `qEmbyCore` 和 `qwindowkit`，提供服务器切换与媒体浏览界面。
+- **qwindowkit**: 用于实现 Windows、macOS 等平台上的原生无边框窗口效果和自定义标题栏。
+
+## 2. 技术栈
+
+- **语言**: C++ 20
+- **框架**: Qt 6.x
+- **构建系统**: CMake 3.19+
+- **核心模块**: `QtWidgets`, `QtCore`, `QtNetwork`, `QtConcurrent`, `QtOpenGLWidgets`, `QtWebSockets`, `QtLinguistTools`
+- **界面库**: `QWindowKit` (用于现代窗口管理)
+
+## 3. 环境准备
+
+在开始构建之前，请确保你的开发环境已配置：
+
+1. **Qt SDK**: 安装 Qt 6.x 版本。推荐 Windows 与 Ubuntu 使用同一主版本。
+2. **编译器**:
+   - Windows: MSVC 2019/2022
+   - macOS: Clang (Xcode)
+   - Linux: GCC
+3. **CMake**: 确保 CMake 3.19+ 已添加到系统路径。
+4. **libmpv**:
+   - Windows: 默认使用仓库内 `libs/libmpv`
+   - Linux/macOS: 需要系统安装 `libmpv` 开发包
+
+## 4. 构建指南
+
+### 获取代码
+
+由于本项目引用了 `qwindowkit` 作为子模块，请使用以下命令克隆：
+
+Bash
 
 ```
-libs/libmpv/
-├── bin/
-│   └── libmpv-2.dll
-├── include/
-│   └── mpv/
-│       ├── client.h
-│       └── render.h (等)
-└── lib/
-    └── libmpv.dll.a
+git clone --recursive https://your-repository-url/qEmby.git
 ```
 
-libmpv 获取方式：
-- [shinchiro/mpv-winbuild-cmake](https://github.com/shinchiro/mpv-winbuild-cmake/releases)（Windows 预编译版本）
-- [mpv-player/mpv](https://github.com/mpv-player/mpv)（从源码编译）
+### 常用 CMake 变量
 
-### 3. 配置和构建
+- `QEMBY_QT_ROOT`: Qt 安装根目录或可用于 `find_package()` 的前缀路径
+- `QEMBY_LIBMPV_ROOT`: Windows 下可选，用于覆盖默认 `libs/libmpv`
+- `QEMBY_LIBMPV_INCLUDE_DIR` / `QEMBY_LIBMPV_LIBRARY`: Linux/macOS 下手动指定 `libmpv`
 
-```bash
-cmake -B build -DCMAKE_PREFIX_PATH="/path/to/Qt6/lib/cmake"
+### Windows 构建
+
+```powershell
+cmake -S . -B build -G "Ninja" -DQEMBY_QT_ROOT="E:/Qt6/6.9.2/msvc2022_64"
 cmake --build build --config Release
 ```
 
-> **提示：** 在 Windows 上使用 MSVC 时，也可以直接在 Qt Creator 或 Visual Studio 中打开 CMake 项目。
+### Ubuntu 22.04 构建
 
-## 📁 项目结构
-
-```
-qEmby/
-├── CMakeLists.txt              # 根 CMake 配置
-├── libs/
-│   ├── libmpv/                 # libmpv SDK（未纳入版本控制，见构建指南）
-│   └── qwindowkit/             # QWindowKit（git 子模块）
-└── src/
-    ├── qEmbyCore/              # 核心库（API、模型、服务）
-    │   ├── api/                # Emby/Jellyfin API 客户端
-    │   ├── config/             # 配置管理
-    │   ├── models/             # 数据模型
-    │   └── services/           # 业务逻辑服务
-    └── qEmbyApp/               # 桌面应用
-        ├── components/         # 可复用 UI 组件
-        ├── managers/           # 应用管理器
-        ├── resources/          # 图标、主题、翻译
-        ├── utils/              # 工具类
-        └── views/              # 应用视图
-```
-
-## 💬 交流社区
-
-加入 Telegram 交流群：[https://t.me/+qXQ-zU56z9gxOWNl](https://t.me/+qXQ-zU56z9gxOWNl)
-
-> **注意：** 本项目是为爱发电项目，测试覆盖不全，敬请谅解。如有问题请通过 [GitHub Issues](https://github.com/AlanHJ/qEmby/issues) 反馈。
-
-## 📄 许可证
-
-本项目基于 [MIT 许可证](LICENSE) 开源。
-
-## 🙏 致谢
-
-- [Qt](https://www.qt.io/) — 应用框架 (LGPL v3)
-- [mpv](https://mpv.io/) — 媒体播放引擎 (LGPL v2.1+)
-- [QWindowKit](https://github.com/stdware/qwindowkit) — 自定义窗口框架 (Apache-2.0)
-- [QCoro](https://github.com/danvratil/qcoro) — Qt C++20 协程库 (MIT)
-- [spdlog](https://github.com/gabime/spdlog) — 高性能日志库 (MIT)
-
----
-
-<a id="english"></a>
-
-## 📸 Screenshots
-
-<p align="center">
-  <img src="screenshots/2.png" width="45%" alt="Home"/>
-  <img src="screenshots/5.png" width="45%" alt="Detail"/>
-</p>
-<p align="center">
-  <img src="screenshots/3.png" width="45%" alt="Settings"/>
-  <img src="screenshots/4.png" width="45%" alt="Admin Dashboard"/>
-</p>
-
-## 📥 Download
-
-Latest release: **v0.0.8**
-
-| Package | Description |
-|---|---|
-| [qEmby-0.0.8-Win-x64-Setup.exe](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qEmby-0.0.8-Win-x64-Setup.exe) | Windows 10/11 x64 installer |
-| [qEmby-0.0.8-Win-x64.zip](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qEmby-0.0.8-Win-x64.zip) | Windows 10/11 x64 portable package |
-| [qemby-0.0.8-macos-arm64.dmg](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qemby-0.0.8-macos-arm64.dmg) | macOS 26+ (Apple Silicon) |
-| [qemby-0.0.8-x86_64.AppImage](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qemby-0.0.8-x86_64.AppImage) | Universal Linux x64 AppImage |
-| [qemby_0.0.8-jammy_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qemby_0.0.8-jammy_amd64.deb) | Ubuntu 22.04 (Jammy) package |
-| [qemby_0.0.8-noble_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qemby_0.0.8-noble_amd64.deb) | Ubuntu 24.04 (Noble) package |
-| [qemby_0.0.8-resolute_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qemby_0.0.8-resolute_amd64.deb) | Ubuntu 26.04 (Resolute), uses system Qt packages |
-| [qemby_0.0.8-bookworm_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qemby_0.0.8-bookworm_amd64.deb) | Debian 12 (Bookworm) package |
-| [qemby_0.0.8-trixie_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qemby_0.0.8-trixie_amd64.deb) | Debian 13 (Trixie) package |
-
-Older releases are available on the [Releases](https://github.com/AlanHJ/qEmby/releases) page.
-
-## 🚀 What's New in v0.0.8
-
-- Added a danmaku density heatmap to the progress bar and improved native danmaku timing, layout and OpenGL compositing.
-- Improved video first-frame presentation and playback window transitions.
-- Added global and per-server User-Agent settings for network and playback requests; retained local network settings on re-login.
-- Added sidebar library visibility controls, improved home-library refresh and remembered the selected library tab.
-- Expanded person biography details and refined player controls, dialogs and theme styling.
-
-## ✨ Features
-
-- 🎬 Browse and manage your Emby / Jellyfin media library
-- ▶️ Built-in video player powered by **libmpv**
-- 💬 Danmaku playback with DandanPlay and LogVar / danmu_api, search, matching, cache and native overlay rendering
-- 🧩 Metadata editing, media identification, image updates and playlist tools
-- 📥 Download manager
-- 🔄 Automatic update checks and in-app Windows updates
-- 🖥️ Optional single-application mode
-- 🌗 Dark and Light theme support
-- 🌐 Internationalization support (Chinese / English / French)
-- 🔍 Media search with history
-- 📺 TV series and movies media types
-- 📦 Windows installer / portable packages, Linux AppImage / deb packages, and macOS DMG
-- ⚡ Asynchronous operations with C++20 coroutines (QCoro)
-- 🪟 Custom window frame with native look (QWindowKit)
-
-## 💻 Platform Support
-
-| Platform | Status |
-|---|---|
-| Windows 10/11 x64 | ✅ Supported |
-| Linux x64 (AppImage / deb) | ✅ Supported |
-| macOS 26+ (Apple Silicon) | ✅ Supported |
-
-## 📋 Roadmap
-
-- [x] Emby / Jellyfin media library browsing
-- [x] Built-in video player (libmpv)
-- [x] Dark / Light theme
-- [x] Internationalization (Chinese / English)
-- [x] Media search with history
-- [x] TV series & movies support
-- [x] Server administration dashboard
-- [x] Playlist support (add/remove items)
-- [x] Media identification & metadata refresh
-- [x] Metadata and image editing
-- [x] Danmaku (bullet comments) system
-- [x] Download manager
-- [x] Automatic update checks and in-app Windows updates
-- [x] Single-application mode
-- [x] Multiple danmaku providers (DandanPlay / danmu_api)
-- [ ] AI-powered subtitle generation
-- [x] Linux platform support
-- [x] macOS platform support
-
-> This is a personal hobby project, developed out of interest. Contributions and feedback are welcome!
-
-## 🛠️ Tech Stack
-
-| Component | Technology |
-|---|---|
-| Framework | Qt 6.x (Widgets) |
-| Language | C++20 |
-| Video Player | libmpv |
-| Async | QCoro (C++20 Coroutines for Qt) |
-| Logging | spdlog |
-| Window Kit | QWindowKit |
-| Build System | CMake |
-
-## 📦 Prerequisites
-
-- **Qt 6.x** (with Widgets, Core, Network, Concurrent, OpenGLWidgets, LinguistTools, WebSockets)
-- **CMake** ≥ 3.16
-- **C++20** compatible compiler (MSVC 2022 recommended)
-- **libmpv** development files (see below)
-- **Git** (for cloning submodules)
-
-## 🚀 Build
-
-### 1. Clone the repository
+推荐安装官方 Qt 6 Linux GCC 版本，然后通过 `QEMBY_QT_ROOT` 指向对应目录。
 
 ```bash
-git clone --recursive https://github.com/AlanHJ/qEmby.git
-cd qEmby
-```
+sudo apt update
+sudo apt install -y build-essential cmake ninja-build pkg-config libmpv-dev libgl1-mesa-dev libxcb-cursor0
 
-### 2. Get libmpv
-
-Download the libmpv development package and place it in `libs/libmpv/` with the following structure:
-
-```
-libs/libmpv/
-├── bin/
-│   └── libmpv-2.dll
-├── include/
-│   └── mpv/
-│       ├── client.h
-│       └── render.h (etc.)
-└── lib/
-    └── libmpv.dll.a
-```
-
-You can get libmpv from:
-- [shinchiro/mpv-winbuild-cmake](https://github.com/shinchiro/mpv-winbuild-cmake/releases) (Windows builds)
-- [mpv-player/mpv](https://github.com/mpv-player/mpv) (build from source)
-
-### 3. Configure and build
-
-```bash
-cmake -B build -DCMAKE_PREFIX_PATH="/path/to/Qt6/lib/cmake"
+cmake -S . -B build -G Ninja -DQEMBY_QT_ROOT="$HOME/Qt/6.9.2/gcc_64"
 cmake --build build --config Release
 ```
 
-> **Tip:** On Windows with MSVC, you can also open the project in Qt Creator or Visual Studio with CMake support.
+如果你使用的是系统自带 Qt，请确保它包含以下模块：`Widgets`、`Core`、`Network`、`Concurrent`、`OpenGLWidgets`、`LinguistTools`、`WebSockets`。
 
-## 📁 Project Structure
+远程 Ubuntu 编译的详细流程可参考 [docs/ubuntu-remote-build.md](docs/ubuntu-remote-build.md)。
 
-```
-qEmby/
-├── CMakeLists.txt              # Root CMake configuration
-├── libs/
-│   ├── libmpv/                 # libmpv SDK (not tracked, see Build section)
-│   └── qwindowkit/             # QWindowKit (git submodule)
-└── src/
-    ├── qEmbyCore/              # Core library (API, models, services)
-    │   ├── api/                # Emby/Jellyfin API client
-    │   ├── config/             # Configuration management
-    │   ├── models/             # Data models
-    │   └── services/           # Business logic services
-    └── qEmbyApp/               # Desktop application
-        ├── components/         # Reusable UI components
-        ├── managers/           # Application managers
-        ├── resources/          # Icons, themes, translations
-        ├── utils/              # Utility classes
-        └── views/              # Application views
-```
+## 5. 开发路线图 (TODO)
 
-## 💬 Community
+- [x] 项目基础架构与 CMake 配置搭建
+- [x] 确立多服务器与 Emby/Jellyfin 兼容架构
+- [x] 集成跨平台无边框窗口系统与主题切换
+- [ ] 开发底层的 `NetworkManager` 与智能区分后端的 `ApiClient`
+- [ ] 开发多服务器配置管理模块 (`ServerManager`)
+- [ ] 媒体库数据的请求、解析与展示 (瀑布流 UI)
+- [ ] 集成高性能视频播放器内核（如 libvlc 或 mpv）
+- [ ] 完善多语言支持
 
-Join our Telegram group: [https://t.me/+qXQ-zU56z9gxOWNl](https://t.me/+qXQ-zU56z9gxOWNl)
+------
 
-> **Note:** This is a passion project with limited testing. Your understanding is appreciated. Please report any issues via [GitHub Issues](https://github.com/AlanHJ/qEmby/issues).
-
-## 📄 License
-
-This project is licensed under the [MIT License](LICENSE).
-
-## 🙏 Acknowledgements
-
-- [Qt](https://www.qt.io/) — Application framework (LGPL v3)
-- [mpv](https://mpv.io/) — Media player engine (LGPL v2.1+)
-- [QWindowKit](https://github.com/stdware/qwindowkit) — Custom window frame (Apache-2.0)
-- [QCoro](https://github.com/danvratil/qcoro) — C++20 Coroutines for Qt (MIT)
-- [spdlog](https://github.com/gabime/spdlog) — Fast logging library (MIT)
+**注意**: 本项目目前处于早期开发阶段，欢迎提交 Issue 或 Pull Request。

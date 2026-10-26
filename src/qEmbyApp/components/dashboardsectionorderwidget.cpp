@@ -76,6 +76,10 @@ QString DashboardSectionOrderWidget::titleForSectionId(
         return tr("Each Library Sections");
     }
 
+    if (sectionId == QLatin1String(DashboardSectionOrderUtils::LiveTvSectionId))
+        return tr("Live TV");
+    if (sectionId == QLatin1String(DashboardSectionOrderUtils::MusicSectionId))
+        return tr("Music");
     return sectionId;
 }
 

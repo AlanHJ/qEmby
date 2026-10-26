@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>@QEMBY_APP_ID@</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <name>@QEMBY_DESKTOP_NAME@</name>
+  <summary>@QEMBY_PACKAGE_DESCRIPTION@</summary>
+  <launchable type="desktop-id">@QEMBY_DESKTOP_FILE_BASENAME@.desktop</launchable>
+  <url type="homepage">@QEMBY_HOMEPAGE_URL@</url>
+  <description>
+    <p>qEmby 是一款基于 Qt 的 Emby 和 Jellyfin 桌面客户端，提供媒体库浏览、本地播放和多服务器切换能力。</p>
+  </description>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Video</category>
+    <category>Player</category>
+  </categories>
+</component>

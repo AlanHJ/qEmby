@@ -142,6 +142,13 @@ MediaItem MediaItem::fromJson(const QJsonObject& obj) {
     item.sortName = obj["SortName"].toString();
     item.type = obj["Type"].toString();
     item.mediaType = obj["MediaType"].toString();
+    item.parentId = obj["ParentId"].toString();
+    item.owningLibraryId = obj["OwningLibraryId"].toString();
+    item.albumId = obj["AlbumId"].toString();
+    item.album = obj["Album"].toString();
+    item.albumArtist = obj["AlbumArtist"].toString();
+    for (const auto& artist : obj["Artists"].toArray())
+        item.artists.append(artist.toString());
     item.collectionType = obj["CollectionType"].toString();
     
     
@@ -154,6 +161,7 @@ MediaItem MediaItem::fromJson(const QJsonObject& obj) {
     item.seriesName = obj["SeriesName"].toString();
     item.parentIndexNumber = obj.contains("ParentIndexNumber") ? obj["ParentIndexNumber"].toInt(-1) : -1;
     item.indexNumber = obj.contains("IndexNumber") ? obj["IndexNumber"].toInt(-1) : -1;
+    item.partCount = qMax(1, obj["PartCount"].toInt(1));
     if (obj.contains("ProviderIds")) {
         const QJsonObject providerIdsObj = obj["ProviderIds"].toObject();
         for (auto it = providerIdsObj.constBegin(); it != providerIdsObj.constEnd(); ++it) {
@@ -240,8 +248,21 @@ MediaItem MediaItem::fromJson(const QJsonObject& obj) {
 
     if (obj.contains("TagItems")) {
         QJsonArray arr = obj["TagItems"].toArray();
-        for (const auto& val : arr) item.tags.append(val.toObject()["Name"].toString());
+        for (const auto& val : arr) {
+            const QString name = val.toObject()["Name"].toString().trimmed();
+            if (!name.isEmpty()) item.tags.append(name);
+        }
     }
+    
+    
+    if (item.tags.isEmpty()) {
+        const QJsonArray tags = obj["Tags"].toArray();
+        for (const auto& val : tags) {
+            const QString name = val.toString().trimmed();
+            if (!name.isEmpty()) item.tags.append(name);
+        }
+    }
+    item.tags.removeDuplicates();
 
     if (obj.contains("RemoteTrailers")) {
         QJsonArray arr = obj["RemoteTrailers"].toArray();

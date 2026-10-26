@@ -2,6 +2,7 @@
 #include <config/config_keys.h>
 #include <config/configstore.h>
 #include "mpvhttpstreamrelay.h"
+#include "../utils/httprangeutils.h"
 #include "nativedanmakuoverlay.h"
 #include "../utils/logredactionutils.h"
 #include "../utils/mpvrendertimingutils.h"
@@ -102,6 +103,7 @@ MpvWidget::MpvWidget(QWidget *parent)
                         : UserAgentManager::instance()->resolveForServerId(
                               m_currentServerId);
                 applyUserAgentConfig(config);
+                publishPreviewSource();
                 qInfo() << "[MpvWidget] User-Agent configuration refreshed"
                         << "| serverId:"
                         << (m_currentServerId.isEmpty()
@@ -151,6 +153,8 @@ MpvWidget::~MpvWidget() {
 
 void MpvWidget::shutdown() {
     if (!m_controller) return;
+    m_previewUrl.clear();
+    emit previewSourceChanged(QString(), QVariantMap());
 
     
     this->blockSignals(true);
@@ -636,13 +640,26 @@ void MpvWidget::loadMediaNow(const QString &url, const QString &serverId, bool w
     const QString scheme = loadQUrl.scheme().toLower();
     const bool isHttpStream =
         scheme == QStringLiteral("http") || scheme == QStringLiteral("https");
-    const bool shouldRelay =
-        isHttpStream && proxy.type() != QNetworkProxy::NoProxy;
+    
+    
+    
+    const QVariant tlsVerify = m_controller->getProperty(QStringLiteral("tls-verify"));
+    const bool needsNativeNetwork = m_controller->getProperty(QStringLiteral("cookies")).toBool() ||
+        (tlsVerify.isValid() && !tlsVerify.toBool()) ||
+        !m_controller->getProperty(QStringLiteral("tls-ca-file")).toString().isEmpty() ||
+        !m_controller->getProperty(QStringLiteral("tls-cert-file")).toString().isEmpty() ||
+        !m_controller->getProperty(QStringLiteral("tls-key-file")).toString().isEmpty();
+    
+    
+    
+    const bool shouldRelay = isHttpStream &&
+        (!m_httpHeaders.isEmpty() || proxy.type() != QNetworkProxy::NoProxy ||
+         (!needsNativeNetwork && !HttpRangeUtils::isPlaylist(loadQUrl)));
 
     QString playbackUrl = url;
     bool usingRelay = false;
     if (shouldRelay && m_streamRelay) {
-        const QUrl localUrl = m_streamRelay->prepare(loadQUrl, serverId, proxy);
+        const QUrl localUrl = m_streamRelay->prepare(loadQUrl, serverId, proxy, m_httpHeaders, m_tlsOrigin, m_ignoreTlsErrors);
         if (localUrl.isValid()) {
             playbackUrl = localUrl.toString(QUrl::FullyEncoded);
             usingRelay = true;
@@ -701,10 +718,11 @@ void MpvWidget::loadMediaNow(const QString &url, const QString &serverId, bool w
                                      : serverId)
             << "| mpvProxyValue:" << LogRedactionUtils::proxy(mpvProxyValue)
             << "| relay:" << usingRelay
-            << "| playbackUrl:" << (usingRelay
-                                       ? playbackUrl
-                                       : QStringLiteral("<direct>"))
+            << "| playbackSource:" << (usingRelay ? QStringLiteral("<local-relay>") : QStringLiteral("<direct>"))
             << "| forceSeekable:" << forceSeekable;
+
+    m_previewUrl = usingRelay ? m_streamRelay->previewUrl().toString(QUrl::FullyEncoded) : playbackUrl;
+    publishPreviewSource();
 
     QVariantList loadCommand;
     if (loadOptions.isEmpty()) {
@@ -731,6 +749,20 @@ void MpvWidget::loadMediaNow(const QString &url, const QString &serverId, bool w
     }
 }
 
+void MpvWidget::publishPreviewSource() {
+    if (!m_controller || m_previewUrl.isEmpty()) return;
+    QVariantMap previewOptions;
+    for (const QString &name : {QStringLiteral("user-agent"), QStringLiteral("referrer"),
+                               QStringLiteral("http-header-fields"), QStringLiteral("http-proxy"),
+                               QStringLiteral("tls-verify"), QStringLiteral("tls-ca-file"),
+                               QStringLiteral("cookies"), QStringLiteral("cookies-file"),
+                               QStringLiteral("force-seekable")}) {
+        const QVariant value = m_controller->getProperty(name);
+        if (value.isValid()) previewOptions.insert(name, value);
+    }
+    emit previewSourceChanged(m_previewUrl, previewOptions);
+}
+
 void MpvWidget::applyUserAgentConfig(const UserAgentConfig &config) {
     if (config.isEffective()) {
         m_controller->setProperty(QStringLiteral("user-agent"),
@@ -748,6 +780,8 @@ void MpvWidget::applyUserAgentConfig(const UserAgentConfig &config) {
 }
 
 void MpvWidget::loadMedia(const QString &url, const QString &serverId) {
+    m_previewUrl.clear();
+    emit previewSourceChanged(QString(), QVariantMap());
     resetVideoPresentation(true);
     
     if (!m_mpv_gl) {
@@ -780,8 +814,15 @@ void MpvWidget::pause() {
 }
 
 void MpvWidget::stop() {
+    m_previewUrl.clear();
+    emit previewSourceChanged(QString(), QVariantMap());
     resetVideoPresentation(true);
     m_controller->command(QVariantList{"stop"});
+    if (m_streamRelay) m_streamRelay->stop();
+    if (m_usingStreamRelay) {
+        m_usingStreamRelay = false;
+        Q_EMIT relayActiveChanged(false);
+    }
     m_currentUrl.clear();
     m_currentServerId.clear();
 }

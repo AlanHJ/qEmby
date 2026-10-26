@@ -44,6 +44,7 @@ public:
 
     
     void setCardStyle(MediaCardDelegate::CardStyle style);
+    void setLibraryArtworkPolicyEnabled(bool enabled);
 
     
     void setTileSize(const QSize &size);

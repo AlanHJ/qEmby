@@ -2,6 +2,7 @@
 
 #include <QChar>
 #include <QCoreApplication>
+#include <QDate>
 
 namespace
 {
@@ -11,14 +12,79 @@ bool hasResumeProgressData(const MediaUserDataInfo &userData)
     return userData.playbackPositionTicks > 0 || (userData.playedPercentage > 0.0 && userData.playedPercentage < 100.0);
 }
 
+double calculatePlaybackProgressPercentage(const MediaUserDataInfo &userData,
+                                           long long runTimeTicks)
+{
+    if (userData.playedPercentage > 0.0 && userData.playedPercentage < 100.0)
+    {
+        return userData.playedPercentage;
+    }
+
+    if (userData.playbackPositionTicks > 0 && runTimeTicks > userData.playbackPositionTicks)
+    {
+        return 100.0 * static_cast<double>(userData.playbackPositionTicks) /
+               static_cast<double>(runTimeTicks);
+    }
+
+    return 0.0;
+}
+
 void copyResumeContext(MediaItem &target, const MediaItem &source)
 {
     target.hasResumeContext = true;
     target.resumeItemId = source.id.trimmed();
     target.resumeUserData = source.userData;
+    const double progressPercentage =
+        calculatePlaybackProgressPercentage(source.userData, source.runTimeTicks);
+    if (progressPercentage > 0.0)
+    {
+        target.resumeUserData.playedPercentage = progressPercentage;
+    }
 }
 
 } 
+
+QString MediaItemUtils::releaseDateText(const MediaItem& item)
+{
+    QString dateText = item.premiereDate.trimmed();
+    if (!dateText.isEmpty()) {
+        const int timeSeparator = dateText.indexOf(QLatin1Char('T'));
+        if (timeSeparator > 0) dateText = dateText.left(timeSeparator);
+        const QString dateOnly = dateText.left(qMin(dateText.length(), qsizetype(10)));
+        const QDate date = QDate::fromString(dateOnly, Qt::ISODate);
+        return date.isValid() ? date.toString(QStringLiteral("yyyy-MM-dd")) : dateOnly;
+    }
+    return item.productionYear > 0 ? QString::number(item.productionYear) : QString();
+}
+
+QStringList MediaItemUtils::displayTags(const MediaItem& item)
+{
+    QStringList tags;
+    for (const QStringList* values : {&item.genres, &item.tags}) {
+        for (const QString& value : *values) {
+            const QString tag = value.trimmed();
+            if (!tag.isEmpty() && !tags.contains(tag, Qt::CaseInsensitive))
+                tags.append(tag);
+        }
+    }
+    return tags;
+}
+
+MediaItem MediaItemUtils::withMissingDisplayMetadata(MediaItem item, const MediaItem& detail)
+{
+    if (item.id != detail.id || (!detail.type.isEmpty() && detail.type != item.type))
+        return item;
+    
+    if (item.overview.trimmed().isEmpty()) item.overview = detail.overview;
+    if (item.premiereDate.trimmed().isEmpty()) item.premiereDate = detail.premiereDate;
+    if (item.productionYear <= 0) item.productionYear = detail.productionYear;
+    if (item.communityRating <= 0) item.communityRating = detail.communityRating;
+    if (item.officialRating.trimmed().isEmpty()) item.officialRating = detail.officialRating;
+    if (item.genres.isEmpty()) item.genres = detail.genres;
+    if (item.tags.isEmpty()) item.tags = detail.tags;
+    if (item.runTimeTicks <= 0) item.runTimeTicks = detail.runTimeTicks;
+    return item;
+}
 
 QStringList MediaItemUtils::personBiographicalDetails(const MediaItem& item)
 {
@@ -111,6 +177,12 @@ bool MediaItemUtils::hasResumeProgress(const MediaItem &item)
 {
     const MediaUserDataInfo &userData = item.hasResumeContext ? item.resumeUserData : item.userData;
     return hasResumeProgressData(userData);
+}
+
+double MediaItemUtils::playbackProgressPercentage(const MediaItem &item)
+{
+    const MediaUserDataInfo &userData = item.hasResumeContext ? item.resumeUserData : item.userData;
+    return calculatePlaybackProgressPercentage(userData, item.runTimeTicks);
 }
 
 bool MediaItemUtils::canRemoveFromResume(const MediaItem &item)

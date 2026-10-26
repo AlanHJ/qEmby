@@ -40,6 +40,22 @@ SettingsCard::SettingsCard(const QString &iconSvgPath, const QString &title,
 
 SettingsCard::~SettingsCard() = default;
 
+void SettingsCard::setConfigKey(const QString &configKey) {
+  if (configKey.isEmpty() || configKey == m_configKey || !m_controlWidget)
+    return;
+
+  const bool wasBound = !m_configKey.isEmpty();
+  m_configKey = configKey;
+  if (!wasBound) {
+    setupDataBinding();
+    return;
+  }
+
+  onConfigValueChanged(
+      m_configKey,
+      ConfigStore::instance()->get<QVariant>(m_configKey, m_defaultValue));
+}
+
 void SettingsCard::setupUi(const QString &title, const QString &description) {
   
   m_mainLayout = new QHBoxLayout(this);

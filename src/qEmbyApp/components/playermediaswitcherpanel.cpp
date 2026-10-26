@@ -2,12 +2,18 @@
 
 #include "horizontallistviewgallery.h"
 #include "../utils/mediaitemutils.h"
+#include "../utils/mediapartutils.h"
 
 #include <qembycore.h>
 
+#include <QDebug>
 #include <QHBoxLayout>
+#include <QHideEvent>
 #include <QLabel>
 #include <QPainter>
+#include <QPushButton>
+#include <QResizeEvent>
+#include <QShowEvent>
 #include <QTimer>
 #include <QVBoxLayout>
 
@@ -15,9 +21,14 @@ namespace {
 
 constexpr int kMovieGalleryHeight = 162;
 constexpr int kSeasonGalleryHeight = 136;
-constexpr int kEpisodeGalleryHeight = 110;
+
+
+constexpr int kLandscapeCardWidth = 154;
+constexpr int kLandscapeCardHeight = 116;
+constexpr int kLandscapeGalleryHeight = kLandscapeCardHeight + 4;
 constexpr int kSpinnerSize = 28;
 constexpr int kSpinnerContainerHeight = 60;
+constexpr int kStatusPanelMinimumHeight = 120;
 
 class SpinnerPainter : public QWidget {
 public:
@@ -67,7 +78,6 @@ PlayerMediaSwitcherPanel::PlayerMediaSwitcherPanel(QEmbyCore *core,
     : QFrame(parent) {
     setObjectName("playerMediaSwitcherPanel");
     setAttribute(Qt::WA_StyledBackground, true);
-    hide();
 
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(10, 6, 10, 6);
@@ -108,7 +118,35 @@ PlayerMediaSwitcherPanel::PlayerMediaSwitcherPanel(QEmbyCore *core,
 
     layout->addWidget(m_spinnerContainer);
 
+    m_retryButton = new QPushButton(tr("Retry"), this);
+    m_retryButton->setObjectName("playerMediaSwitcherRetry");
+    m_retryButton->setCursor(Qt::PointingHandCursor);
+    layout->addWidget(m_retryButton, 0, Qt::AlignHCenter);
+    connect(m_retryButton, &QPushButton::clicked, this,
+            &PlayerMediaSwitcherPanel::retryRequested);
+
+    m_partsLabel = new QLabel(tr("Chapters"), this);
+    m_partsLabel->setObjectName("playerMediaSwitcherSectionTitle");
+    layout->addWidget(m_partsLabel);
+
+    m_partsGallery = new HorizontalListViewGallery(core, this);
+    m_partsGallery->setObjectName("playerMediaSwitcherEpisodeGallery");
+    m_partsGallery->setCardStyle(MediaCardDelegate::LibraryTile);
+    m_partsGallery->setTileSize(QSize(kLandscapeCardWidth, kLandscapeCardHeight));
+    m_partsGallery->setTextPixelSizes(10, 9);
+    m_partsGallery->setContentPadding(6);
+    m_partsGallery->setHoverControls(MediaCardDelegate::HoverControlPlay);
+    m_partsGallery->setFixedHeight(kLandscapeGalleryHeight);
+    layout->addWidget(m_partsGallery);
+    connect(m_partsGallery, &HorizontalListViewGallery::itemClicked, this,
+            &PlayerMediaSwitcherPanel::onPlayableItemClicked);
+    connect(m_partsGallery, &HorizontalListViewGallery::playRequested, this,
+            &PlayerMediaSwitcherPanel::onPlayableItemClicked);
+
     
+    m_moviesLabel = new QLabel(tr("Continue Watching"), this);
+    m_moviesLabel->setObjectName("playerMediaSwitcherSectionTitle");
+    layout->addWidget(m_moviesLabel);
     m_movieGallery = new HorizontalListViewGallery(core, this);
     m_movieGallery->setObjectName("playerMediaSwitcherMovieGallery");
     m_movieGallery->setCardStyle(MediaCardDelegate::Poster);
@@ -141,11 +179,11 @@ PlayerMediaSwitcherPanel::PlayerMediaSwitcherPanel(QEmbyCore *core,
     m_episodeGallery = new HorizontalListViewGallery(core, this);
     m_episodeGallery->setObjectName("playerMediaSwitcherEpisodeGallery");
     m_episodeGallery->setCardStyle(MediaCardDelegate::LibraryTile);
-    m_episodeGallery->setTileSize(QSize(154, 102));
+    m_episodeGallery->setTileSize(QSize(kLandscapeCardWidth, kLandscapeCardHeight));
     m_episodeGallery->setTextPixelSizes(10, 9);
     m_episodeGallery->setContentPadding(6);
     m_episodeGallery->setHoverControls(MediaCardDelegate::HoverControlPlay);
-    m_episodeGallery->setFixedHeight(kEpisodeGalleryHeight);
+    m_episodeGallery->setFixedHeight(kLandscapeGalleryHeight);
     layout->addWidget(m_episodeGallery);
 
     connect(m_movieGallery, &HorizontalListViewGallery::itemClicked, this,
@@ -163,22 +201,30 @@ PlayerMediaSwitcherPanel::PlayerMediaSwitcherPanel(QEmbyCore *core,
     connect(m_episodeGallery, &HorizontalListViewGallery::playRequested, this,
             &PlayerMediaSwitcherPanel::onPlayableItemClicked);
 
+    
+    
+    m_uiReady = true;
+    hide();
     setStatusMessage(QString());
     applySeriesMode();
 }
 
-int PlayerMediaSwitcherPanel::preferredDrawerHeight() const {
+int PlayerMediaSwitcherPanel::preferredDrawerHeight(int availableWidth) const {
     auto *rootLayout = qobject_cast<QVBoxLayout *>(layout());
     if (!rootLayout) {
         return sizeHint().height();
     }
 
     const QMargins margins = rootLayout->contentsMargins();
-    int height = margins.top() + margins.bottom();
+    const QMargins frameMargins = contentsMargins();
+    const int contentWidth = qMax(1, (availableWidth > 0 ? availableWidth : width()) -
+                                       margins.left() - margins.right() -
+                                       frameMargins.left() - frameMargins.right());
+    int height = margins.top() + margins.bottom() + frameMargins.top() + frameMargins.bottom();
     bool hasVisibleWidget = false;
 
     const auto accumulateHeight = [&](const QWidget *widget) {
-        const int widgetHeight = visibleHeightForWidget(widget);
+        const int widgetHeight = visibleHeightForWidget(widget, contentWidth);
         if (widgetHeight <= 0) {
             return;
         }
@@ -192,30 +238,35 @@ int PlayerMediaSwitcherPanel::preferredDrawerHeight() const {
     accumulateHeight(m_titleLabel);
     accumulateHeight(m_statusLabel);
     accumulateHeight(m_spinnerContainer);
+    accumulateHeight(m_retryButton);
+    accumulateHeight(m_partsLabel);
+    accumulateHeight(m_partsGallery);
+    accumulateHeight(m_moviesLabel);
     accumulateHeight(m_movieGallery);
     accumulateHeight(m_seasonsLabel);
     accumulateHeight(m_seasonGallery);
     accumulateHeight(m_episodesLabel);
     accumulateHeight(m_episodeGallery);
 
-    return height;
+    return m_displayState == DisplayState::Content ? height : qMax(height, kStatusPanelMinimumHeight);
 }
 
 void PlayerMediaSwitcherPanel::setLoadingState(const QString &title,
                                                const QString &message,
                                                bool seriesMode) {
     m_titleLabel->setText(title);
-    m_isLoading = true;
-    m_loadingSeriesMode = seriesMode;
+    m_displayState = DisplayState::Loading;
     m_isSeriesMode = seriesMode;
     m_currentMediaId.clear();
     m_currentSeriesName.clear();
     m_selectedSeasonId.clear();
     m_movieItems.clear();
+    m_parts.clear();
     m_seasons.clear();
     m_episodesBySeasonId.clear();
 
     m_movieGallery->setItems(QList<MediaItem>{});
+    m_partsGallery->setItems(QList<MediaItem>{});
     m_seasonGallery->setItems(QList<MediaItem>{});
     m_episodeGallery->setItems(QList<MediaItem>{});
 
@@ -225,8 +276,7 @@ void PlayerMediaSwitcherPanel::setLoadingState(const QString &title,
 
 void PlayerMediaSwitcherPanel::setMovieItems(const QList<MediaItem> &items,
                                              const QString &currentMediaId) {
-    m_isLoading = false;
-    m_loadingSeriesMode = false;
+    m_displayState = DisplayState::Content;
     m_isSeriesMode = false;
     m_currentMediaId = currentMediaId;
     m_currentSeriesName.clear();
@@ -240,12 +290,35 @@ void PlayerMediaSwitcherPanel::setMovieItems(const QList<MediaItem> &items,
     applySeriesMode();
 }
 
+void PlayerMediaSwitcherPanel::setErrorState(const QString &message) {
+    m_displayState = DisplayState::Error;
+    m_titleLabel->setText(tr("Media Switcher"));
+    setStatusMessage(message);
+    applySeriesMode();
+}
+
+void PlayerMediaSwitcherPanel::setVideoParts(const QList<MediaItem> &parts,
+                                            const QString &currentMediaId) {
+    m_parts = parts;
+    QList<MediaItem> displayParts = parts;
+    for (int i = 0; i < displayParts.size(); ++i) {
+        displayParts[i].name = MediaPartUtils::displayTitle(parts, i);
+    }
+    m_partsGallery->setItems(displayParts);
+    m_partsGallery->setHighlightedItemId(currentMediaId);
+    m_partsGallery->scrollToItemId(currentMediaId);
+    if (!m_isSeriesMode) {
+        m_titleLabel->setText(parts.size() > 1 ? tr("Media Switcher") : tr("Continue Watching"));
+        if (parts.size() > 1 && m_movieItems.isEmpty()) setStatusMessage(QString());
+    }
+    applySeriesMode();
+}
+
 void PlayerMediaSwitcherPanel::setSeriesData(
     const QString &seriesName, const QList<MediaItem> &seasons,
     const QHash<QString, QList<MediaItem>> &episodesBySeasonId,
     const QString &currentMediaId) {
-    m_isLoading = false;
-    m_loadingSeriesMode = true;
+    m_displayState = DisplayState::Content;
     m_isSeriesMode = true;
     m_currentSeriesName = seriesName;
     m_currentMediaId = currentMediaId;
@@ -293,35 +366,79 @@ void PlayerMediaSwitcherPanel::onPlayableItemClicked(const MediaItem &item) {
         return;
     }
 
+    const int partIndex = MediaPartUtils::indexOf(m_parts, item.id);
+    if (partIndex >= 0) {
+        Q_EMIT playRequested(item.id, MediaPartUtils::displayTitle(m_parts, partIndex),
+                            MediaPartUtils::resumeTicks(m_parts.at(partIndex)));
+        return;
+    }
     Q_EMIT playRequested(item.id, formatResumeDisplayTitle(item),
                          item.userData.playbackPositionTicks);
 }
 
 void PlayerMediaSwitcherPanel::applySeriesMode() {
     const bool hasStatus = !m_statusLabel->text().trimmed().isEmpty();
-    const bool showSeriesSections = !m_isLoading && m_isSeriesMode;
+    const bool loading = m_displayState == DisplayState::Loading;
+    const bool content = m_displayState == DisplayState::Content;
+    const bool showSeriesSections = content && m_isSeriesMode;
     const bool hasSeasons = !m_seasons.isEmpty();
     const bool hasEpisodeItems =
         !m_episodesBySeasonId.value(currentSelectedSeasonId()).isEmpty();
 
+    m_titleLabel->show();
     m_statusLabel->setVisible(hasStatus);
+    m_statusLabel->setAlignment(content ? Qt::AlignLeft : Qt::AlignCenter);
+    m_retryButton->setVisible(m_displayState == DisplayState::Error);
 
     
-    m_spinnerContainer->setVisible(m_isLoading);
-    if (m_isLoading) {
-        m_spinnerAngle = 0.0;
+    m_spinnerContainer->setVisible(loading);
+    if (loading && isVisible()) {
         m_spinnerTimer->start();
     } else {
         m_spinnerTimer->stop();
     }
 
-    m_movieGallery->setVisible(!m_isLoading && !m_isSeriesMode && !hasStatus);
+    m_movieGallery->setVisible(content && !m_isSeriesMode && !hasStatus && !m_movieItems.isEmpty());
+    m_moviesLabel->setVisible(content && !m_isSeriesMode && m_parts.size() > 1 && !m_movieItems.isEmpty());
+    m_partsLabel->setVisible(content && m_parts.size() > 1);
+    m_partsGallery->setVisible(content && m_parts.size() > 1);
     m_seasonsLabel->setVisible(showSeriesSections && hasSeasons);
     m_seasonGallery->setVisible(showSeriesSections && hasSeasons);
     m_episodesLabel->setVisible(showSeriesSections && hasEpisodeItems);
     m_episodeGallery->setVisible(showSeriesSections && hasEpisodeItems);
 
-    setFixedHeight(preferredDrawerHeight());
+    updatePreferredHeight();
+    qDebug() << "[PlayerMediaSwitcherPanel] Display state updated"
+             << "| state=" << (loading ? "loading" : content ? "content" : "error")
+             << "| height=" << minimumHeight() << "| width=" << width()
+             << "| visible=" << isVisible();
+}
+
+void PlayerMediaSwitcherPanel::updatePreferredHeight() {
+    if (!m_uiReady) return;
+    ensurePolished();
+    const int preferredHeight = preferredDrawerHeight();
+    if (minimumHeight() != preferredHeight || maximumHeight() != preferredHeight) {
+        setFixedHeight(preferredHeight);
+        Q_EMIT preferredHeightChanged();
+    }
+}
+
+void PlayerMediaSwitcherPanel::showEvent(QShowEvent *event) {
+    QFrame::showEvent(event);
+    if (!m_uiReady) return;
+    updatePreferredHeight();
+    if (m_displayState == DisplayState::Loading) m_spinnerTimer->start();
+}
+
+void PlayerMediaSwitcherPanel::hideEvent(QHideEvent *event) {
+    if (m_uiReady) m_spinnerTimer->stop();
+    QFrame::hideEvent(event);
+}
+
+void PlayerMediaSwitcherPanel::resizeEvent(QResizeEvent *event) {
+    QFrame::resizeEvent(event);
+    if (m_uiReady && event->size().width() != event->oldSize().width()) updatePreferredHeight();
 }
 
 void PlayerMediaSwitcherPanel::populateMovieGallery() {
@@ -397,9 +514,11 @@ QString PlayerMediaSwitcherPanel::currentSelectedSeasonId() const {
     return m_seasons.isEmpty() ? QString() : m_seasons.first().id;
 }
 
-int PlayerMediaSwitcherPanel::visibleHeightForWidget(const QWidget *widget) const
+int PlayerMediaSwitcherPanel::visibleHeightForWidget(const QWidget *widget, int availableWidth) const
 {
-    if (!widget || !widget->isVisible()) {
+    
+    
+    if (!widget || widget->isHidden()) {
         return 0;
     }
 
@@ -408,9 +527,10 @@ int PlayerMediaSwitcherPanel::visibleHeightForWidget(const QWidget *widget) cons
         return widget->minimumHeight();
     }
 
-    if (widget->height() > 0) {
-        return widget->height();
-    }
-
-    return widget->sizeHint().height();
+    
+    
+    const int hint = widget->hasHeightForWidth()
+                         ? widget->heightForWidth(availableWidth)
+                         : widget->sizeHint().height();
+    return qMax(widget->minimumSizeHint().height(), qMax(widget->minimumHeight(), hint));
 }

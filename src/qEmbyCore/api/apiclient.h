@@ -15,9 +15,14 @@ public:
     explicit ApiClient(const ServerProfile& profile, NetworkManager* nm, QObject* parent = nullptr);
 
     
+    void setCancellationContext(QObject* context);
+
+    
     QCoro::Task<QJsonObject> get(const QString& path);
+    QCoro::Task<QJsonObject> get(QString path, QPointer<QObject> cancellationContext);
     QCoro::Task<QString> getText(const QString& path);
     QCoro::Task<QJsonObject> post(const QString& path, const QJsonObject& payload);
+    QCoro::Task<QJsonObject> post(QString path, QJsonObject payload, QPointer<QObject> cancellationContext);
     QCoro::Task<QJsonObject> postArray(const QString& path, const QJsonArray& payload);
     QCoro::Task<QJsonObject> postBytes(const QString& path, QByteArray payload,
                                        QString contentType);
@@ -27,6 +32,7 @@ public:
 private:
     ServerProfile m_profile;
     NetworkManager* m_network;
+    QPointer<QObject> m_cancellationContext;
 
     
     QMap<QString, QString> getAuthHeaders() const;

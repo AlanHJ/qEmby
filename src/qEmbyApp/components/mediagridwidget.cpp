@@ -14,6 +14,8 @@
 #include <QScrollBar>
 #include <QSet>
 #include <QStyleOptionViewItem>
+#include <QTimer>
+#include <QDebug>
 #include <algorithm>
 
 MediaGridWidget::MediaGridWidget(QEmbyCore* core, QWidget* parent)
@@ -69,6 +71,12 @@ MediaGridWidget::MediaGridWidget(QEmbyCore* core, QWidget* parent)
 
     m_listView->setModel(m_listModel);
     m_listView->setItemDelegate(m_listDelegate);
+    connect(m_listModel, &MediaListModel::artworkEvidenceChanged,
+            this, &MediaGridWidget::updateAutomaticArtworkLayout, Qt::QueuedConnection);
+    connect(m_listModel, &QAbstractItemModel::modelReset,
+            this, &MediaGridWidget::updateAutomaticArtworkLayout, Qt::QueuedConnection);
+    connect(m_listModel, &QAbstractItemModel::rowsRemoved,
+            this, &MediaGridWidget::updateAutomaticArtworkLayout, Qt::QueuedConnection);
     layout->addWidget(m_listView);
 
     
@@ -98,6 +106,15 @@ void MediaGridWidget::setBasePadding(int padding) {
     adjustGrid();
 }
 
+void MediaGridWidget::setLibraryArtworkPolicyEnabled(bool enabled)
+{
+    if (m_listModel->property("artworkPolicyEligible").toBool() == enabled) return;
+    m_listModel->setProperty("artworkPolicyEligible", enabled);
+    m_listModel->clearImageCache();
+    adjustGrid();
+    updateVisibleImagePriority();
+}
+
 void MediaGridWidget::setCardStyle(MediaCardDelegate::CardStyle style) {
     if (m_currentStyle == style) return;
     m_currentStyle = style;
@@ -125,6 +142,35 @@ void MediaGridWidget::setCardStyle(MediaCardDelegate::CardStyle style) {
 
     adjustGrid();
     updateVisibleImagePriority();
+}
+
+void MediaGridWidget::setAutomaticArtworkLayout(bool enabled)
+{
+    if (m_automaticArtworkLayout != enabled) {
+        m_automaticArtworkLayout = enabled;
+        m_listModel->setProperty("automaticPageArtwork", enabled);
+        m_listModel->clearImageCache();
+        if (enabled && m_listModel->loadedArtworkState() == ArtworkPolicyUtils::State::Unknown)
+            setCardStyle(MediaCardDelegate::Poster);
+    }
+    updateAutomaticArtworkLayout();
+}
+
+void MediaGridWidget::updateAutomaticArtworkLayout()
+{
+    if (!m_automaticArtworkLayout) return;
+    const auto state = m_listModel->loadedArtworkState();
+    
+    if (state == ArtworkPolicyUtils::State::Unknown && m_listModel->rowCount() > 0) return;
+    const auto style = ArtworkPolicyUtils::isLandscape(state)
+        ? MediaCardDelegate::LibraryTile : MediaCardDelegate::Poster;
+    if (style == m_currentStyle) return;
+    const auto anchor = captureViewAnchor();
+    qDebug() << "[MediaGridWidget] Automatic uniform layout changed"
+             << "| state=" << int(state) << "| landscape=" << (style == MediaCardDelegate::LibraryTile)
+             << "| loadedItems=" << m_listModel->rowCount();
+    setCardStyle(style);
+    restoreViewAnchor(anchor);
 }
 
 void MediaGridWidget::setLoading(bool loading)
@@ -266,6 +312,55 @@ void MediaGridWidget::notifyLoadMoreIfNeeded()
     if (vBar->maximum() <= 0 || remaining <= kLoadMoreThreshold) {
         Q_EMIT loadMoreRequested();
     }
+}
+
+MediaGridWidget::ViewAnchor MediaGridWidget::captureViewAnchor() const
+{
+    ViewAnchor anchor;
+    if (!m_listView || !m_listModel) return anchor;
+    anchor.scrollPosition = saveScrollPosition();
+    anchor.currentItemId = m_listModel->getItem(m_listView->currentIndex()).id;
+    const QRect viewport = m_listView->viewport()->rect();
+    for (int y = viewport.top(); y <= qMin(viewport.bottom(), 80); y += 8) {
+        for (int x = viewport.left(); x <= viewport.right(); x += 16) {
+            const auto index = m_listView->indexAt(QPoint(x, y));
+            if (!index.isValid()) continue;
+            anchor.itemId = m_listModel->getItem(index).id;
+            anchor.offset = m_listView->visualRect(index).top();
+            return anchor;
+        }
+    }
+    return anchor;
+}
+
+void MediaGridWidget::restoreViewAnchor(const ViewAnchor& anchor)
+{
+    if (!m_listView || !m_listModel) return;
+    QModelIndex visible;
+    for (int row = 0; row < m_listModel->rowCount(); ++row) {
+        const auto index = m_listModel->index(row, 0);
+        const auto id = m_listModel->getItem(index).id;
+        if (id == anchor.currentItemId && !id.isEmpty()) m_listView->setCurrentIndex(index);
+        if (id == anchor.itemId && !id.isEmpty()) visible = index;
+    }
+    if (!visible.isValid()) { restoreScrollPosition(anchor.scrollPosition); return; }
+    const QRect rect = m_listView->visualRect(visible);
+    const int offset = qMax(anchor.offset, -qMax(0, rect.height() - 1));
+    auto* bar = m_listView->verticalScrollBar();
+    bar->setValue(bar->value() + rect.top() - offset);
+    updateVisibleImagePriority();
+}
+
+void MediaGridWidget::hideEvent(QHideEvent* event)
+{
+    m_listModel->setPriorityRows({});
+    QWidget::hideEvent(event);
+}
+
+void MediaGridWidget::showEvent(QShowEvent* event)
+{
+    QWidget::showEvent(event);
+    QTimer::singleShot(0, this, [this]() { updateVisibleImagePriority(); });
 }
 
 void MediaGridWidget::updateVisibleImagePriority()

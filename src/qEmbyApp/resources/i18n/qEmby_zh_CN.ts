@@ -3,6 +3,30 @@
 <TS version="2.1" language="zh_CN">
 
 <context>
+    <name>AdminService</name>
+    <message>
+        <source>Removing identification requires an actor ID and administrator privileges.</source>
+        <translation>删除识别需要有效的演员 ID 和管理员权限。</translation>
+    </message>
+    <message>
+        <source>The server session changed. Please try again.</source>
+        <translation>服务器会话已更改，请重试。</translation>
+    </message>
+    <message>
+        <source>The selected item is not a valid actor.</source>
+        <translation>所选项目不是有效的演员。</translation>
+    </message>
+    <message>
+        <source>Unable to determine the image format. Please choose a valid image file.</source>
+        <translation>无法确定图片格式，请选择有效的图片文件。</translation>
+    </message>
+    <message>
+        <source>The server could not find the image storage directory. Check the server's image paths, container mounts and directory permissions, then retry the upload.</source>
+        <translation>服务器找不到图片存储目录。请检查服务端图片路径、容器挂载及目录权限，然后重试上传。</translation>
+    </message>
+</context>
+
+<context>
     <name>MainWindow</name>
     <message>
         <source>Press Back again to logout</source>
@@ -75,7 +99,31 @@ Release notes:
 </context>
 
 <context>
+    <name>LoadingOverlay</name>
+    <message>
+        <source>Cancel</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <source>Cancel (Esc)</source>
+        <translation>取消（Esc）</translation>
+    </message>
+</context>
+
+<context>
     <name>LoginView</name>
+    <message>
+        <source>Connecting to server...</source>
+        <translation>正在连接服务器...</translation>
+    </message>
+    <message>
+        <source>Signing in...</source>
+        <translation>正在登录...</translation>
+    </message>
+    <message>
+        <source>Connected</source>
+        <translation>连接成功</translation>
+    </message>
     <message>
         <source>Login</source>
         <translation>登录</translation>
@@ -93,8 +141,8 @@ Release notes:
         <translation>服务器地址 (例如 192.168.1.1 或域名)</translation>
     </message>
     <message>
-        <source>Server URL (e.g. example.com, example.com/emby or https:
-        <translation>服务器 URL（例如 example.com、example.com/emby 或 https:
+        <source>Server URL (e.g. example.com, example.com/emby or https://example.com:8920/jellyfin)</source>
+        <translation>服务器 URL（例如 example.com、example.com/emby 或 https://example.com:8920/jellyfin）</translation>
     </message>
     <message>
         <source>Server URL</source>
@@ -119,6 +167,10 @@ Release notes:
     <message>
         <source>Ignore SSL certificate verification</source>
         <translation>忽略 SSL 证书验证</translation>
+    </message>
+    <message>
+        <source>Ignore certificate</source>
+        <translation>忽略证书</translation>
     </message>
     <message>
         <source>Proxy settings</source>
@@ -259,8 +311,8 @@ This action cannot be undone.</source>
         <translation>请输入有效的端口号。</translation>
     </message>
     <message>
-        <source>Server URL must use http:
-        <translation>服务器 URL 必须使用 http:
+        <source>Server URL must use http:// or https://.</source>
+        <translation>服务器 URL 必须使用 http:// 或 https://。</translation>
     </message>
     <message>
         <source>Connecting...</source>
@@ -486,10 +538,38 @@ Error: </source>
         <source>Error Loading Items</source>
         <translation>加载项目失败</translation>
     </message>
+    <message>
+        <source>Follow automatic detection</source>
+        <translation>跟随自动识别</translation>
+    </message>
+    <message>
+        <source>View Mode</source>
+        <translation>视图模式</translation>
+    </message>
+    <message>
+        <source>Portrait posters</source>
+        <translation>竖版海报</translation>
+    </message>
+    <message>
+        <source>Landscape tiles</source>
+        <translation>横向磁贴</translation>
+    </message>
+    <message>
+        <source>Album covers</source>
+        <translation>专辑封面</translation>
+    </message>
+    <message>
+        <source>Automatic</source>
+        <translation>自动识别</translation>
+    </message>
 </context>
 
 <context>
     <name>DetailActionWidget</name>
+    <message>
+        <source>More</source>
+        <translation>更多</translation>
+    </message>
     <message>
         <source>▶ Resume</source>
         <translation>▶ 继续播放</translation>
@@ -747,6 +827,10 @@ Error: </source>
 <context>
     <name>MediaActionMenu</name>
     <message>
+        <source>Remove Identification</source>
+        <translation>删除识别</translation>
+    </message>
+    <message>
         <source>Play</source>
         <translation>播放</translation>
     </message>
@@ -818,6 +902,26 @@ Error: </source>
 
 <context>
     <name>BaseView</name>
+    <message>
+        <source>Remove Identification</source>
+        <translation>删除识别</translation>
+    </message>
+    <message>
+        <source>Remove external identification IDs for actor "%1"? Existing details and images will be kept.</source>
+        <translation>删除演员“%1”的外部识别 ID？现有资料和图片将保留。</translation>
+    </message>
+    <message>
+        <source>Remove identification for actor "%1"? Emby will reset this actor's metadata. You can identify the actor again afterwards.</source>
+        <translation>删除演员“%1”的识别？Emby 将重置该演员的元数据，之后可以重新识别。</translation>
+    </message>
+    <message>
+        <source>Failed to remove identification: %1</source>
+        <translation>删除识别失败：%1</translation>
+    </message>
+    <message>
+        <source>Identification removed</source>
+        <translation>已删除识别</translation>
+    </message>
     <message>
         <source>Added to Favorites</source>
         <translation>已添加到收藏</translation>
@@ -962,6 +1066,14 @@ This action cannot be undone.</source>
         <source>Failed to remove media: %1</source>
         <translation>移除媒体失败：%1</translation>
     </message>
+    <message>
+        <source>Unable to load tracks.</source>
+        <translation>无法加载曲目。</translation>
+    </message>
+    <message>
+        <source>Unable to start playback.</source>
+        <translation>无法开始播放。</translation>
+    </message>
 </context>
 
 <context>
@@ -1078,6 +1190,22 @@ This action cannot be undone.</source>
 
 <context>
     <name>MediaImageEditDialog</name>
+    <message>
+        <source>Failed to load image</source>
+        <translation>图片加载失败</translation>
+    </message>
+    <message>
+        <source>Images</source>
+        <translation>图片</translation>
+    </message>
+    <message>
+        <source>Add Backdrop</source>
+        <translation>添加背景图</translation>
+    </message>
+    <message>
+        <source>Retry</source>
+        <translation>重试</translation>
+    </message>
     <message>
         <source>Primary</source>
         <translation>主图</translation>
@@ -1247,8 +1375,8 @@ This action cannot be undone.</source>
         <translation>请为“%2”的 %1 图像粘贴一个图片地址。</translation>
     </message>
     <message>
-        <source>https:
-        <translation>https:
+        <source>https://example.com/image.jpg</source>
+        <translation>https://example.com/image.jpg</translation>
     </message>
     <message>
         <source>Save Image</source>
@@ -1393,8 +1521,8 @@ Choose a file, paste an image URL, or drag one onto the preview.</source>
         <translation>演职人员</translation>
     </message>
     <message>
-        <source>Additional Parts</source>
-        <translation>附加内容</translation>
+        <source>Chapters</source>
+        <translation>章节</translation>
     </message>
     <message>
         <source>Collection</source>
@@ -1406,7 +1534,7 @@ Choose a file, paste an image URL, or drag one onto the preview.</source>
     </message>
     <message>
         <source>Episodes</source>
-        <translation>剧集</translation>
+        <translation>集</translation>
     </message>
     <message>
         <source>Ep #</source>
@@ -1524,6 +1652,22 @@ Choose a file, paste an image URL, or drag one onto the preview.</source>
         <source>Failed to update metadata: %1</source>
         <translation>更新元数据失败：%1</translation>
     </message>
+    <message>
+        <source>Live TV</source>
+        <translation>电视直播</translation>
+    </message>
+    <message>
+        <source>Music</source>
+        <translation>音乐</translation>
+    </message>
+    <message>
+        <source>Refresh</source>
+        <translation>刷新</translation>
+    </message>
+    <message>
+        <source>Unable to refresh %1. Try again later.</source>
+        <translation>无法刷新%1，请稍后重试。</translation>
+    </message>
 </context>
 
 <context>
@@ -1559,6 +1703,14 @@ Choose a file, paste an image URL, or drag one onto the preview.</source>
     <message>
         <source>%1. %2</source>
         <translation>%1. %2</translation>
+    </message>
+    <message>
+        <source>Live TV</source>
+        <translation>电视直播</translation>
+    </message>
+    <message>
+        <source>Music</source>
+        <translation>音乐</translation>
     </message>
 </context>
 
@@ -2013,6 +2165,10 @@ Choose a file, paste an image URL, or drag one onto the preview.</source>
         <translation>最大化</translation>
     </message>
     <message>
+        <source>Restore</source>
+        <translation>还原</translation>
+    </message>
+    <message>
         <source>Close</source>
         <translation>关闭</translation>
     </message>
@@ -2055,6 +2211,14 @@ Choose a file, paste an image URL, or drag one onto the preview.</source>
     <message>
         <source>Fullscreen</source>
         <translation>全屏</translation>
+    </message>
+    <message>
+        <source>Exit Fullscreen</source>
+        <translation>退出全屏</translation>
+    </message>
+    <message>
+        <source>The live stream ended. Open the channel again.</source>
+        <translation>直播流已结束，请重新打开频道。</translation>
     </message>
 </context>
 
@@ -2517,6 +2681,22 @@ This will remove the current log and rotated backups. This action cannot be undo
 <context>
     <name>PagePlayer</name>
     <message>
+        <source>Progress Hover Preview</source>
+        <translation>进度条悬停预览</translation>
+    </message>
+    <message>
+        <source>Choose what appears when hovering over the playback progress bar</source>
+        <translation>选择鼠标悬停在播放进度条上时显示的内容</translation>
+    </message>
+    <message>
+        <source>Time Only</source>
+        <translation>仅时间</translation>
+    </message>
+    <message>
+        <source>Time and Preview</source>
+        <translation>时间和预览画面</translation>
+    </message>
+    <message>
         <source>Hide Subtitles</source>
         <translation>不显示字幕</translation>
     </message>
@@ -2548,6 +2728,42 @@ This will remove the current log and rotated backups. This action cannot be undo
 
 <context>
     <name>PageLibrary</name>
+    <message>
+        <source>Carousel Height</source>
+        <translation>轮播图高度</translation>
+    </message>
+    <message>
+        <source>Height relative to the home area below the title bar, capped at two-thirds of the displayed backdrop height. Applies to this server.</source>
+        <translation>以标题栏下方的主页高度为基准，最高不超过背景图片显示高度的三分之二，仅对当前服务器生效</translation>
+    </message>
+    <message>
+        <source>35%</source>
+        <translation>35%</translation>
+    </message>
+    <message>
+        <source>50% (Default)</source>
+        <translation>50%（默认）</translation>
+    </message>
+    <message>
+        <source>65%</source>
+        <translation>65%</translation>
+    </message>
+    <message>
+        <source>Carousel Slide Count</source>
+        <translation>轮播图数量</translation>
+    </message>
+    <message>
+        <source>Number of carousel slides for this server (%1–%2, default %3)</source>
+        <translation>当前服务器的轮播图数量（%1–%2 张，默认 %3 张）</translation>
+    </message>
+    <message>
+        <source>Show Media Carousel</source>
+        <translation>开启轮播图</translation>
+    </message>
+    <message>
+        <source>Display the media carousel at the top of the home screen for this server</source>
+        <translation>在主页顶部显示轮播图，仅对当前服务器生效</translation>
+    </message>
     <message>
         <source>Library</source>
         <translation>媒体库</translation>
@@ -2643,6 +2859,22 @@ This will remove the current log and rotated backups. This action cannot be undo
     <message>
         <source>Show media details in tooltips when hovering over media cards</source>
         <translation>悬停媒体卡片时，在提示框中显示媒体详细信息</translation>
+    </message>
+    <message>
+        <source>Show Playback Progress on Media Cards</source>
+        <translation>在媒体卡片上显示播放进度</translation>
+    </message>
+    <message>
+        <source>Show Cover Ratings</source>
+        <translation>显示封面评分</translation>
+    </message>
+    <message>
+        <source>Display media ratings on media card covers</source>
+        <translation>在媒体卡片封面上显示评分</translation>
+    </message>
+    <message>
+        <source>Display the playback progress at the bottom of media images</source>
+        <translation>在媒体图片底部显示播放进度条</translation>
     </message>
     <message>
         <source>Show Favorite Folders</source>
@@ -2783,6 +3015,82 @@ This will remove the current log and rotated backups. This action cannot be undo
     <message>
         <source>Image cache cleared</source>
         <translation>图片缓存已清理</translation>
+    </message>
+    <message>
+        <source>Show Live TV</source>
+        <translation>显示电视直播</translation>
+    </message>
+    <message>
+        <source>Show Music</source>
+        <translation>显示音乐</translation>
+    </message>
+    <message>
+        <source>Display available TV channels on the home screen</source>
+        <translation>在首页显示可用的电视频道</translation>
+    </message>
+    <message>
+        <source>Display available music albums on the home screen</source>
+        <translation>在首页显示可用的音乐专辑</translation>
+    </message>
+    <message>
+        <source>Automatically detect artwork layout</source>
+        <translation>自动识别封面横竖布局</translation>
+    </message>
+    <message>
+        <source>Adjust layout using loaded artwork dimensions. Manual library layouts take priority.</source>
+        <translation>根据已加载封面的实际尺寸自动调整布局；手动指定的布局优先。</translation>
+    </message>
+    <message>
+        <source>Check all library artwork in the background</source>
+        <translation>后台检查全库封面方向</translation>
+    </message>
+    <message>
+        <source>Automatic detection normally uses loaded items only. A full check reads all artwork information and may increase traffic and server load; use on fast connections.</source>
+        <translation>自动识别默认仅根据已加载内容判断。开启后在后台读取全部媒体的封面信息，适合内网或高速连接，可能增加流量和服务器负载。</translation>
+    </message>
+    <message>
+        <source>Artwork checked: %1 / %2</source>
+        <translation>已检查封面：%1 / %2</translation>
+    </message>
+    <message>
+        <source>Server address changed. Turn background checking off and on to enable it here.</source>
+        <translation>服务器地址已变化，请关闭再重新开启后台检查，以确认在此地址进行检查。</translation>
+    </message>
+    <message>
+        <source>Portrait posters</source>
+        <translation>竖版海报</translation>
+    </message>
+    <message>
+        <source>Landscape tiles</source>
+        <translation>横向磁贴</translation>
+    </message>
+    <message>
+        <source>Default cover layout</source>
+        <translation>默认封面布局</translation>
+    </message>
+    <message>
+        <source>Used when automatic detection is off or undecided. Manual choices on library and category pages take priority.</source>
+        <translation>自动识别关闭或尚未确定结果时使用。媒体库和分类页中手动选择的布局优先。</translation>
+    </message>
+    <message>
+        <source>Detect library layouts from loaded cover dimensions for this server. Manual page choices take priority; use the default cover layout until detection is ready.</source>
+        <translation>根据已加载封面的尺寸识别当前服务器各库的布局。页面手动选择优先；识别结果确定前使用默认封面布局。</translation>
+    </message>
+    <message>
+        <source>Use another image when artwork is missing</source>
+        <translation>缺图时使用其他图片</translation>
+    </message>
+    <message>
+        <source>When artwork such as a primary poster is missing, use another available image. This controls image selection; cover layout is set separately.</source>
+        <translation>主海报等图片缺失时，使用其他可用图片补位。此项决定使用哪张图片，封面布局由单独的设置控制。</translation>
+    </message>
+    <message>
+        <source>Automatic detection</source>
+        <translation>自动识别</translation>
+    </message>
+    <message>
+        <source>Default layout for this server. Automatic detection uses loaded cover dimensions; manual choices on individual pages take priority.</source>
+        <translation>当前服务器的默认布局。自动识别根据已加载封面的尺寸调整，各页面手动选择的布局优先。</translation>
     </message>
 </context>
 
@@ -3614,6 +3922,10 @@ This action cannot be undone.</source>
     <message>
         <source>Launching %1...</source>
         <translation>正在启动 %1...</translation>
+    </message>
+    <message>
+        <source>Unable to start playback.</source>
+        <translation>无法开始播放。</translation>
     </message>
 </context>
 
@@ -4927,6 +5239,14 @@ This will remove the libraries from the server, but will not delete the actual m
 
 <context>
     <name>LibraryMetadataEditDialog</name>
+    <message>
+        <source>Birth Date</source>
+        <translation>出生日期</translation>
+    </message>
+    <message>
+        <source>Death Date</source>
+        <translation>逝世日期</translation>
+    </message>
     <message>
         <source>Edit Metadata</source>
         <translation>编辑元数据</translation>
@@ -9218,6 +9538,18 @@ Address: %2</source>
 <context>
     <name>PlayerMediaSwitcherPanel</name>
     <message>
+        <source>Retry</source>
+        <translation>重试</translation>
+    </message>
+    <message>
+        <source>Media Switcher</source>
+        <translation>媒体切换</translation>
+    </message>
+    <message>
+        <source>Chapters</source>
+        <translation>章节</translation>
+    </message>
+    <message>
         <source>Continue Watching</source>
         <translation>继续观看</translation>
     </message>
@@ -9814,6 +10146,371 @@ This cannot be undone.</source>
     <message>
         <source>Hide from home page</source>
         <translation>在主页隐藏</translation>
+    </message>
+</context>
+<context>
+    <name>MediaImageEditCard</name>
+    <message>
+        <source>View Image</source>
+        <translation>查看图片</translation>
+    </message>
+    <message>
+        <source>Drop an image file or image URL here to upload it.</source>
+        <translation>将图片文件或图片地址拖到这里即可上传。</translation>
+    </message>
+    <message>
+        <source>Click to view the image. Drop an image file here to replace it.</source>
+        <translation>点击查看图片，拖入图片文件即可替换。</translation>
+    </message>
+    <message>
+        <source>Loading preview...</source>
+        <translation>正在加载预览...</translation>
+    </message>
+    <message>
+        <source>Drop an image file or image URL here to replace it.</source>
+        <translation>将图片文件或图片地址拖到这里即可替换。</translation>
+    </message>
+    <message>
+        <source>No image</source>
+        <translation>暂无图片</translation>
+    </message>
+    <message>
+        <source>Replace Image</source>
+        <translation>替换图片</translation>
+    </message>
+    <message>
+        <source>Choose Image</source>
+        <translation>选择图片</translation>
+    </message>
+    <message>
+        <source>Image URL</source>
+        <translation>图片地址</translation>
+    </message>
+    <message>
+        <source>Download</source>
+        <translation>下载</translation>
+    </message>
+    <message>
+        <source>Remove Image</source>
+        <translation>移除图片</translation>
+    </message>
+</context>
+
+<context>
+    <name>ImagePreviewDialog</name>
+    <message>
+        <source>View Image</source>
+        <translation>查看图片</translation>
+    </message>
+    <message>
+        <source>Original Size</source>
+        <translation>原始尺寸</translation>
+    </message>
+    <message>
+        <source>Fit to Window</source>
+        <translation>适应窗口</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>关闭</translation>
+    </message>
+    <message>
+        <source>Loading image...</source>
+        <translation>正在加载图片...</translation>
+    </message>
+</context>
+
+<context>
+    <name>MediaCarouselWidget</name>
+    <message>
+        <source>Logo for %1</source>
+        <translation>%1 的标志</translation>
+    </message>
+    <message>
+        <source>Media Carousel</source>
+        <translation>媒体轮播</translation>
+    </message>
+    <message>
+        <source>Previous slide</source>
+        <translation>上一张</translation>
+    </message>
+    <message>
+        <source>Next slide</source>
+        <translation>下一张</translation>
+    </message>
+    <message>
+        <source>Movie</source>
+        <translation>电影</translation>
+    </message>
+    <message>
+        <source>Series</source>
+        <translation>剧集</translation>
+    </message>
+    <message>
+        <source>Rating %1</source>
+        <translation>评分 %1</translation>
+    </message>
+    <message>
+        <source>%1 / %2</source>
+        <translation>%1 / %2</translation>
+    </message>
+    <message>
+        <source>‹</source>
+        <translation>‹</translation>
+    </message>
+    <message>
+        <source>›</source>
+        <translation>›</translation>
+    </message>
+</context>
+<context>
+    <name>CarouselNavigationWidget</name>
+    <message>
+        <source>Scroll to browse slides</source>
+        <translation>滚动鼠标滚轮浏览更多轮播图</translation>
+    </message>
+    <message>
+        <source>Show another selection</source>
+        <translation>换一批</translation>
+    </message>
+    <message>
+        <source>Carousel navigation</source>
+        <translation>轮播导航</translation>
+    </message>
+    <message>
+        <source>Previous slide</source>
+        <translation>上一张</translation>
+    </message>
+    <message>
+        <source>Next slide</source>
+        <translation>下一张</translation>
+    </message>
+    <message>
+        <source>Go to slide %1: %2</source>
+        <translation>切换到第 %1 张：%2</translation>
+    </message>
+    <message>
+        <source>‹</source>
+        <translation>‹</translation>
+    </message>
+    <message>
+        <source>›</source>
+        <translation>›</translation>
+    </message>
+    <message>
+        <source>•</source>
+        <translation>•</translation>
+    </message>
+</context>
+<context>
+    <name>SslVerificationButton</name>
+    <message>
+        <source>Ignore certificate</source>
+        <translation>忽略证书</translation>
+    </message>
+    <message>
+        <source>Ignore SSL certificate verification</source>
+        <translation>忽略 SSL 证书验证</translation>
+    </message>
+    <message>
+        <source>Use this only for trusted self-signed or private CA HTTPS servers.</source>
+        <translation>仅用于可信的自签名证书或私有 CA 的 HTTPS 服务器。</translation>
+    </message>
+</context>
+<context>
+    <name>MediaPartUtils</name>
+    <message>
+        <source>Chapter %1 / %2</source>
+        <translation>第 %1 / %2 章</translation>
+    </message>
+    <message>
+        <source>%1 — %2</source>
+        <translation>%1 — %2</translation>
+    </message>
+</context>
+<context>
+    <name>PlayerView</name>
+    <message>
+        <source>Chapters</source>
+        <translation>章节</translation>
+    </message>
+    <message>
+        <source>Switch chapter</source>
+        <translation>切换章节</translation>
+    </message>
+    <message>
+        <source>Retry</source>
+        <translation>重试</translation>
+    </message>
+    <message>
+        <source>Loading timed out. Please try again.</source>
+        <translation>加载超时，请重试。</translation>
+    </message>
+    <message>
+        <source>Unable to load media. Please check your connection and try again.</source>
+        <translation>无法加载媒体，请检查网络连接后重试。</translation>
+    </message>
+    <message>
+        <source>Unable to load media.</source>
+        <translation>无法加载媒体。</translation>
+    </message>
+    <message>
+        <source>Unable to play this media.</source>
+        <translation>无法播放此媒体。</translation>
+    </message>
+</context>
+<context>
+    <name>PagePlayer</name>
+    <message>
+        <source>Default Playback Speed</source>
+        <translation>默认播放速度</translation>
+    </message>
+    <message>
+        <source>Playback speed applied when starting media</source>
+        <translation>开始播放媒体时使用的播放速度</translation>
+    </message>
+    <message>
+        <source>%1X</source>
+        <translation>%1倍</translation>
+    </message>
+</context>
+<context>
+    <name>PlayerView</name>
+    <message>
+        <source>%1X</source>
+        <translation>%1倍</translation>
+    </message>
+</context>
+<context>
+    <name>MusicPlaybackManager</name>
+    <message>
+        <source>Stop video playback before playing music.</source>
+        <translation>请先停止视频，再播放音乐。</translation>
+    </message>
+    <message>
+        <source>Unable to play this track.</source>
+        <translation>无法播放此曲目。</translation>
+    </message>
+</context>
+<context>
+    <name>MiniMusicPlayer</name>
+    <message>
+        <source>Previous</source>
+        <translation>上一首</translation>
+    </message>
+    <message>
+        <source>Next</source>
+        <translation>下一首</translation>
+    </message>
+    <message>
+        <source>Pause</source>
+        <translation>暂停</translation>
+    </message>
+    <message>
+        <source>Play</source>
+        <translation>播放</translation>
+    </message>
+    <message>
+        <source>Volume</source>
+        <translation>音量</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>关闭</translation>
+    </message>
+</context>
+<context>
+    <name>MusicTrackListWidget</name>
+    <message>
+        <source>Play Album</source>
+        <translation>播放专辑</translation>
+    </message>
+    <message>
+        <source>Playing</source>
+        <translation>播放中</translation>
+    </message>
+    <message>
+        <source>Paused</source>
+        <translation>已暂停</translation>
+    </message>
+    <message>
+        <source>Track</source>
+        <translation>曲号</translation>
+    </message>
+    <message>
+        <source>Title</source>
+        <translation>标题</translation>
+    </message>
+    <message>
+        <source>Artist</source>
+        <translation>艺术家</translation>
+    </message>
+    <message>
+        <source>Duration</source>
+        <translation>时长</translation>
+    </message>
+    <message>
+        <source>Loading tracks…</source>
+        <translation>正在加载曲目…</translation>
+    </message>
+    <message>
+        <source>No tracks available.</source>
+        <translation>没有可用曲目。</translation>
+    </message>
+    <message>
+        <source>Unable to load tracks.</source>
+        <translation>无法加载曲目。</translation>
+    </message>
+    <message>
+        <source>I have stopped the external player</source>
+        <translation>我已停止外置播放器</translation>
+    </message>
+    <message>
+        <source>Use after closing an external player whose completion cannot be detected.</source>
+        <translation>外置播放器无法自动判断结束时，请先关闭播放器，再使用此操作。</translation>
+    </message>
+    <message>
+        <source>Status</source>
+        <translation>状态</translation>
+    </message>
+    <message>
+        <source>Loading</source>
+        <translation>加载中</translation>
+    </message>
+    <message>
+        <source>Error</source>
+        <translation>播放失败</translation>
+    </message>
+</context>
+<context>
+    <name>ArtworkViewButton</name>
+    <message>
+        <source>View Mode</source>
+        <translation>视图模式</translation>
+    </message>
+    <message>
+        <source>Follow automatic detection</source>
+        <translation>跟随自动识别</translation>
+    </message>
+    <message>
+        <source>Portrait posters</source>
+        <translation>竖版海报</translation>
+    </message>
+    <message>
+        <source>Landscape tiles</source>
+        <translation>横向磁贴</translation>
+    </message>
+    <message>
+        <source>Album covers</source>
+        <translation>专辑封面</translation>
+    </message>
+    <message>
+        <source>Automatic</source>
+        <translation>自动识别</translation>
+    </message>
+    <message>
+        <source>Follow default</source>
+        <translation>跟随默认</translation>
     </message>
 </context>
 </TS>

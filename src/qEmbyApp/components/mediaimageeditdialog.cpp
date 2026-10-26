@@ -3,15 +3,17 @@
 #include "modernmessagebox.h"
 #include "moderntoast.h"
 #include "textinputdialog.h"
-#include "../utils/imageutils.h"
+#include "imagepreviewdialog.h"
+#include "flowlayout.h"
+#include "../utils/layoututils.h"
 
 #include <qembycore.h>
 #include <services/admin/adminservice.h>
 #include <services/media/mediaservice.h>
 
-#include <QAbstractItemView>
 #include <QBuffer>
 #include <QCoreApplication>
+#include <QDebug>
 #include <QDir>
 #include <QDragEnterEvent>
 #include <QDragMoveEvent>
@@ -20,14 +22,13 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
-#include <QGridLayout>
 #include <QHash>
 #include <QHBoxLayout>
 #include <QImage>
 #include <QImageReader>
 #include <QLabel>
-#include <QListWidget>
-#include <QListWidgetItem>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QMimeDatabase>
 #include <QMimeData>
 #include <QMimeType>
@@ -35,25 +36,23 @@
 #include <QPointer>
 #include <QPushButton>
 #include <QSaveFile>
+#include <QSet>
+#include <QScopeGuard>
 #include <QShowEvent>
-#include <QSignalBlocker>
 #include <QSize>
-#include <QSizePolicy>
 #include <QStandardPaths>
-#include <QStyle>
+#include <QTimer>
 #include <QUrl>
 #include <QVariant>
 #include <QVBoxLayout>
 #include <algorithm>
-#include <limits>
 #include <stdexcept>
 #include <utility>
 
 namespace {
 
-constexpr int kImageTypeRole = Qt::UserRole + 420;
-const QSize kPreviewSize(240, 360);
-constexpr int kPreviewPanelWidth = 292;
+constexpr int kPreviewWidth = 440;
+constexpr int kPreviewWorkers = 4;
 
 QString buildItemImagePath(QString itemId, QString imageType, int imageIndex)
 {
@@ -126,6 +125,10 @@ QStringList preferredImageTypeOrder(const MediaImageEditTarget& target)
     const QString itemType = target.itemType.trimmed();
     const QString mediaType = target.mediaType.trimmed();
 
+    if (itemType == QLatin1String("Person")) {
+        return {QStringLiteral("Primary"), QStringLiteral("Backdrop")};
+    }
+
     if (itemType == QLatin1String("Episode") ||
         itemType == QLatin1String("Video") ||
         itemType == QLatin1String("MusicVideo")) {
@@ -151,39 +154,12 @@ QStringList preferredImageTypeOrder(const MediaImageEditTarget& target)
                 QStringLiteral("Backdrop")};
     }
 
-    return {QStringLiteral("Primary"),    QStringLiteral("Thumb"),
-            QStringLiteral("Backdrop"),   QStringLiteral("Banner"),
-            QStringLiteral("Logo"),       QStringLiteral("Art"),
-            QStringLiteral("Disc"),       QStringLiteral("Box"),
+    return {QStringLiteral("Primary"),    QStringLiteral("Logo"),
+            QStringLiteral("Thumb"),      QStringLiteral("Banner"),
+            QStringLiteral("Disc"),       QStringLiteral("Art"),
+            QStringLiteral("Backdrop"),   QStringLiteral("Box"),
             QStringLiteral("BoxRear"),    QStringLiteral("Menu"),
             QStringLiteral("Screenshot"), QStringLiteral("Chapter")};
-}
-
-QString buildListItemText(const QString& displayName,
-                         const QList<ItemImageInfo>& images)
-{
-    QStringList lines;
-    lines.append(displayName);
-
-    if (images.isEmpty()) {
-        lines.append(
-            QCoreApplication::translate("MediaImageEditDialog", "No image"));
-        return lines.join(QLatin1Char('\n'));
-    }
-
-    const int imageCount = images.size();
-    const ItemImageInfo& previewImage = images.first();
-    QString summary = QCoreApplication::translate(
-                          "MediaImageEditDialog", "%1 image(s) available")
-                          .arg(imageCount);
-    if (previewImage.width > 0 && previewImage.height > 0) {
-        summary +=
-            QStringLiteral("  ·  %1 × %2")
-                .arg(previewImage.width)
-                .arg(previewImage.height);
-    }
-    lines.append(summary);
-    return lines.join(QLatin1Char('\n'));
 }
 
 QString formatImageSize(qint64 size)
@@ -216,10 +192,6 @@ QString buildPreviewDetails(const QList<ItemImageInfo>& images)
 
     const ItemImageInfo& info = images.first();
     QStringList segments;
-    segments.append(QCoreApplication::translate("MediaImageEditDialog",
-                                                "%1 image(s)")
-                        .arg(images.size()));
-
     if (info.width > 0 && info.height > 0) {
         segments.append(
             QCoreApplication::translate("MediaImageEditDialog", "%1 × %2")
@@ -230,12 +202,6 @@ QString buildPreviewDetails(const QList<ItemImageInfo>& images)
     const QString sizeText = formatImageSize(info.size);
     if (!sizeText.isEmpty()) {
         segments.append(sizeText);
-    }
-
-    if (info.imageIndex >= 0) {
-        segments.append(QCoreApplication::translate("MediaImageEditDialog",
-                                                    "Index %1")
-                            .arg(info.imageIndex));
     }
 
     return segments.join(QStringLiteral("  ·  "));
@@ -299,6 +265,14 @@ bool loadLocalImageFile(QString filePath, QByteArray& imageData,
     }
     if (mimeType.isEmpty()) {
         mimeType = QStringLiteral("application/octet-stream");
+    }
+
+    
+    
+    if (QFileInfo(filePath).suffix().compare(QLatin1String("jpg"),
+                                             Qt::CaseInsensitive) == 0 &&
+        mimeType == QLatin1String("image/jpeg")) {
+        mimeType = QStringLiteral("image/jpg");
     }
 
     return true;
@@ -430,151 +404,82 @@ MediaImageEditDialog::MediaImageEditDialog(QEmbyCore* core,
                                            QWidget* parent)
     : ModernDialogBase(parent), m_core(core), m_target(std::move(target))
 {
-    resize(820, 620);
-    setMinimumSize(760, 600);
+    resize(1040, 740);
+    setMinimumSize(520, 420);
     setTitle(tr("Edit Images"));
+    contentLayout()->setContentsMargins(0, 0, 0, 0);
     contentLayout()->setSpacing(0);
 
-    const QString displayName = m_target.displayName.trimmed().isEmpty()
-                                    ? tr("this item")
-                                    : m_target.displayName.trimmed();
+    m_scrollArea = new QScrollArea(this);
+    m_scrollArea->setObjectName("MediaImageEditScrollArea");
+    m_scrollArea->setFrameShape(QFrame::NoFrame);
+    m_scrollArea->setWidgetResizable(true);
+    m_scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    
+    auto* page = new QWidget(m_scrollArea);
+    page->setObjectName("MediaImageEditPage");
+    auto* pageLayout = new QVBoxLayout(page);
+    pageLayout->setContentsMargins(20, 16, 20, 20);
+    pageLayout->setSpacing(14);
+    pageLayout->setSizeConstraint(QLayout::SetMinAndMaxSize);
 
-    m_promptLabel =
-        new QLabel(tr("Manage image types for \"%1\". Changes are applied immediately.")
-                       .arg(displayName),
-                   this);
+    const QString displayName = m_target.displayName.trimmed().isEmpty()
+                                    ? tr("this item") : m_target.displayName.trimmed();
+    m_promptLabel = new QLabel(
+        tr("Manage image types for \"%1\". Changes are applied immediately.").arg(displayName), page);
     m_promptLabel->setObjectName("MediaImageEditIntroText");
     m_promptLabel->setWordWrap(true);
-    contentLayout()->addWidget(m_promptLabel);
-    contentLayout()->addSpacing(18);
+    pageLayout->addWidget(m_promptLabel);
 
-    auto* bodyLayout = new QHBoxLayout();
-    bodyLayout->setSpacing(24);
+    auto* imagesTitle = new QLabel(tr("Images"), page);
+    imagesTitle->setObjectName("MediaImageEditSectionTitle");
+    pageLayout->addWidget(imagesTitle);
+    auto* imagesPanel = new QWidget(page);
+    m_imagesLayout = new FlowLayout(imagesPanel, 0, 12, 12);
+    pageLayout->addWidget(imagesPanel);
 
-    auto* previewColumn = new QWidget(this);
-    auto* previewColumnLayout = new QVBoxLayout(previewColumn);
-    previewColumnLayout->setContentsMargins(0, 0, 0, 0);
-    previewColumnLayout->setSpacing(0);
+    m_backdropsSection = new QWidget(page);
+    auto* backdropLayout = new QVBoxLayout(m_backdropsSection);
+    backdropLayout->setContentsMargins(0, 10, 0, 0);
+    backdropLayout->setSpacing(12);
+    auto* backdropTitle = new QLabel(tr("Backdrop"), m_backdropsSection);
+    backdropTitle->setObjectName("MediaImageEditSectionTitle");
+    backdropLayout->addWidget(backdropTitle);
+    auto* backdropsPanel = new QWidget(m_backdropsSection);
+    m_backdropsLayout = new FlowLayout(backdropsPanel, 0, 12, 12);
+    backdropLayout->addWidget(backdropsPanel);
+    pageLayout->addWidget(m_backdropsSection);
+    pageLayout->addStretch();
+    m_scrollArea->setWidget(page);
+    contentLayout()->addWidget(m_scrollArea, 1);
 
-    auto* previewPanel = new QWidget(previewColumn);
-    previewPanel->setFixedWidth(kPreviewPanelWidth);
-    auto* previewLayout = new QVBoxLayout(previewPanel);
-    previewLayout->setContentsMargins(0, 0, 0, 0);
-    previewLayout->setSpacing(14);
-
-    m_previewLabel = new QLabel(previewPanel);
-    m_previewLabel->setObjectName("identify-preview-label");
-    m_previewLabel->setAlignment(Qt::AlignCenter);
-    m_previewLabel->setWordWrap(true);
-    m_previewLabel->setFixedSize(kPreviewSize);
-    m_previewLabel->setAcceptDrops(true);
-    m_previewLabel->setProperty("drag-over", false);
-    m_previewLabel->setProperty("media-image-editor", true);
-    m_previewLabel->setToolTip(
-        tr("Drop an image file or image URL here to replace it."));
-    m_previewLabel->installEventFilter(this);
-    previewLayout->addWidget(m_previewLabel, 0,
-                             Qt::AlignTop | Qt::AlignHCenter);
-
-    m_previewInfoLabel = new QLabel(previewPanel);
-    m_previewInfoLabel->setObjectName("MediaImageEditMetaText");
-    m_previewInfoLabel->setAlignment(Qt::AlignCenter);
-    m_previewInfoLabel->setWordWrap(true);
-    m_previewInfoLabel->setFixedWidth(kPreviewPanelWidth);
-    previewLayout->addWidget(m_previewInfoLabel, 0,
-                             Qt::AlignTop | Qt::AlignHCenter);
-
-    auto* actionPanel = new QWidget(previewPanel);
-    actionPanel->setFixedWidth(kPreviewPanelWidth);
-    auto* actionLayout = new QGridLayout(actionPanel);
-    actionLayout->setContentsMargins(0, 0, 0, 0);
-    actionLayout->setHorizontalSpacing(10);
-    actionLayout->setVerticalSpacing(10);
-    actionLayout->setColumnStretch(0, 1);
-    actionLayout->setColumnStretch(1, 1);
-
-    m_chooseButton = new QPushButton(tr("Choose Image"), previewPanel);
-    m_chooseButton->setObjectName("dialog-btn-primary");
-    m_chooseButton->setCursor(Qt::PointingHandCursor);
-    m_chooseButton->setMinimumHeight(34);
-    m_chooseButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    actionLayout->addWidget(m_chooseButton, 0, 0);
-
-    m_urlButton = new QPushButton(tr("Image URL"), previewPanel);
-    m_urlButton->setObjectName("dialog-btn-cancel");
-    m_urlButton->setCursor(Qt::PointingHandCursor);
-    m_urlButton->setMinimumHeight(34);
-    m_urlButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    actionLayout->addWidget(m_urlButton, 0, 1);
-
-    m_downloadButton = new QPushButton(tr("Download"), previewPanel);
-    m_downloadButton->setObjectName("dialog-btn-cancel");
-    m_downloadButton->setCursor(Qt::PointingHandCursor);
-    m_downloadButton->setMinimumHeight(34);
-    m_downloadButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    actionLayout->addWidget(m_downloadButton, 1, 0);
-
-    m_removeButton = new QPushButton(tr("Remove Image"), previewPanel);
-    m_removeButton->setObjectName("dialog-btn-danger");
-    m_removeButton->setCursor(Qt::PointingHandCursor);
-    m_removeButton->setMinimumHeight(34);
-    m_removeButton->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    actionLayout->addWidget(m_removeButton, 1, 1);
-
-    previewLayout->addWidget(actionPanel, 0, Qt::AlignHCenter);
-    previewLayout->addStretch();
-    previewColumnLayout->addWidget(previewPanel, 0, Qt::AlignTop | Qt::AlignHCenter);
-    previewColumnLayout->addStretch();
-
-    auto* listPanel = new QWidget(this);
-    listPanel->setObjectName("MediaImageEditSidePanel");
-    listPanel->setFixedWidth(286);
-    auto* listLayout = new QVBoxLayout(listPanel);
-    listLayout->setContentsMargins(14, 14, 2, 12);
-    listLayout->setSpacing(8);
-
-    auto* listTitle = new QLabel(tr("Image Types"), listPanel);
-    listTitle->setObjectName("MediaImageEditSectionTitle");
-    listLayout->addWidget(listTitle);
-
-    m_statusLabel = new QLabel(tr("Loading image information..."), listPanel);
-    m_statusLabel->setObjectName("MediaImageEditSideStatus");
+    auto* footer = new QWidget(this);
+    footer->setObjectName("MediaImageEditFooter");
+    footer->setAttribute(Qt::WA_StyledBackground, true);
+    auto* footerLayout = new QHBoxLayout(footer);
+    footerLayout->setContentsMargins(20, 12, 20, 12);
+    footerLayout->setSpacing(12);
+    m_statusLabel = new QLabel(tr("Loading image information..."), footer);
+    m_statusLabel->setObjectName("MediaImageEditIntroText");
     m_statusLabel->setWordWrap(true);
-    listLayout->addWidget(m_statusLabel);
-
-    m_typeList = new QListWidget(listPanel);
-    m_typeList->setObjectName("ManageLibPathList");
-    m_typeList->setProperty("media-image-list", true);
-    m_typeList->setSelectionMode(QAbstractItemView::SingleSelection);
-    m_typeList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    m_typeList->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
-    m_typeList->setWordWrap(true);
-    m_typeList->setMinimumHeight(420);
-    listLayout->addWidget(m_typeList, 1);
-
-    bodyLayout->addWidget(previewColumn, 1);
-    bodyLayout->addWidget(listPanel, 0, Qt::AlignTop);
-    bodyLayout->setStretch(0, 1);
-    bodyLayout->setStretch(1, 0);
-
-    contentLayout()->addLayout(bodyLayout);
-
-    connect(m_typeList, &QListWidget::itemSelectionChanged, this,
-            [this]() {
-                refreshPreview();
-                updateUiState();
-            });
-    connect(m_chooseButton, &QPushButton::clicked, this,
-            [this]() { m_pendingTask = chooseAndUploadImage(); });
-    connect(m_urlButton, &QPushButton::clicked, this,
-            [this]() { m_pendingTask = promptAndUploadImageUrl(); });
-    connect(m_downloadButton, &QPushButton::clicked, this,
-            [this]() { m_pendingTask = saveSelectedImage(); });
-    connect(m_removeButton, &QPushButton::clicked, this,
-            [this]() { m_pendingTask = removeSelectedImage(); });
-
-    updatePreviewMessage(tr("Preview unavailable"));
-    updatePreviewDetails();
+    footerLayout->addWidget(m_statusLabel, 1);
+    m_retryButton = new QPushButton(tr("Retry"), footer);
+    m_retryButton->setObjectName("dialog-btn-cancel");
+    m_retryButton->setCursor(Qt::PointingHandCursor);
+    m_retryButton->setAutoDefault(false);
+    m_retryButton->hide();
+    connect(m_retryButton, &QPushButton::clicked, this,
+            [this]() { if (!m_isBusy) m_pendingTask = reloadImages(); });
+    footerLayout->addWidget(m_retryButton);
+    auto* closeButton = new QPushButton(tr("Close"), footer);
+    closeButton->setObjectName("dialog-btn-cancel");
+    closeButton->setCursor(Qt::PointingHandCursor);
+    closeButton->setMinimumWidth(96);
+    closeButton->setAutoDefault(false);
+    connect(closeButton, &QPushButton::clicked, this, &QDialog::accept);
+    footerLayout->addWidget(closeButton);
+    contentLayout()->addWidget(footer);
     updateUiState();
 }
 
@@ -590,36 +495,41 @@ void MediaImageEditDialog::showEvent(QShowEvent* event)
 
 bool MediaImageEditDialog::eventFilter(QObject* watched, QEvent* event)
 {
-    if (watched == m_previewLabel && event) {
+    const int index = watched ? watched->property("image-slot").toInt() : -1;
+    QPointer<MediaImageEditCard> card =
+        index >= 0 && index < m_cards.size() ? m_cards.at(index) : QPointer<MediaImageEditCard>();
+    if (card && watched == card.data() && event) {
         switch (event->type()) {
         case QEvent::DragEnter: {
             auto* dragEvent = static_cast<QDragEnterEvent*>(event);
             if (canAcceptDroppedImage(dragEvent->mimeData())) {
-                dragEvent->acceptProposedAction();
-                setPreviewDropActive(true);
+                dragEvent->setDropAction(Qt::CopyAction);
+                dragEvent->accept();
+                card->setDropActive(true);
             } else {
                 dragEvent->ignore();
-                setPreviewDropActive(false);
+                card->setDropActive(false);
             }
             return true;
         }
         case QEvent::DragMove: {
             auto* dragEvent = static_cast<QDragMoveEvent*>(event);
             if (canAcceptDroppedImage(dragEvent->mimeData())) {
-                dragEvent->acceptProposedAction();
-                setPreviewDropActive(true);
+                dragEvent->setDropAction(Qt::CopyAction);
+                dragEvent->accept();
+                card->setDropActive(true);
             } else {
                 dragEvent->ignore();
-                setPreviewDropActive(false);
+                card->setDropActive(false);
             }
             return true;
         }
         case QEvent::DragLeave:
-            setPreviewDropActive(false);
+            card->setDropActive(false);
             return true;
         case QEvent::Drop: {
             auto* dropEvent = static_cast<QDropEvent*>(event);
-            setPreviewDropActive(false);
+            card->setDropActive(false);
 
             if (!canAcceptDroppedImage(dropEvent->mimeData())) {
                 dropEvent->ignore();
@@ -636,8 +546,9 @@ bool MediaImageEditDialog::eventFilter(QObject* watched, QEvent* event)
                 return true;
             }
 
-            dropEvent->acceptProposedAction();
-            m_pendingTask = handleDroppedImage(payload);
+            dropEvent->setDropAction(Qt::CopyAction);
+            dropEvent->accept();
+            m_pendingTask = handleDroppedImage(m_slots.at(index), payload);
             return true;
         }
         default:
@@ -648,7 +559,7 @@ bool MediaImageEditDialog::eventFilter(QObject* watched, QEvent* event)
     return ModernDialogBase::eventFilter(watched, event);
 }
 
-QCoro::Task<void> MediaImageEditDialog::reloadImages(QString preferredType)
+QCoro::Task<void> MediaImageEditDialog::reloadImages()
 {
     QPointer<MediaImageEditDialog> safeThis(this);
     QPointer<AdminService> adminService(m_core ? m_core->adminService() : nullptr);
@@ -658,9 +569,9 @@ QCoro::Task<void> MediaImageEditDialog::reloadImages(QString preferredType)
     }
 
     m_isBusy = true;
+    m_hasImageInfo = false;
     ++m_previewLoadGeneration;
-    updatePreviewMessage(tr("Loading preview..."));
-    updatePreviewDetails();
+    m_retryButton->hide();
     updateStatusText(tr("Loading image information..."));
     updateUiState();
 
@@ -671,22 +582,23 @@ QCoro::Task<void> MediaImageEditDialog::reloadImages(QString preferredType)
             co_return;
         }
 
+        safeThis->m_hasImageInfo = true;
         safeThis->m_itemImages = images;
-        safeThis->rebuildTypeList(preferredType);
+        safeThis->rebuildCards();
 
-        int availableTypeCount = 0;
+        QSet<QString> availableTypes;
         for (const ImageSlotState& slot : std::as_const(safeThis->m_slots)) {
-            if (slot.hasImage()) {
-                ++availableTypeCount;
-            }
+            if (slot.hasImage())
+                availableTypes.insert(slot.imageType);
         }
+        const int availableTypeCount = availableTypes.size();
 
         safeThis->updateStatusText(
             availableTypeCount > 0
                 ? tr("Loaded images for %1 type(s)").arg(availableTypeCount)
                 : tr("No images found yet"));
         safeThis->m_isBusy = false;
-        safeThis->refreshPreview();
+        safeThis->startPreviews();
         safeThis->updateUiState();
     } catch (const std::exception& e) {
         if (!safeThis) {
@@ -694,11 +606,9 @@ QCoro::Task<void> MediaImageEditDialog::reloadImages(QString preferredType)
         }
 
         safeThis->m_isBusy = false;
-        safeThis->m_itemImages.clear();
-        safeThis->m_slots.clear();
-        safeThis->rebuildTypeList(preferredType);
-        safeThis->updatePreviewMessage(tr("Preview unavailable"));
-        safeThis->updatePreviewDetails();
+        if (safeThis->m_cards.isEmpty())
+            safeThis->rebuildCards();
+        safeThis->m_retryButton->show();
         safeThis->updateStatusText(tr("Failed to load images"));
         safeThis->updateUiState();
 
@@ -712,12 +622,13 @@ QCoro::Task<void> MediaImageEditDialog::reloadImages(QString preferredType)
 }
 
 QCoro::Task<void> MediaImageEditDialog::loadPreview(ImageSlotState slot,
+                                                    QPointer<MediaImageEditCard> card,
                                                     quint64 requestGeneration)
 {
     QPointer<MediaImageEditDialog> safeThis(this);
     QPointer<MediaService> mediaService(m_core ? m_core->mediaService() : nullptr);
 
-    if (!safeThis || !mediaService || !slot.hasImage()) {
+    if (!safeThis || !mediaService || !card || !slot.hasImage()) {
         co_return;
     }
 
@@ -725,20 +636,21 @@ QCoro::Task<void> MediaImageEditDialog::loadPreview(ImageSlotState slot,
         const QPixmap pixmap =
             co_await mediaService->fetchImage(m_target.effectiveImageItemId(),
                                               slot.imageType, QString(),
-                                              kPreviewSize.width() * 2,
-                                              slot.previewImageIndex());
-        if (!safeThis || requestGeneration != m_previewLoadGeneration) {
+                                              kPreviewWidth,
+                                              slot.previewImageIndex(),
+                                              ImageRequestPriority::Normal, card.data());
+        if (!safeThis || !card || requestGeneration != safeThis->m_previewLoadGeneration) {
             co_return;
         }
 
         if (pixmap.isNull()) {
-            safeThis->updatePreviewMessage(tr("Preview unavailable"));
+            card->setPreviewMessage(tr("Preview unavailable"));
             co_return;
         }
 
-        safeThis->updatePreviewPixmap(pixmap);
+        card->setPreview(pixmap);
     } catch (const std::exception& e) {
-        if (!safeThis || requestGeneration != m_previewLoadGeneration) {
+        if (!safeThis || !card || requestGeneration != safeThis->m_previewLoadGeneration) {
             co_return;
         }
 
@@ -747,28 +659,61 @@ QCoro::Task<void> MediaImageEditDialog::loadPreview(ImageSlotState slot,
                    << "| imageType=" << slot.imageType
                    << "| imageIndex=" << slot.previewImageIndex()
                    << "| error=" << e.what();
-        safeThis->updatePreviewMessage(tr("Preview unavailable"));
+        card->setPreviewMessage(tr("Preview unavailable"));
     }
 }
 
-QCoro::Task<void> MediaImageEditDialog::chooseAndUploadImage()
+QCoro::Task<void> MediaImageEditDialog::viewImage(ImageSlotState slot)
 {
+    QPointer<MediaService> service(m_core ? m_core->mediaService() : nullptr);
+    if (!service || !slot.hasImage())
+        co_return;
+
+    const QString itemId = m_target.effectiveImageItemId();
+    QPointer<ImagePreviewDialog> viewer = new ImagePreviewDialog(
+        m_target.displayName + QStringLiteral(" · ") + slot.displayName, this);
+    viewer->setAttribute(Qt::WA_DeleteOnClose);
+    viewer->open();
+    try {
+        qDebug() << "[MediaImageEditDialog] Loading original image"
+                 << "| itemId=" << itemId << "| imageType=" << slot.imageType
+                 << "| imageIndex=" << slot.previewImageIndex();
+        const DownloadedImageData data = co_await service->downloadImageByUrl(
+            buildItemImagePath(itemId, slot.imageType, slot.previewImageIndex()));
+        if (!viewer)
+            co_return;
+        QPixmap image;
+        if (!image.loadFromData(data.data)) {
+            viewer->setMessage(tr("Failed to load image"));
+            qWarning() << "[MediaImageEditDialog] Original image could not be decoded"
+                       << "| itemId=" << itemId << "| imageType=" << slot.imageType;
+            co_return;
+        }
+        viewer->setImage(image);
+    } catch (const std::exception&) {
+        if (viewer)
+            viewer->setMessage(tr("Failed to load image"));
+        qWarning() << "[MediaImageEditDialog] Original image request failed"
+                   << "| itemId=" << itemId << "| imageType=" << slot.imageType
+                   << "| imageIndex=" << slot.previewImageIndex();
+    }
+}
+
+QCoro::Task<void> MediaImageEditDialog::chooseAndUploadImage(ImageSlotState slot)
+{
+    QPointer<MediaImageEditDialog> safeThis(this);
     const QString filePath = QFileDialog::getOpenFileName(
         this, tr("Select Image"), QString(), buildImageFileFilter());
-    if (filePath.trimmed().isEmpty()) {
+    if (!safeThis || filePath.trimmed().isEmpty()) {
         co_return;
     }
 
-    co_await uploadLocalImageFile(filePath);
+    co_await uploadLocalImageFile(slot, filePath);
 }
 
-QCoro::Task<void> MediaImageEditDialog::promptAndUploadImageUrl()
+QCoro::Task<void> MediaImageEditDialog::promptAndUploadImageUrl(ImageSlotState slot)
 {
-    const ImageSlotState* current = currentSlot();
-    if (!current) {
-        co_return;
-    }
-
+    QPointer<MediaImageEditDialog> safeThis(this);
     const QString displayName = m_target.displayName.trimmed().isEmpty()
                                     ? tr("this item")
                                     : m_target.displayName.trimmed();
@@ -776,17 +721,17 @@ QCoro::Task<void> MediaImageEditDialog::promptAndUploadImageUrl()
     const QString imageUrl = TextInputDialog::getText(
         this, tr("Enter Image URL"),
         tr("Paste an image address for the %1 image of \"%2\".")
-            .arg(current->displayName, displayName),
+            .arg(slot.displayName, displayName),
         QString(), tr("https://example.com/image.jpg"),
-        tr("Replace Image"), &accepted);
-    if (!accepted) {
+        slot.hasImage() ? tr("Replace Image") : tr("Upload Image"), &accepted);
+    if (!safeThis || !accepted) {
         co_return;
     }
 
-    co_await uploadRemoteImage(imageUrl);
+    co_await uploadRemoteImage(slot, imageUrl);
 }
 
-QCoro::Task<void> MediaImageEditDialog::saveSelectedImage()
+QCoro::Task<void> MediaImageEditDialog::saveImage(ImageSlotState slot)
 {
     QPointer<MediaImageEditDialog> safeThis(this);
     QPointer<MediaService> mediaService(m_core ? m_core->mediaService() : nullptr);
@@ -794,12 +739,10 @@ QCoro::Task<void> MediaImageEditDialog::saveSelectedImage()
         co_return;
     }
 
-    const ImageSlotState* current = currentSlot();
-    if (!current || !current->hasImage()) {
+    if (!slot.hasImage()) {
         co_return;
     }
 
-    const ImageSlotState slot = *current;
     const ItemImageInfo previewImage = slot.images.first();
     const QString defaultPath =
         QDir(defaultDownloadDirectory())
@@ -807,7 +750,7 @@ QCoro::Task<void> MediaImageEditDialog::saveSelectedImage()
                                            &previewImage));
     const QString savePath = QFileDialog::getSaveFileName(
         this, tr("Save Image"), defaultPath, buildImageFileFilter());
-    if (savePath.trimmed().isEmpty()) {
+    if (!safeThis || !mediaService || savePath.trimmed().isEmpty()) {
         co_return;
     }
 
@@ -877,14 +820,8 @@ QCoro::Task<void> MediaImageEditDialog::saveSelectedImage()
     ModernToast::showMessage(tr("Image downloaded"), 2000);
 }
 
-QCoro::Task<void> MediaImageEditDialog::uploadLocalImageFile(QString filePath)
+QCoro::Task<void> MediaImageEditDialog::uploadLocalImageFile(ImageSlotState slot, QString filePath)
 {
-    const ImageSlotState* current = currentSlot();
-    if (!current) {
-        co_return;
-    }
-
-    const ImageSlotState slot = *current;
     QByteArray imageData;
     QString mimeType;
     if (!loadLocalImageFile(filePath, imageData, mimeType)) {
@@ -903,7 +840,7 @@ QCoro::Task<void> MediaImageEditDialog::uploadLocalImageFile(QString filePath)
     co_await uploadImageData(slot, imageData, mimeType);
 }
 
-QCoro::Task<void> MediaImageEditDialog::uploadRemoteImage(QString imageUrl)
+QCoro::Task<void> MediaImageEditDialog::uploadRemoteImage(ImageSlotState slot, QString imageUrl)
 {
     QPointer<MediaImageEditDialog> safeThis(this);
     QPointer<MediaService> mediaService(m_core ? m_core->mediaService() : nullptr);
@@ -911,12 +848,6 @@ QCoro::Task<void> MediaImageEditDialog::uploadRemoteImage(QString imageUrl)
         co_return;
     }
 
-    const ImageSlotState* current = currentSlot();
-    if (!current) {
-        co_return;
-    }
-
-    const ImageSlotState slot = *current;
     imageUrl = imageUrl.trimmed();
     const QUrl parsedUrl(imageUrl);
     const QString scheme = parsedUrl.scheme().trimmed().toLower();
@@ -973,8 +904,13 @@ QCoro::Task<void> MediaImageEditDialog::uploadImageData(ImageSlotState slot,
                                                         QString mimeType)
 {
     QPointer<MediaImageEditDialog> safeThis(this);
+    const auto resetBusy = qScopeGuard([safeThis]() {
+        if (safeThis) {
+            safeThis->m_isBusy = false;
+            safeThis->updateUiState();
+        }
+    });
     QPointer<AdminService> adminService(m_core ? m_core->adminService() : nullptr);
-    QPointer<MediaService> mediaService(m_core ? m_core->mediaService() : nullptr);
     if (!safeThis || !adminService || slot.imageType.trimmed().isEmpty()) {
         co_return;
     }
@@ -1021,7 +957,6 @@ QCoro::Task<void> MediaImageEditDialog::uploadImageData(ImageSlotState slot,
     }
 
     m_isBusy = true;
-    ++m_previewLoadGeneration;
     updateStatusText(tr("Uploading image..."));
     updateUiState();
 
@@ -1033,21 +968,11 @@ QCoro::Task<void> MediaImageEditDialog::uploadImageData(ImageSlotState slot,
             co_return;
         }
 
-        if (mediaService) {
-            mediaService->invalidateImageCache(
-                m_target.effectiveImageItemId(), slot.imageType,
-                slot.previewImageIndex());
-            if (m_target.itemId.trimmed() !=
-                m_target.effectiveImageItemId().trimmed()) {
-                mediaService->invalidateImageCache(
-                    m_target.itemId, slot.imageType,
-                    slot.previewImageIndex());
-            }
-        }
+        safeThis->invalidateEditedImages(slot.imageType);
 
         safeThis->m_hasChanges = true;
         ModernToast::showMessage(tr("Image updated"), 2000);
-        co_await safeThis->reloadImages(slot.imageType);
+        co_await safeThis->reloadImages();
     } catch (const std::exception& e) {
         if (!safeThis) {
             co_return;
@@ -1067,34 +992,29 @@ QCoro::Task<void> MediaImageEditDialog::uploadImageData(ImageSlotState slot,
         ModernToast::showMessage(
             tr("Failed to upload image: %1")
                 .arg(QString::fromUtf8(e.what())),
-            3000);
+            6000);
     }
 }
 
 QCoro::Task<void> MediaImageEditDialog::handleDroppedImage(
-    DroppedImagePayload payload)
+    ImageSlotState slot, DroppedImagePayload payload)
 {
     if (!payload.localFilePath.trimmed().isEmpty()) {
         qDebug() << "[MediaImageEditDialog] Handling dropped local image file"
                  << "| itemId=" << m_target.effectiveImageItemId()
                  << "| filePath=" << payload.localFilePath;
-        co_await uploadLocalImageFile(payload.localFilePath);
+        co_await uploadLocalImageFile(slot, payload.localFilePath);
         co_return;
     }
 
     if (!payload.imageData.isEmpty()) {
-        const ImageSlotState* current = currentSlot();
-        if (!current) {
-            co_return;
-        }
-
         qDebug() << "[MediaImageEditDialog] Uploading dropped in-memory image"
                  << "| itemId=" << m_target.effectiveImageItemId()
-                 << "| imageType=" << current->imageType
-                 << "| imageIndex=" << current->previewImageIndex()
+                 << "| imageType=" << slot.imageType
+                 << "| imageIndex=" << slot.previewImageIndex()
                  << "| mimeType=" << payload.mimeType
                  << "| bytes=" << payload.imageData.size();
-        co_await uploadImageData(*current, payload.imageData,
+        co_await uploadImageData(slot, payload.imageData,
                                  payload.mimeType);
         co_return;
     }
@@ -1103,25 +1023,22 @@ QCoro::Task<void> MediaImageEditDialog::handleDroppedImage(
         qDebug() << "[MediaImageEditDialog] Handling dropped remote image url"
                  << "| itemId=" << m_target.effectiveImageItemId()
                  << "| url=" << displayUrlForLog(payload.remoteImageUrl);
-        co_await uploadRemoteImage(payload.remoteImageUrl);
+        co_await uploadRemoteImage(slot, payload.remoteImageUrl);
     }
 }
 
-QCoro::Task<void> MediaImageEditDialog::removeSelectedImage()
+QCoro::Task<void> MediaImageEditDialog::removeImage(ImageSlotState slot)
 {
     QPointer<MediaImageEditDialog> safeThis(this);
     QPointer<AdminService> adminService(m_core ? m_core->adminService() : nullptr);
-    QPointer<MediaService> mediaService(m_core ? m_core->mediaService() : nullptr);
     if (!safeThis || !adminService) {
         co_return;
     }
 
-    const ImageSlotState* current = currentSlot();
-    if (!current || !current->hasImage()) {
+    if (!slot.hasImage()) {
         co_return;
     }
 
-    const ImageSlotState slot = *current;
     const QString displayName = m_target.displayName.trimmed().isEmpty()
                                     ? tr("this item")
                                     : m_target.displayName.trimmed();
@@ -1131,12 +1048,11 @@ QCoro::Task<void> MediaImageEditDialog::removeSelectedImage()
             .arg(slot.displayName, displayName),
         tr("Remove"), tr("Cancel"), ModernMessageBox::Danger,
         ModernMessageBox::Warning);
-    if (!confirmed) {
+    if (!safeThis || !adminService || !confirmed) {
         co_return;
     }
 
     m_isBusy = true;
-    ++m_previewLoadGeneration;
     updateStatusText(tr("Removing image..."));
     updateUiState();
 
@@ -1148,21 +1064,11 @@ QCoro::Task<void> MediaImageEditDialog::removeSelectedImage()
             co_return;
         }
 
-        if (mediaService) {
-            mediaService->invalidateImageCache(
-                m_target.effectiveImageItemId(), slot.imageType,
-                slot.previewImageIndex());
-            if (m_target.itemId.trimmed() !=
-                m_target.effectiveImageItemId().trimmed()) {
-                mediaService->invalidateImageCache(
-                    m_target.itemId, slot.imageType,
-                    slot.previewImageIndex());
-            }
-        }
+        safeThis->invalidateEditedImages(slot.imageType);
 
         safeThis->m_hasChanges = true;
         ModernToast::showMessage(tr("Image removed"), 2000);
-        co_await safeThis->reloadImages(slot.imageType);
+        co_await safeThis->reloadImages();
     } catch (const std::exception& e) {
         if (!safeThis) {
             co_return;
@@ -1183,32 +1089,9 @@ QCoro::Task<void> MediaImageEditDialog::removeSelectedImage()
     }
 }
 
-const MediaImageEditDialog::ImageSlotState* MediaImageEditDialog::currentSlot() const
-{
-    const QListWidgetItem* currentItem =
-        m_typeList ? m_typeList->currentItem() : nullptr;
-    if (!currentItem) {
-        return nullptr;
-    }
-
-    const QString imageType =
-        currentItem->data(kImageTypeRole).toString().trimmed();
-    if (imageType.isEmpty()) {
-        return nullptr;
-    }
-
-    for (const ImageSlotState& slot : m_slots) {
-        if (slot.imageType == imageType) {
-            return &slot;
-        }
-    }
-
-    return nullptr;
-}
-
 bool MediaImageEditDialog::canAcceptDroppedImage(const QMimeData* mimeData) const
 {
-    if (!mimeData || m_isBusy || !currentSlot()) {
+    if (!mimeData || m_isBusy || !m_hasImageInfo) {
         return false;
     }
 
@@ -1338,188 +1221,158 @@ MediaImageEditDialog::parseDroppedImagePayload(const QMimeData* mimeData) const
     return payload;
 }
 
-void MediaImageEditDialog::rebuildTypeList(QString preferredType)
+void MediaImageEditDialog::rebuildCards()
 {
-    if (!m_typeList) {
-        return;
+    const int scrollPosition = m_scrollArea->verticalScrollBar()->value();
+    for (const auto& card : std::as_const(m_cards)) {
+        if (card)
+            card->hide();
     }
+    m_cards.clear();
+    LayoutUtils::clearLayout(m_imagesLayout);
+    LayoutUtils::clearLayout(m_backdropsLayout);
+    m_slots.clear();
 
     QHash<QString, QList<ItemImageInfo>> imageMap;
     for (const ItemImageInfo& image : std::as_const(m_itemImages)) {
-        const QString imageType = image.imageType.trimmed();
-        if (imageType.isEmpty()) {
-            continue;
+        if (!image.imageType.trimmed().isEmpty())
+            imageMap[image.imageType.trimmed()].append(image);
+    }
+    QStringList types = preferredImageTypeOrder(m_target);
+    QStringList extraTypes = imageMap.keys();
+    std::sort(extraTypes.begin(), extraTypes.end());
+    for (const QString& type : extraTypes) {
+        if (!types.contains(type))
+            types.append(type);
+    }
+
+    for (const QString& type : types) {
+        QList<ItemImageInfo> images = imageMap.value(type);
+        std::sort(images.begin(), images.end(), [](const ItemImageInfo& a, const ItemImageInfo& b) {
+            return a.imageIndex < b.imageIndex;
+        });
+        const bool isBackdrop = type == QLatin1String("Backdrop");
+        
+        for (const ItemImageInfo& image : images) {
+            ImageSlotState slot;
+            slot.imageType = type;
+            slot.displayName = imageTypeLabel(type);
+            slot.images.append(image);
+            m_slots.append(slot);
         }
-        imageMap[imageType].append(image);
-    }
-
-    for (auto it = imageMap.begin(); it != imageMap.end(); ++it) {
-        std::sort(it.value().begin(), it.value().end(),
-                  [](const ItemImageInfo& lhs, const ItemImageInfo& rhs) {
-                      const int leftIndex = lhs.imageIndex >= 0 ? lhs.imageIndex
-                                                                : std::numeric_limits<int>::max();
-                      const int rightIndex = rhs.imageIndex >= 0 ? rhs.imageIndex
-                                                                 : std::numeric_limits<int>::max();
-                      if (leftIndex != rightIndex) {
-                          return leftIndex < rightIndex;
-                      }
-                      return lhs.path < rhs.path;
-                  });
-    }
-
-    m_slots.clear();
-    const QStringList preferredOrder = preferredImageTypeOrder(m_target);
-    for (const QString& imageType : preferredOrder) {
-        ImageSlotState slot;
-        slot.imageType = imageType;
-        slot.displayName = imageTypeLabel(imageType);
-        slot.images = imageMap.take(imageType);
-        m_slots.append(slot);
-    }
-
-    QStringList remainingTypes = imageMap.keys();
-    std::sort(remainingTypes.begin(), remainingTypes.end());
-    for (const QString& imageType : remainingTypes) {
-        ImageSlotState slot;
-        slot.imageType = imageType;
-        slot.displayName = imageTypeLabel(imageType);
-        slot.images = imageMap.value(imageType);
-        m_slots.append(slot);
-    }
-
-    QSignalBlocker blocker(m_typeList);
-    m_typeList->clear();
-
-    int preferredIndex = -1;
-    int firstAvailableIndex = -1;
-    for (int i = 0; i < m_slots.size(); ++i) {
-        const ImageSlotState& slot = m_slots.at(i);
-        auto* item = new QListWidgetItem(
-            buildListItemText(slot.displayName, slot.images), m_typeList);
-        item->setData(kImageTypeRole, slot.imageType);
-        item->setSizeHint(QSize(0, 60));
-
-        if (preferredType == slot.imageType) {
-            preferredIndex = i;
-        }
-        if (firstAvailableIndex < 0 && slot.hasImage()) {
-            firstAvailableIndex = i;
+        if (images.isEmpty() || isBackdrop) {
+            ImageSlotState slot;
+            slot.imageType = type;
+            slot.displayName = imageTypeLabel(type);
+            m_slots.append(slot); 
         }
     }
 
-    if (preferredIndex >= 0) {
-        m_typeList->setCurrentRow(preferredIndex);
-    } else if (firstAvailableIndex >= 0) {
-        m_typeList->setCurrentRow(firstAvailableIndex);
-    } else if (m_typeList->count() > 0) {
-        m_typeList->setCurrentRow(0);
+    bool hasBackdrops = false;
+    for (int index = 0; index < m_slots.size(); ++index) {
+        const ImageSlotState slot = m_slots.at(index);
+        const bool isBackdrop = slot.imageType == QLatin1String("Backdrop");
+        hasBackdrops = hasBackdrops || isBackdrop;
+        QString title = slot.displayName;
+        if (isBackdrop && slot.hasImage())
+            title = tr("%1 %2").arg(title).arg(slot.previewImageIndex() + 1);
+        else if (isBackdrop)
+            title = tr("Add Backdrop");
+        auto* card = new MediaImageEditCard(title, buildPreviewDetails(slot.images), slot.hasImage(), this);
+        card->setProperty("image-slot", index);
+        card->installEventFilter(this);
+        m_cards.append(card);
+        (isBackdrop ? m_backdropsLayout : m_imagesLayout)->addWidget(card);
+        card->show();
+        connect(card, &MediaImageEditCard::actionRequested, this,
+                [this, index, safeCard = QPointer<MediaImageEditCard>(card)](MediaImageEditCard::Action action) {
+                    if (safeCard && index < m_cards.size() && m_cards.at(index) == safeCard)
+                        handleCardAction(index, action);
+                });
+    }
+    m_backdropsSection->setVisible(hasBackdrops);
+    QTimer::singleShot(0, this, [this, scrollPosition]() {
+        m_scrollArea->verticalScrollBar()->setValue(scrollPosition);
+    });
+    qDebug() << "[MediaImageEditDialog] Image cards rebuilt"
+             << "| itemId=" << m_target.effectiveImageItemId()
+             << "| imageCount=" << m_itemImages.size() << "| cardCount=" << m_cards.size();
+}
+
+void MediaImageEditDialog::handleCardAction(int index, MediaImageEditCard::Action action)
+{
+    if (m_isBusy || !m_hasImageInfo || index < 0 || index >= m_slots.size())
+        return;
+    const ImageSlotState slot = m_slots.at(index);
+    switch (action) {
+    case MediaImageEditCard::Action::View:
+        QCoro::connect(viewImage(slot), this, []() {});
+        break;
+    case MediaImageEditCard::Action::ChooseFile:
+        m_pendingTask = chooseAndUploadImage(slot);
+        break;
+    case MediaImageEditCard::Action::ImageUrl:
+        m_pendingTask = promptAndUploadImageUrl(slot);
+        break;
+    case MediaImageEditCard::Action::Download:
+        m_pendingTask = saveImage(slot);
+        break;
+    case MediaImageEditCard::Action::Remove:
+        m_pendingTask = removeImage(slot);
+        break;
     }
 }
 
-void MediaImageEditDialog::refreshPreview()
+void MediaImageEditDialog::startPreviews()
 {
-    ++m_previewLoadGeneration;
-    updatePreviewDetails();
-
-    const ImageSlotState* slot = currentSlot();
-    if (!slot) {
-        updatePreviewMessage(tr("Preview unavailable"));
-        return;
-    }
-
-    if (!slot->hasImage()) {
-        updatePreviewMessage(tr("No image for this type"));
-        return;
-    }
-
-    updatePreviewMessage(tr("Loading preview..."));
-    m_pendingPreviewTask = loadPreview(*slot, m_previewLoadGeneration);
+    const quint64 generation = ++m_previewLoadGeneration;
+    for (int worker = 0; worker < kPreviewWorkers; ++worker)
+        QCoro::connect(loadPreviews(worker, generation), this, []() {});
 }
 
-void MediaImageEditDialog::setPreviewDropActive(bool active)
+void MediaImageEditDialog::invalidateEditedImages(QString imageType)
 {
-    if (!m_previewLabel || m_isPreviewDropActive == active) {
+    if (!m_core || !m_core->mediaService())
         return;
+    QSet<int> indices{-1};
+    for (const ItemImageInfo& image : std::as_const(m_itemImages)) {
+        if (image.imageType == imageType)
+            indices.insert(image.imageIndex);
     }
-
-    m_isPreviewDropActive = active;
-    m_previewLabel->setProperty("drag-over", active);
-    m_previewLabel->style()->unpolish(m_previewLabel);
-    m_previewLabel->style()->polish(m_previewLabel);
-    m_previewLabel->update();
+    
+    QStringList itemIds{m_target.effectiveImageItemId(), m_target.itemId};
+    itemIds.removeAll(QString());
+    itemIds.removeDuplicates();
+    for (const QString& itemId : itemIds) {
+        for (int index : indices)
+            m_core->mediaService()->invalidateImageCache(itemId, imageType, index);
+    }
 }
 
-void MediaImageEditDialog::updatePreviewMessage(const QString& text)
+QCoro::Task<void> MediaImageEditDialog::loadPreviews(int worker, quint64 requestGeneration)
 {
-    if (!m_previewLabel) {
-        return;
+    QPointer<MediaImageEditDialog> safeThis(this);
+    for (int index = worker; safeThis && requestGeneration == safeThis->m_previewLoadGeneration &&
+                             index < safeThis->m_slots.size(); index += kPreviewWorkers) {
+        const ImageSlotState slot = safeThis->m_slots.at(index);
+        const QPointer<MediaImageEditCard> card = safeThis->m_cards.at(index);
+        if (slot.hasImage() && card)
+            co_await safeThis->loadPreview(slot, card, requestGeneration);
     }
-
-    m_previewLabel->setPixmap(QPixmap());
-    m_previewLabel->setText(text);
-}
-
-void MediaImageEditDialog::updatePreviewPixmap(const QPixmap& pixmap)
-{
-    if (!m_previewLabel) {
-        return;
-    }
-
-    const QPixmap scaled = ImageUtils::containRoundedPixmap(
-        pixmap, m_previewLabel->size(), 12);
-    m_previewLabel->setText(QString());
-    m_previewLabel->setPixmap(scaled);
-}
-
-void MediaImageEditDialog::updatePreviewDetails()
-{
-    if (!m_previewInfoLabel) {
-        return;
-    }
-
-    const ImageSlotState* slot = currentSlot();
-    if (!slot) {
-        m_previewInfoLabel->clear();
-        return;
-    }
-
-    if (!slot->hasImage()) {
-        m_previewInfoLabel->setText(
-            tr("No image uploaded for this type.\nChoose a file, paste an image URL, or drag one onto the preview."));
-        return;
-    }
-
-    m_previewInfoLabel->setText(buildPreviewDetails(slot->images));
 }
 
 void MediaImageEditDialog::updateStatusText(const QString& text)
 {
-    if (!m_statusLabel) {
-        return;
-    }
-
-    m_statusLabel->setText(text);
+    if (m_statusLabel)
+        m_statusLabel->setText(text);
 }
 
 void MediaImageEditDialog::updateUiState()
 {
-    const ImageSlotState* slot = currentSlot();
-    const bool hasSelection = slot != nullptr;
-    const bool hasImage = slot && slot->hasImage();
-
-    if (m_typeList) {
-        m_typeList->setEnabled(!m_isBusy);
+    for (const auto& card : std::as_const(m_cards)) {
+        if (card)
+            card->setBusy(m_isBusy || !m_hasImageInfo);
     }
-    if (m_chooseButton) {
-        m_chooseButton->setEnabled(!m_isBusy && hasSelection);
-    }
-    if (m_urlButton) {
-        m_urlButton->setEnabled(!m_isBusy && hasSelection);
-    }
-    if (m_downloadButton) {
-        m_downloadButton->setEnabled(!m_isBusy && hasImage);
-    }
-    if (m_removeButton) {
-        m_removeButton->setEnabled(!m_isBusy && hasImage);
-    }
+    if (m_retryButton)
+        m_retryButton->setEnabled(!m_isBusy);
 }

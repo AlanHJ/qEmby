@@ -24,6 +24,9 @@ public:
     void setTitle(const QString& title);
     void setCardStyle(MediaCardDelegate::CardStyle style);
     void setGalleryHeight(int height);
+    
+    void fitGalleryHeightToCards();
+    int galleryBottomInset() const;
     void setTileSize(const QSize &size);
 
     

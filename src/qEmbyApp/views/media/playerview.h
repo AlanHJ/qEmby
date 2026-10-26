@@ -11,6 +11,9 @@
 #include <services/introdb/introdbservice.h>
 
 #include <QVariant>
+#include <QFuture>
+#include <QPromise>
+#include <QSharedPointer>
 #include <qcorotask.h>
 
 #include <QWidget>
@@ -32,6 +35,8 @@ class QEmbyCore;
 class PlayerOverlayDialog;
 class PlayerMediaSwitcherPanel;
 class PlayerOsdLayer;
+class PlayerSeekIndicator;
+class PlayerPreviewController;
 class PlayerLongPressHandler;
 class PlayerStatisticsOverlay;
 class NativeDanmakuOverlay;
@@ -112,12 +117,18 @@ private:
     void setupUi();
     void updateTitleElision();
     void updateOverlayLayout();
+    void syncWindowControlIcons();
     void clearMediaSwitcherCache();
+    void setMediaSwitcherError(const QString &message);
+    void retryMediaSwitcherLoad();
     void applyMediaSwitcherMode();
     void updateMediaSwitcherButton();
     bool shouldShowDanmakuHudControls() const;
     bool useHudMediaSwitcher() const;
     QString formatMediaSwitcherPlaybackTitle(const MediaItem &item) const;
+    bool findAdjacentPart(int direction, QString &mediaId, QString &title,
+                          long long &startPositionTicks) const;
+    QString mediaSequenceAnchorId() const;
     bool findNextResumeMediaFromCache(QString &mediaId,
                                       QString &title,
                                       long long &startPositionTicks,
@@ -136,10 +147,14 @@ private:
     
     QCoro::Task<void> showRightSidebar();
     QCoro::Task<void> ensureMediaSwitcherDataLoaded();
+    QCoro::Task<void> loadMediaSwitcherData(quint64 loadGeneration,
+                                          QSharedPointer<QPromise<void>> promise);
     QCoro::Task<void> autoPlayNextMediaIfEnabled();
+    QCoro::Task<void> switchAdjacentMedia(int direction);
     QCoro::Task<void> switchFromMediaSwitcher(QString mediaId,
                                               QString title,
-                                              long long startPositionTicks);
+                                              long long startPositionTicks,
+                                              bool automatic = false);
     
     void hideRightSidebar(bool immediate = false);
     void setEffectivePlaybackSpeed(double speed);
@@ -213,6 +228,8 @@ private:
 
     
     PlayerOsdLayer *m_osdLayer = nullptr;
+    PlayerSeekIndicator *m_seekHoverIndicator = nullptr;
+    PlayerPreviewController *m_previewController = nullptr;
     
     PlayerLongPressHandler *m_longPressHandler = nullptr;
 
@@ -229,6 +246,7 @@ private:
     QLabel *m_titleLabel;
     QPushButton *m_minBtn;
     QPushButton *m_maxBtn;
+    QPointer<QWidget> m_observedPlayerWindow;
     QPushButton *m_closeBtn;
     QLabel *m_networkSpeedLabel;
 
@@ -317,11 +335,12 @@ private:
     
     
     QString m_switcherPendingItemId;
-    QString m_switcherPendingTitle;
-    long long m_switcherPendingTicks = 0;
     
     
     bool m_isSeriesMode = false;
+    bool m_isLiveTv = false;
+    QString m_playbackProfileId;
+    QString m_playbackUserId;
     QString m_seriesId;
     QString m_seriesName;
 
@@ -334,6 +353,16 @@ private:
     
     QString m_switcherCacheMediaId;
     bool m_switcherCacheReady = false;
+    QFuture<void> m_switcherLoadFuture;
+    QSharedPointer<QPromise<void>> m_switcherLoadPromise;
+    quint64 m_switcherLoadGeneration = 0;
+    QString m_switcherLoadError;
+    quint64 m_playbackGeneration = 0;
+    quint64 m_switcherRequestGeneration = 0;
+    QList<MediaItem> m_playbackParts;
+    QString m_partsOwnerId; 
+    QString m_partsServerId;
+    QString m_partsUserId;
     QList<MediaItem> m_switcherResumeItems;
     QList<MediaItem> m_switcherSeriesSeasons;
     QHash<QString, QList<MediaItem>> m_switcherSeasonEpisodes;

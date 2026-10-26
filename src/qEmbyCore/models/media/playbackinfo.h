@@ -5,6 +5,7 @@
 #include <QDateTime>
 #include <QString>
 #include <QList>
+#include <QMap>
 #include <QJsonObject>
 #include <QMetaType>
 #include <QObject>
@@ -96,6 +97,8 @@ public:
 Q_DECLARE_METATYPE(MediaStreamInfo)
 
 
+enum class PlaybackKind { VideoOnDemand, LiveTv, Audio };
+
 struct QEMBYCORE_EXPORT MediaSourceInfo {
     Q_GADGET
     Q_PROPERTY(QString id MEMBER id)
@@ -115,6 +118,18 @@ public:
     QString container;      
     long long size = 0;     
     QString directStreamUrl;
+    QString transcodingUrl;
+    QString liveStreamId;
+    QString playSessionId;
+    QString openToken;
+    bool requiresOpening = false;
+    bool requiresClosing = false;
+    bool supportsDirectPlay = false;
+    bool supportsDirectStream = false;
+    bool supportsTranscoding = false;
+    bool isInfiniteStream = false;
+    PlaybackKind playbackKind = PlaybackKind::VideoOnDemand;
+    QMap<QString, QString> requiredHttpHeaders;
     long long runTimeTicks = 0;
     QDateTime dateCreated;
     QDateTime dateModified;

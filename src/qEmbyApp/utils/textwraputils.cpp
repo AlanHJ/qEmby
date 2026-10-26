@@ -77,6 +77,29 @@ QString wrapPlainText(const QString& text, const QFont& font, int maxWidth)
     return wrappedLines.join(QLatin1Char('\n'));
 }
 
+QString elideWrappedPlainText(const QString& text, const QFont& font,
+                              int maxWidth, int maxLines, bool* elided)
+{
+    if (elided) *elided = false;
+    if (text.isEmpty()) return {};
+    if (maxWidth <= 0 || maxLines <= 0) {
+        if (elided) *elided = true;
+        return {};
+    }
+    QStringList lines = wrapPlainText(text, font, maxWidth)
+        .split(QLatin1Char('\n'), Qt::KeepEmptyParts);
+    if (lines.size() > maxLines) {
+        if (elided) *elided = true;
+        lines = lines.mid(0, maxLines);
+        const QFontMetrics metrics(font);
+        
+        
+        lines.last() = metrics.elidedText(
+            lines.last().trimmed() + QChar(0x2026), Qt::ElideRight, maxWidth);
+    }
+    return lines.join(QLatin1Char('\n'));
+}
+
 QSize measureWrappedPlainText(const QString& text, const QFont& font,
                               int maxWidth)
 {

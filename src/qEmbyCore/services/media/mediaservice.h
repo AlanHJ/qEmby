@@ -74,6 +74,8 @@ struct UserViewsCache {
 struct QEMBYCORE_EXPORT DownloadedImageData {
     QByteArray data;
     QString mimeType;
+    QImage preview;
+    QString identity;
 
     bool isValid() const {
         return !data.isEmpty();
@@ -93,8 +95,14 @@ struct QEMBYCORE_EXPORT MediaQueryPage {
     }
 };
 
+struct QEMBYCORE_EXPORT MediaResourceItems {
+    QList<MediaItem> items;
+    bool available = true;
+};
+
 class ServerManager;
 class QNetworkAccessManager;
+class ApiClient;
 
 enum class ImageRequestPriority
 {
@@ -121,11 +129,18 @@ public:
     QCoro::Task<QList<MediaItem>> getUserViews(bool includeHidden = false);
     void clearUserViewsCache();
     
-    QCoro::Task<MediaQueryPage> getLibraryItemsPage(const QString& parentId, const QString& sortBy = "IsFolder,SortName", const QString& sortOrder = "Ascending", const QString& filters = "", const QString& includeItemTypes = "", int startIndex = 0, int limit = 50, bool recursive = false, bool includeChildCount = false);
-    QCoro::Task<QList<MediaItem>> getLibraryItems(const QString& parentId, const QString& sortBy = "IsFolder,SortName", const QString& sortOrder = "Ascending", const QString& filters = "", const QString& includeItemTypes = "", int startIndex = 0, int limit = 50, bool recursive = false, bool includeChildCount = false);
+    QCoro::Task<MediaQueryPage> getLibraryItemsPage(QString parentId, QString sortBy = "IsFolder,SortName", QString sortOrder = "Ascending", QString filters = "", QString includeItemTypes = "", int startIndex = 0, int limit = 50, bool recursive = false, bool includeChildCount = false, QObject* requestContext = nullptr);
+    QCoro::Task<QList<MediaItem>> getLibraryItems(QString parentId, QString sortBy = "IsFolder,SortName", QString sortOrder = "Ascending", QString filters = "", QString includeItemTypes = "", int startIndex = 0, int limit = 50, bool recursive = false, bool includeChildCount = false);
     
     QCoro::Task<QList<MediaItem>> getResumeItems(int limit = 0, const QString& sortBy = "", const QString& sortOrder = "");
     QCoro::Task<QList<MediaItem>> getLatestItems(int limit = 1000, const QString& sortBy = "DateCreated", const QString& sortOrder = "Descending");
+    
+    
+    QCoro::Task<QList<MediaItem>> getFeaturedCandidates();
+    QCoro::Task<QList<MediaItem>> getFeaturedItemsByIds(QStringList itemIds);
+    
+    
+    QCoro::Task<MediaItem> getFeaturedItemMetadata(MediaItem item);
     QCoro::Task<QList<MediaItem>> getPlayedItems(int limit = 0, const QString& sortBy = "DatePlayed", const QString& sortOrder = "Descending");
     QCoro::Task<QList<MediaItem>> getRecommendedMovies(int limit = 1000, const QString& sortBy = "Random", const QString& sortOrder = "Ascending");
     QCoro::Task<MediaQueryPage> getResumeItemsPage(const QString& sortBy = "", const QString& sortOrder = "", int startIndex = 0, int limit = 50);
@@ -136,8 +151,16 @@ public:
     QCoro::Task<QList<MediaItem>> searchMedia(const QString& searchTerm, const QString& includeItemTypes = "Movie,Series,BoxSet,Person", const QString& sortBy = "", const QString& sortOrder = "Ascending", int limit = 50);
 
     QCoro::Task<MediaItem> getItemDetail(QString itemId);
+    QCoro::Task<double> getItemCommunityRating(QString itemId);
+    QCoro::Task<QList<MediaItem>> getItemsByIds(
+        QStringList itemIds, QString fields = QStringLiteral("Overview"));
     
-    QCoro::Task<PlaybackInfo> getPlaybackInfo(const QString& itemId);
+    QCoro::Task<PlaybackInfo> getPlaybackInfo(QString itemId, bool liveTv = false, QObject* requestContext = nullptr);
+    QCoro::Task<void> closeLiveStream(QString liveStreamId);
+    QCoro::Task<void> discardPlaybackSources(QList<MediaSourceInfo> sources);
+    QCoro::Task<MediaResourceItems> getLiveTvChannels(int limit = 60);
+    QCoro::Task<MediaResourceItems> getMusicAlbums(int limit = 30);
+    QCoro::Task<QList<MediaItem>> getAlbumTracks(QString albumId, QObject* requestContext = nullptr);
 
     
     
@@ -148,10 +171,13 @@ public:
     
     QCoro::Task<QList<MediaItem>> getNextUp(const QString& seriesId = "");
 
-    QCoro::Task<QList<MediaItem>> getAdditionalParts(const QString& itemId);
+    QCoro::Task<QList<MediaItem>> getAdditionalParts(QString itemId);
+    
+    QString additionalPartsOwnerId(const QString& itemId) const;
+    void rememberAdditionalParts(const QString& itemId, const QList<MediaItem>& parts);
 
     
-    QCoro::Task<bool> toggleFavorite(const QString& itemId, bool isFavorite);
+    QCoro::Task<bool> toggleFavorite(QString itemId, bool isFavorite);
     
     
     QCoro::Task<void> markAsPlayed(const QString& itemId);
@@ -179,6 +205,9 @@ public:
                                     ImageFetchPolicy fetchPolicy =
                                         ImageFetchPolicy::CachePreferred);
     QCoro::Task<QPixmap> fetchImageByUrl(QString imageUrl);
+    QCoro::Task<DownloadedImageData> fetchImageData(QString itemId, QString imageType,
+        QString imageTag, int maxWidth, ImageRequestPriority priority = ImageRequestPriority::Normal,
+        QObject* requestContext = nullptr, ImageFetchPolicy policy = ImageFetchPolicy::CachePreferred);
     QCoro::Task<DownloadedImageData> downloadImageByUrl(QString imageUrl);
     void clearImageCaches();
     void invalidateImageCache(QString itemId, QString imageType,
@@ -197,13 +226,19 @@ public:
     QString getStreamUrl(const QString& itemId, const QString& mediaSourceId) const;
     QString getStreamUrl(const QString& itemId, const MediaSourceInfo& sourceInfo) const;
 
-    QCoro::Task<QString> reportPlaybackStart(QString itemId, QString mediaSourceId, long long positionTicks);
+    QCoro::Task<QString> reportPlaybackStart(QString itemId, QString mediaSourceId, long long positionTicks,
+        QString negotiatedSessionId = {}, bool audio = false, bool canSeek = true, QString liveStreamId = {});
     QCoro::Task<void> reportPlaybackProgress(QString itemId, QString mediaSourceId, long long positionTicks, bool isPaused, QString playSessionId);
     QCoro::Task<void> reportPlaybackStopped(QString itemId, QString mediaSourceId, long long positionTicks, QString playSessionId);
 
 Q_SIGNALS:
     
     void recommendCacheCleared();
+    void itemDetailFetched(const MediaItem& item, const QString& serverId,
+                           const QString& userId);
+    void imageInvalidated(const QString& itemId);
+    void libraryArtworkPage(const QString& libraryId, const QList<MediaItem>& items,
+                            int startIndex, int total, bool completeScope);
 
 private:
     struct InFlightImageRequest {
@@ -225,12 +260,22 @@ private:
     QNetworkAccessManager* m_imageManager;
     RecommendCache m_recommendCache; 
     UserViewsCache m_userViewsCache;
+    QHash<QString, QString> m_additionalPartOwners;
+    QHash<QString, QSharedPointer<ApiClient>> m_liveStreams;
+    QHash<QString, QSharedPointer<ApiClient>> m_playbackClients;
+    QHash<QString, QPair<bool, bool>> m_playbackTraits;
+    QStringList m_playbackClientOrder;
+    quint64 m_additionalPartsGeneration = 0;
     quint64 m_userViewsCacheGeneration = 0;
     QHash<QString, quint64> m_invalidatedImageRequestVersions;
     
     
     
     QCache<QString, QImage> m_decodedImageCache;
+    QCache<QString, QByteArray> m_rawImageCache{32768};
+    QHash<QString, int> m_rawImageRequests;
+    QString rawImageKey(QString itemId, QString type, QString tag, int width) const;
+    QCoro::Task<void> releaseLiveStreams(QList<MediaSourceInfo> sources, QSharedPointer<ApiClient> client);
     QHash<QString, InFlightImageRequest> m_inFlightImageRequests;
     quint64 m_imageCacheGeneration = 0;
     quint64 m_nextInFlightImageRequestId = 0;
@@ -245,7 +290,7 @@ private:
     void ensureValidProfile() const;
     QCoro::Task<MediaQueryPage> fetchItemPage(QString basePath,
                                               int startIndex, int limit,
-                                              QString context);
+                                              QString context, QPointer<QObject> requestContext = {});
     QCoro::Task<QList<MediaItem>> fetchPagedItemList(QString basePath,
                                                      int requestedLimit,
                                                      QString context,
@@ -254,6 +299,8 @@ private:
                               QString userId, bool includesHidden);
     void updateUserViewsCache(MediaItem view, QString serverId,
                               QString userId);
+    void updateRecommendCacheItem(const MediaItem& item, const QString& serverId,
+                                  const QString& userId);
     void removeInFlightImageRequest(const QString& cacheKey,
                                     quint64 requestId);
     QFuture<bool> acquireImageNetworkSlot(

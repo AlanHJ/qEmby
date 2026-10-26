@@ -1,0 +1,47 @@
+// Copyright (C) 2023-2024 Stdware Collections (https:
+// Copyright (C) 2021-2023 wangwenx190 (Yuhang Zhao)
+// SPDX-License-Identifier: Apache-2.0
+
+#include "qwkglobal_p.h"
+
+#include <QtCore/QCoreApplication>
+
+#include <QtCore/private/qobject_p.h>
+
+namespace QWK {
+
+    bool forwardObjectEventFilters(QObject *currentFilter, QObject *receiver, QEvent *event) {
+        
+        
+        auto d = QObjectPrivate::get(receiver);
+        bool findCurrent = false;
+        if (receiver != QCoreApplication::instance() && d->extraData) {
+            for (qsizetype i = 0; i < d->extraData->eventFilters.size(); ++i) {
+                QObject *obj = d->extraData->eventFilters.at(i);
+                if (!findCurrent) {
+                    if (obj == currentFilter) {
+                        findCurrent = true; 
+                    }
+                    continue;
+                }
+
+                if (!obj)
+                    continue;
+#if QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
+                if (QObjectPrivate::get(obj)->threadData.loadRelaxed() !=
+                    d->threadData.loadRelaxed()) {
+#else
+                if (QObjectPrivate::get(obj)->threadData != d->threadData) {
+#endif
+                    qWarning("QCoreApplication: Object event filter cannot be in a different "
+                             "thread.");
+                    continue;
+                }
+                if (obj->eventFilter(receiver, event))
+                    return true;
+            }
+        }
+        return false;
+    }
+
+}

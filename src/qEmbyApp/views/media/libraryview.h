@@ -11,6 +11,7 @@ class QPushButton;
 class QButtonGroup;
 class MediaGridWidget;
 class ModernSortButton;
+class ArtworkViewButton;
 class ElidedLabel;
 class QLabel;
 
@@ -27,7 +28,7 @@ public:
     explicit LibraryView(QEmbyCore* core, QWidget *parent = nullptr);
     
     
-    QCoro::Task<void> loadLibrary(const QString& libraryId, const QString& libraryName);
+    QCoro::Task<void> loadLibrary(QString libraryId, QString libraryName);
     QCoro::Task<void> loadPerson(QString personId, QString personName);
     QCoro::Task<void> loadFiltered(const QString& filterType, const QString& filterValue);
 
@@ -73,7 +74,7 @@ private:
     
     void saveSortPreference();
     void restoreSortPreference();
-    void saveViewPreference();
+    void saveViewPreference(bool isTile);
     void restoreViewPreference();
     void saveTabPreference();
     void restoreTabPreference();
@@ -95,7 +96,7 @@ private:
     QWidget* m_tabBarWidget;       
     QButtonGroup* m_tabGroup;
     ModernSortButton* m_sortButton; 
-    QPushButton* m_viewSwitchBtn;
+    ArtworkViewButton* m_viewSwitchBtn;
     QLabel* m_statsLabel;
 
     MediaGridWidget* m_mediaGrid;

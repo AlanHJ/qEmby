@@ -204,6 +204,12 @@ QJsonObject itemToJson(const MediaItem &item) {
   object.insert(QStringLiteral("ImageTags"), imageTags);
   object.insert(QStringLiteral("PrimaryImageAspectRatio"),
                 item.images.primaryImageAspectRatio);
+  object.insert(QStringLiteral("OwningLibraryId"), item.owningLibraryId);
+  object.insert(QStringLiteral("ParentId"), item.parentId);
+  object.insert(QStringLiteral("AlbumId"), item.albumId);
+  object.insert(QStringLiteral("Album"), item.album);
+  object.insert(QStringLiteral("AlbumArtist"), item.albumArtist);
+  object.insert(QStringLiteral("Artists"), stringListToJsonArray(item.artists));
   object.insert(QStringLiteral("PrimaryImageItemId"),
                 item.images.primaryImageItemId);
   object.insert(QStringLiteral("SeriesPrimaryImageTag"),
