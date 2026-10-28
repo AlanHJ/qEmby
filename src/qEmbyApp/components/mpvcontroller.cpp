@@ -1,4 +1,5 @@
 #include "mpvcontroller.h"
+#include "anime4kshadermanager.h"
 #include "../utils/subtitlestyleutils.h"
 #include "../utils/playerpreferenceutils.h"
 #include <QDebug>
@@ -169,6 +170,7 @@ bool MpvController::init() {
         mpv_set_option_string(m_mpv, "gpu-dumb-mode", "yes");
         mpv_set_option_string(m_mpv, "opengl-pbo", "no");
         mpv_set_option_string(m_mpv, "dither-depth", "no");
+        m_gpuDumbMode = true;
     }
 #endif
     mpv_set_option_string(m_mpv, "hwdec", hwdec.toUtf8().constData());
@@ -230,6 +232,18 @@ bool MpvController::init() {
 
     SubtitleStyleUtils::applyToController(this);
 
+    const bool anime4kEnabled = ConfigStore::instance()->get<bool>(
+        ConfigKeys::PlayerAnime4kEnabled, false);
+    if (anime4kEnabled) {
+        const QString anime4kPreset = ConfigStore::instance()->get<QString>(
+            ConfigKeys::PlayerAnime4kPreset, "balanced");
+        if (!applyAnime4kShaders(true, anime4kPreset)) {
+            qDebug() << "[MpvController] Anime4K shaders not applied at startup"
+                     << "| preset=" << anime4kPreset
+                     << "| gpu-dumb-mode=" << m_gpuDumbMode;
+        }
+    }
+
     mpv_set_wakeup_callback(m_mpv, MpvController::onMpvEvents, this);
 
     
@@ -250,6 +264,54 @@ bool MpvController::init() {
     observeProperty("paused-for-cache", MPV_FORMAT_FLAG);
     observeProperty("seeking", MPV_FORMAT_FLAG);
     
+    return true;
+}
+
+bool MpvController::anime4kAvailable() const {
+    return !m_gpuDumbMode;
+}
+
+bool MpvController::applyAnime4kShaders(bool enabled, const QString &presetId) {
+    if (!m_mpv) return false;
+
+    if (!enabled) {
+        command(QVariantList{"change-list", "glsl-shaders", "clr"});
+        qDebug() << "[MpvController] Cleared Anime4K shaders";
+        return true;
+    }
+
+    if (m_gpuDumbMode) {
+        qDebug() << "[MpvController] Anime4K shaders unavailable"
+                 << "| reason=gpu-dumb-mode";
+        return false;
+    }
+
+    if (!Anime4KShaderManager::instance().ensureShadersExtracted()) {
+        qDebug() << "[MpvController] Anime4K shaders unavailable"
+                 << "| reason=shader extraction failed";
+        return false;
+    }
+
+    const QStringList chain = Anime4KShaderManager::instance().shaderChain(
+        Anime4KShaderManager::presetFromId(presetId));
+    if (chain.isEmpty()) {
+        qDebug() << "[MpvController] Anime4K shaders unavailable"
+                 << "| reason=empty shader chain" << "| preset=" << presetId;
+        return false;
+    }
+
+    command(QVariantList{"change-list", "glsl-shaders", "clr"});
+    for (const QString &shaderPath : chain) {
+        if (command(QVariantList{"change-list", "glsl-shaders", "append",
+                                 shaderPath},
+                    nullptr) < 0) {
+            qDebug() << "[MpvController] Failed to append Anime4K shader"
+                     << "| path=" << shaderPath;
+            return false;
+        }
+    }
+    qDebug() << "[MpvController] Applied Anime4K shaders"
+             << "| preset=" << presetId << "| count=" << chain.size();
     return true;
 }
 
