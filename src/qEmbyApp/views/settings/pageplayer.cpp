@@ -12,6 +12,7 @@
 #include "../../components/settingssubpanel.h"
 #include "../../utils/danmakuoptionutils.h"
 #include "../../utils/danmakurendererutils.h"
+#include "../../utils/gpudevicemanager.h"
 #include "../../utils/playerpreferenceutils.h"
 #include "../../managers/externalplayerdetector.h"
 #include "../../managers/thememanager.h"
@@ -118,6 +119,47 @@ PagePlayer::PagePlayer(QEmbyCore *core, QWidget *parent)
   anime4kAdvancedDesc->setObjectName("SettingsCardDesc");
   anime4kAdvancedDesc->setWordWrap(true);
   anime4kAdvancedLayout->addWidget(anime4kAdvancedDesc);
+
+  auto *gpuDeviceCombo = new ModernComboBox(this);
+  gpuDeviceCombo->addItem(tr("Auto"), "auto");
+  const QList<GpuDevice> gpuDevices = GpuDeviceManager::availableDevices();
+  for (const GpuDevice &gpuDevice : gpuDevices) {
+    gpuDeviceCombo->addItem(gpuDevice.name, gpuDevice.id);
+  }
+  anime4kAdvancedLayout->addWidget(new SettingsCard(
+      ":/svg/dark/video-output.svg", tr("GPU Device"),
+      tr("Select the GPU used for video rendering"), gpuDeviceCombo,
+      ConfigKeys::PlayerGpuDevice, anime4kAdvanced, QVariant("auto")));
+
+  auto *gpuDeviceDesc = new QLabel(
+      tr("Forces the rendering GPU at the platform level (Linux: DRI_PRIME; "
+         "Windows: GPU performance preference). Changes apply to newly "
+         "created playback surfaces; macOS does not support manual "
+         "selection."),
+      anime4kAdvanced);
+  gpuDeviceDesc->setObjectName("SettingsCardDesc");
+  gpuDeviceDesc->setWordWrap(true);
+  anime4kAdvancedLayout->addWidget(gpuDeviceDesc);
+
+  if (!GpuDeviceManager::isSupported() || gpuDevices.isEmpty()) {
+    gpuDeviceCombo->setEnabled(false);
+  }
+
+  connect(gpuDeviceCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+          this, [gpuDeviceCombo](int index) {
+            if (index < 0) {
+              return;
+            }
+            GpuDeviceManager::applyDevice(
+                gpuDeviceCombo->itemData(index).toString());
+          });
+
+  const QString configuredGpuDevice = ConfigStore::instance()->get<QString>(
+      ConfigKeys::PlayerGpuDevice, QStringLiteral("auto"));
+  if (!configuredGpuDevice.isEmpty() &&
+      configuredGpuDevice != QLatin1String("auto")) {
+    GpuDeviceManager::applyDevice(configuredGpuDevice);
+  }
 
   auto *shaderChainList = new QListWidget(anime4kAdvanced);
   shaderChainList->setSelectionMode(QAbstractItemView::SingleSelection);
