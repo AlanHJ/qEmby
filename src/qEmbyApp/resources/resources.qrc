@@ -329,5 +329,12 @@
         <file>svg/dark/cloud-sync.svg</file>
         <file>svg/light/cloud-sync.svg</file>
         <file>html/licenses.html</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Clamp_Highlights.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Restore_CNN_S.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Restore_CNN_M.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Restore_CNN_L.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Upscale_CNN_x2_S.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Upscale_CNN_x2_M.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Upscale_CNN_x2_L.glsl</file>
     </qresource>
 </RCC> 
