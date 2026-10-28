@@ -164,6 +164,7 @@ constexpr const char* PlayerAnime4kChain = "player/anime4k_chain";
 constexpr const char* PlayerGpuDevice = "player/gpu_device";
 constexpr const char* PlayerIndependentWindow = "player/independent_window";
 constexpr const char* PlayerUseMpvConf = "player/use_mpv_conf";
+constexpr const char* PlayerMpvKeyPassthrough = "player/mpv_key_passthrough";
 constexpr const char* PlayerVolumeLevel = "player/volume_level";
 constexpr const char* PlayerVolumeMuted = "player/volume_muted";
 constexpr const char* PlayerSubtitleFont = "player/subtitle_font";
