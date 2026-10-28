@@ -373,6 +373,12 @@ PagePlayer::PagePlayer(QEmbyCore *core, QWidget *parent)
       new ModernSwitch(this), ConfigKeys::PlayerHideSubtitles, this,
       QVariant(false)));
 
+  m_mainLayout->addWidget(new SettingsCard(
+      ":/svg/dark/video-output.svg", tr("MPV Key Passthrough"),
+      tr("Forward keys not handled by qEmby to mpv so input.conf and mpv keybindings work"),
+      new ModernSwitch(this), ConfigKeys::PlayerMpvKeyPassthrough, this,
+      QVariant(false)));
+
   
   auto *versionInput = new ModernTagInput(this);
   versionInput->addPreset(tr("Original"), "original");
