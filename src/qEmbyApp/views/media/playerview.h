@@ -96,6 +96,7 @@ private slots:
     void loadLocalDanmakuFile();
     void loadExternalSubtitleFile();
     void openSubtitleSettingsDialog();
+    void openMpvInfoDialog();
     void openDanmakuSettingsDialog();
     void openAnime4kMenu();
     void showSettingsMenu(); 
