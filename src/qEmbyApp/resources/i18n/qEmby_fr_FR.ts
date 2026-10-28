@@ -8486,4 +8486,57 @@ Adresse: %2</translation>
         <translation>Impossible de charger les médias. Vérifiez votre connexion et réessayez.</translation>
     </message>
 </context>
+<context>
+    <name>Anime4KShaderManager</name>
+    <message>
+        <source>Fast</source>
+        <translation>Rapide</translation>
+    </message>
+    <message>
+        <source>Balanced</source>
+        <translation>Équilibré</translation>
+    </message>
+    <message>
+        <source>Quality</source>
+        <translation>Qualité</translation>
+    </message>
+</context>
+<context>
+    <name>PagePlayer</name>
+    <message>
+        <source>Anime4K Upscaling</source>
+        <translation>Amélioration Anime4K</translation>
+    </message>
+    <message>
+        <source>Real-time AI upscaling and sharpening for anime video</source>
+        <translation>Amélioration et netteté IA en temps réel pour les vidéos d'animation</translation>
+    </message>
+    <message>
+        <source>Anime4K Preset</source>
+        <translation>Préréglage Anime4K</translation>
+    </message>
+    <message>
+        <source>Shader chain quality preset applied to video upscaling</source>
+        <translation>Préréglage de qualité de la chaîne de shaders appliqué à l'agrandissement vidéo</translation>
+    </message>
+</context>
+<context>
+    <name>PlayerView</name>
+    <message>
+        <source>Off</source>
+        <translation>Désactivé</translation>
+    </message>
+    <message>
+        <source>Anime4K: %1</source>
+        <translation>Anime4K: %1</translation>
+    </message>
+    <message>
+        <source>Anime4K is unavailable on this rendering path</source>
+        <translation>Anime4K n'est pas disponible sur ce chemin de rendu</translation>
+    </message>
+    <message>
+        <source>Failed to apply Anime4K shaders</source>
+        <translation>Échec de l'application des shaders Anime4K</translation>
+    </message>
+</context>
 </TS>

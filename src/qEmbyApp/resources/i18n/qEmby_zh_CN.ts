@@ -10513,4 +10513,57 @@ This cannot be undone.</source>
         <translation>跟随默认</translation>
     </message>
 </context>
+<context>
+    <name>Anime4KShaderManager</name>
+    <message>
+        <source>Fast</source>
+        <translation>快速</translation>
+    </message>
+    <message>
+        <source>Balanced</source>
+        <translation>平衡</translation>
+    </message>
+    <message>
+        <source>Quality</source>
+        <translation>画质</translation>
+    </message>
+</context>
+<context>
+    <name>PagePlayer</name>
+    <message>
+        <source>Anime4K Upscaling</source>
+        <translation>Anime4K 画质增强</translation>
+    </message>
+    <message>
+        <source>Real-time AI upscaling and sharpening for anime video</source>
+        <translation>针对动画视频的实时 AI 放大与锐化</translation>
+    </message>
+    <message>
+        <source>Anime4K Preset</source>
+        <translation>Anime4K 预设</translation>
+    </message>
+    <message>
+        <source>Shader chain quality preset applied to video upscaling</source>
+        <translation>应用于视频放大着色器链的画质预设</translation>
+    </message>
+</context>
+<context>
+    <name>PlayerView</name>
+    <message>
+        <source>Off</source>
+        <translation>关闭</translation>
+    </message>
+    <message>
+        <source>Anime4K: %1</source>
+        <translation>Anime4K：%1</translation>
+    </message>
+    <message>
+        <source>Anime4K is unavailable on this rendering path</source>
+        <translation>当前渲染路径不支持 Anime4K</translation>
+    </message>
+    <message>
+        <source>Failed to apply Anime4K shaders</source>
+        <translation>应用 Anime4K 着色器失败</translation>
+    </message>
+</context>
 </TS>
