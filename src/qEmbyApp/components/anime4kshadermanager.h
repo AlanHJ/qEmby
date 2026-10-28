@@ -14,6 +14,12 @@ class Anime4KShaderManager : public QObject {
 public:
     enum class Preset { Fast, Balanced, Quality };
 
+    struct ShaderEntry {
+        QString path;
+        QString displayName;
+        bool bundled = false;
+    };
+
     static Anime4KShaderManager &instance();
 
     bool ensureShadersExtracted();
@@ -25,6 +31,15 @@ public:
     static Preset presetFromId(const QString &id, Preset fallback = Preset::Balanced);
     static QString presetDisplayName(Preset preset);
     static QList<Preset> availablePresets();
+
+    static QString presetIdOfCustom();
+    static bool isCustomPresetId(const QString &id);
+
+    QStringList configuredChain() const;
+    void setConfiguredChain(const QStringList &paths);
+    void applyPresetTemplate(Preset preset);
+
+    QList<ShaderEntry> shaderCatalog() const;
 
 private:
     explicit Anime4KShaderManager(QObject *parent = nullptr);

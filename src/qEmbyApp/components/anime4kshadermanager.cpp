@@ -1,10 +1,16 @@
 #include "anime4kshadermanager.h"
 
+#include <config/config_keys.h>
+#include <config/configstore.h>
 #include <QCoreApplication>
 #include <QDebug>
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>
+#include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonValue>
 #include <QStandardPaths>
 
 namespace {
@@ -12,6 +18,38 @@ const QString kShaderResourceRoot = QStringLiteral(":/shaders/anime4k/v4.0.1/");
 const QString kShaderVersion = QStringLiteral("4.0.1");
 const QString kExtractSubdir = QStringLiteral("anime4k/v4.0.1");
 const QString kMarkerFileName = QStringLiteral(".complete");
+
+QString chainToJson(const QStringList &paths) {
+    QJsonArray arr;
+    for (const QString &path : paths) {
+        arr.append(path);
+    }
+    return QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact));
+}
+
+QStringList chainFromJson(const QString &json) {
+    QStringList paths;
+    const QJsonDocument doc = QJsonDocument::fromJson(json.toUtf8());
+    if (!doc.isArray()) {
+        return paths;
+    }
+    for (const QJsonValue &value : doc.array()) {
+        if (value.isString()) {
+            const QString path = value.toString();
+            if (!path.isEmpty()) {
+                paths.append(path);
+            }
+        }
+    }
+    return paths;
+}
+
+QString readableShaderName(const QString &path) {
+    QString name = QFileInfo(path).completeBaseName();
+    name.replace(QLatin1Char('_'), QLatin1Char(' '));
+    name.replace(QLatin1Char('-'), QLatin1Char(' '));
+    return name;
+}
 }
 
 Anime4KShaderManager &Anime4KShaderManager::instance() {
@@ -178,4 +216,84 @@ QString Anime4KShaderManager::presetDisplayName(Preset preset) {
 
 QList<Anime4KShaderManager::Preset> Anime4KShaderManager::availablePresets() {
     return {Preset::Fast, Preset::Balanced, Preset::Quality};
+}
+
+QString Anime4KShaderManager::presetIdOfCustom() {
+    return QStringLiteral("custom");
+}
+
+bool Anime4KShaderManager::isCustomPresetId(const QString &id) {
+    return id.trimmed().toLower() == QStringLiteral("custom");
+}
+
+QStringList Anime4KShaderManager::configuredChain() const {
+    const QStringList stored =
+        chainFromJson(ConfigStore::instance()->get<QString>(
+            ConfigKeys::PlayerAnime4kChain));
+    if (!stored.isEmpty()) {
+        return stored;
+    }
+    return shaderChain(presetFromId(ConfigStore::instance()->get<QString>(
+        ConfigKeys::PlayerAnime4kPreset, QStringLiteral("balanced"))));
+}
+
+void Anime4KShaderManager::setConfiguredChain(const QStringList &paths) {
+    ConfigStore::instance()->set(ConfigKeys::PlayerAnime4kChain,
+                                 chainToJson(paths));
+    ConfigStore::instance()->set(ConfigKeys::PlayerAnime4kPreset,
+                                 presetIdOfCustom());
+}
+
+void Anime4KShaderManager::applyPresetTemplate(Preset preset) {
+    ConfigStore::instance()->set(ConfigKeys::PlayerAnime4kChain,
+                                 chainToJson(shaderChain(preset)));
+    ConfigStore::instance()->set(ConfigKeys::PlayerAnime4kPreset,
+                                 presetId(preset));
+}
+
+QList<Anime4KShaderManager::ShaderEntry> Anime4KShaderManager::shaderCatalog() const {
+    struct BundledShaderInfo {
+        const char *fileName;
+        const char *displayName;
+    };
+    static const BundledShaderInfo kBundledShaders[] = {
+        {"Anime4K_Clamp_Highlights.glsl", QT_TR_NOOP("Anime4K Clamp Highlights")},
+        {"Anime4K_Restore_CNN_S.glsl", QT_TR_NOOP("Anime4K Restore CNN S")},
+        {"Anime4K_Restore_CNN_M.glsl", QT_TR_NOOP("Anime4K Restore CNN M")},
+        {"Anime4K_Restore_CNN_L.glsl", QT_TR_NOOP("Anime4K Restore CNN L")},
+        {"Anime4K_Upscale_CNN_x2_S.glsl", QT_TR_NOOP("Anime4K Upscale CNN x2 S")},
+        {"Anime4K_Upscale_CNN_x2_M.glsl", QT_TR_NOOP("Anime4K Upscale CNN x2 M")},
+        {"Anime4K_Upscale_CNN_x2_L.glsl", QT_TR_NOOP("Anime4K Upscale CNN x2 L")},
+    };
+
+    const QString targetDirPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+            + QLatin1Char('/') + kExtractSubdir;
+
+    QList<ShaderEntry> catalog;
+    for (const BundledShaderInfo &info : kBundledShaders) {
+        ShaderEntry entry;
+        entry.path = targetDirPath + QLatin1Char('/') + QString::fromLatin1(info.fileName);
+        entry.displayName = tr(info.displayName);
+        entry.bundled = true;
+        catalog.append(entry);
+    }
+
+    for (const QString &path : configuredChain()) {
+        bool listed = false;
+        for (const ShaderEntry &entry : catalog) {
+            if (entry.path == path) {
+                listed = true;
+                break;
+            }
+        }
+        if (listed) {
+            continue;
+        }
+        ShaderEntry entry;
+        entry.path = path;
+        entry.displayName = readableShaderName(path);
+        entry.bundled = false;
+        catalog.append(entry);
+    }
+    return catalog;
 }
