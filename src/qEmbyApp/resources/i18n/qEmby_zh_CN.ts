@@ -10546,6 +10546,62 @@ This cannot be undone.</source>
         <source>Shader chain quality preset applied to video upscaling</source>
         <translation>应用于视频放大着色器链的画质预设</translation>
     </message>
+    <message>
+        <source>Anime4K Advanced</source>
+        <translation>Anime4K 进阶</translation>
+    </message>
+    <message>
+        <source>Shaders are mounted to mpv's glsl-shaders chain. It is not limited to Anime4K — any mpv GLSL user shader (e.g. FSRCNNX, SSimDownscaler) can be added. Order is execution order.</source>
+        <translation>着色器会挂载到 mpv 的 glsl-shaders 链中。不限于 Anime4K——任何 mpv GLSL 用户着色器（如 FSRCNNX、SSimDownscaler）都可以添加。列表顺序即执行顺序。</translation>
+    </message>
+    <message>
+        <source>GPU Device</source>
+        <translation>GPU 设备</translation>
+    </message>
+    <message>
+        <source>Select the GPU used for video rendering</source>
+        <translation>选择用于视频渲染的 GPU</translation>
+    </message>
+    <message>
+        <source>Forces the rendering GPU at the platform level (Linux: DRI_PRIME; Windows: GPU performance preference). Changes apply to newly created playback surfaces; macOS does not support manual selection.</source>
+        <translation>在平台层面强制指定渲染 GPU（Linux：DRI_PRIME；Windows：GPU 性能首选项）。更改对新建的播放画面生效；macOS 不支持手动选择。</translation>
+    </message>
+    <message>
+        <source>Add Shader...</source>
+        <translation>添加着色器...</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>移除</translation>
+    </message>
+    <message>
+        <source>Move Up</source>
+        <translation>上移</translation>
+    </message>
+    <message>
+        <source>Move Down</source>
+        <translation>下移</translation>
+    </message>
+    <message>
+        <source>Using preset template</source>
+        <translation>使用预设模板</translation>
+    </message>
+    <message>
+        <source>Add Shader</source>
+        <translation>添加着色器</translation>
+    </message>
+    <message>
+        <source>GLSL Shaders (*.glsl)</source>
+        <translation>GLSL 着色器 (*.glsl)</translation>
+    </message>
+    <message>
+        <source>MPV Key Passthrough</source>
+        <translation>MPV 快捷键透传</translation>
+    </message>
+    <message>
+        <source>Forward keys not handled by qEmby to mpv so input.conf and mpv keybindings work</source>
+        <translation>将 qEmby 未处理的按键转发给 mpv，使 input.conf 和 mpv 快捷键绑定生效</translation>
+    </message>
 </context>
 <context>
     <name>PlayerView</name>
@@ -10564,6 +10620,61 @@ This cannot be undone.</source>
     <message>
         <source>Failed to apply Anime4K shaders</source>
         <translation>应用 Anime4K 着色器失败</translation>
+    </message>
+    <message>
+        <source>MPV Info</source>
+        <translation>MPV 信息</translation>
+    </message>
+    <message>
+        <source>All Shader Configs...</source>
+        <translation>全部着色器配置...</translation>
+    </message>
+    <message>
+        <source>%1 (Bundled)</source>
+        <translation>%1（内置）</translation>
+    </message>
+    <message>
+        <source>Shader Enabled: %1</source>
+        <translation>着色器已启用：%1</translation>
+    </message>
+    <message>
+        <source>Shader Disabled: %1</source>
+        <translation>着色器已禁用：%1</translation>
+    </message>
+</context>
+<context>
+    <name>MpvInfoDialog</name>
+    <message>
+        <source>MPV Info</source>
+        <translation>MPV 信息</translation>
+    </message>
+    <message>
+        <source>MPV controller unavailable</source>
+        <translation>MPV 控制器不可用</translation>
+    </message>
+    <message>
+        <source>File</source>
+        <translation>文件</translation>
+    </message>
+    <message>
+        <source>Video</source>
+        <translation>视频</translation>
+    </message>
+    <message>
+        <source>Playback</source>
+        <translation>播放</translation>
+    </message>
+    <message>
+        <source>Audio</source>
+        <translation>音频</translation>
+    </message>
+    <message>
+        <source>Bitrate/Cache</source>
+        <translation>码率/缓存</translation>
+    </message>
+    <message>
+        <source>Output</source>
+        <translation>输出</translation>
     </message>
 </context>
 </TS>
