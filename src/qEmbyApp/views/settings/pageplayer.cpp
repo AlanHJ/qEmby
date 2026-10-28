@@ -1,5 +1,6 @@
 #include "pageplayer.h"
 #include "../../components/anime4kshadermanager.h"
+#include "../../components/collapsiblesection.h"
 #include "../../components/danmakuserverdialog.h"
 #include "../../components/danmakuoptionslider.h"
 #include "../../components/moderncombobox.h"
@@ -32,6 +33,7 @@
 #include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QPlainTextEdit>
 #include <QPointer>
 #include <QPushButton>
@@ -103,6 +105,190 @@ PagePlayer::PagePlayer(QEmbyCore *core, QWidget *parent)
       tr("Shader chain quality preset applied to video upscaling"),
       anime4kPresetCombo, ConfigKeys::PlayerAnime4kPreset, this,
       QVariant("balanced")));
+
+  auto *anime4kAdvanced = new CollapsibleSection(tr("Anime4K Advanced"), this);
+  auto *anime4kAdvancedLayout = anime4kAdvanced->contentLayout();
+  anime4kAdvancedLayout->setSpacing(10);
+
+  auto *anime4kAdvancedDesc = new QLabel(
+      tr("Shaders are mounted to mpv's glsl-shaders chain. It is not limited "
+         "to Anime4K — any mpv GLSL user shader (e.g. FSRCNNX, "
+         "SSimDownscaler) can be added. Order is execution order."),
+      anime4kAdvanced);
+  anime4kAdvancedDesc->setObjectName("SettingsCardDesc");
+  anime4kAdvancedDesc->setWordWrap(true);
+  anime4kAdvancedLayout->addWidget(anime4kAdvancedDesc);
+
+  auto *shaderChainList = new QListWidget(anime4kAdvanced);
+  shaderChainList->setSelectionMode(QAbstractItemView::SingleSelection);
+  shaderChainList->setMinimumHeight(140);
+  anime4kAdvancedLayout->addWidget(shaderChainList);
+
+  auto *shaderChainButtons = new QWidget(anime4kAdvanced);
+  auto *shaderChainButtonLayout = new QHBoxLayout(shaderChainButtons);
+  shaderChainButtonLayout->setContentsMargins(0, 0, 0, 0);
+  shaderChainButtonLayout->setSpacing(8);
+  auto createChainButton = [shaderChainButtons](const QString &text) {
+    auto *button = new QPushButton(text, shaderChainButtons);
+    button->setObjectName("SettingsCardButton");
+    button->setCursor(Qt::PointingHandCursor);
+    button->setFixedHeight(30);
+    return button;
+  };
+  auto *addShaderBtn = createChainButton(tr("Add Shader..."));
+  auto *removeShaderBtn = createChainButton(tr("Remove"));
+  auto *moveShaderUpBtn = createChainButton(tr("Move Up"));
+  auto *moveShaderDownBtn = createChainButton(tr("Move Down"));
+  shaderChainButtonLayout->addWidget(addShaderBtn);
+  shaderChainButtonLayout->addWidget(removeShaderBtn);
+  shaderChainButtonLayout->addWidget(moveShaderUpBtn);
+  shaderChainButtonLayout->addWidget(moveShaderDownBtn);
+  shaderChainButtonLayout->addStretch();
+  anime4kAdvancedLayout->addWidget(shaderChainButtons);
+
+  m_mainLayout->addWidget(anime4kAdvanced);
+
+  const auto refreshShaderChainList = [shaderChainList]() {
+    shaderChainList->clear();
+    const QString rawChain =
+        ConfigStore::instance()->get<QString>(ConfigKeys::PlayerAnime4kChain);
+    const bool chainConfigured = !rawChain.trimmed().isEmpty() &&
+        rawChain.trimmed() != QLatin1String("[]");
+    if (!chainConfigured) {
+      auto *hintItem = new QListWidgetItem(tr("Using preset template"));
+      hintItem->setFlags(hintItem->flags() & ~Qt::ItemIsSelectable);
+      shaderChainList->addItem(hintItem);
+      return;
+    }
+
+    const QList<Anime4KShaderManager::ShaderEntry> catalog =
+        Anime4KShaderManager::instance().shaderCatalog();
+    for (const QString &path :
+         Anime4KShaderManager::instance().configuredChain()) {
+      QString displayName;
+      for (const Anime4KShaderManager::ShaderEntry &entry : catalog) {
+        if (entry.path == path) {
+          displayName = entry.displayName;
+          break;
+        }
+      }
+      if (displayName.isEmpty()) {
+        displayName = QFileInfo(path).fileName();
+      }
+      auto *item = new QListWidgetItem(displayName);
+      item->setData(Qt::UserRole, path);
+      item->setToolTip(QDir::toNativeSeparators(path));
+      shaderChainList->addItem(item);
+    }
+  };
+
+  const auto updateShaderChainButtons =
+      [shaderChainList, removeShaderBtn, moveShaderUpBtn,
+       moveShaderDownBtn]() {
+        const int row = shaderChainList->currentRow();
+        const bool hasSelection = row >= 0 && shaderChainList->item(row) &&
+            !shaderChainList->item(row)->data(Qt::UserRole).toString().isEmpty();
+        removeShaderBtn->setEnabled(hasSelection);
+        moveShaderUpBtn->setEnabled(hasSelection && row > 0);
+        moveShaderDownBtn->setEnabled(hasSelection &&
+                                      row < shaderChainList->count() - 1);
+      };
+
+  connect(shaderChainList, &QListWidget::itemSelectionChanged, this,
+          updateShaderChainButtons);
+
+  connect(addShaderBtn, &QPushButton::clicked, this,
+          [this, refreshShaderChainList, updateShaderChainButtons]() {
+            const QString path = QFileDialog::getOpenFileName(
+                this, tr("Add Shader"), QString(),
+                tr("GLSL Shaders (*.glsl)"));
+            if (path.isEmpty()) {
+              return;
+            }
+            QStringList chain =
+                Anime4KShaderManager::instance().configuredChain();
+            if (chain.contains(path)) {
+              return;
+            }
+            chain.append(path);
+            Anime4KShaderManager::instance().setConfiguredChain(chain);
+            refreshShaderChainList();
+            updateShaderChainButtons();
+          });
+
+  connect(removeShaderBtn, &QPushButton::clicked, this,
+          [shaderChainList, refreshShaderChainList,
+           updateShaderChainButtons]() {
+            QListWidgetItem *item = shaderChainList->currentItem();
+            if (!item) {
+              return;
+            }
+            const QString path = item->data(Qt::UserRole).toString();
+            if (path.isEmpty()) {
+              return;
+            }
+            QStringList chain =
+                Anime4KShaderManager::instance().configuredChain();
+            chain.removeAll(path);
+            Anime4KShaderManager::instance().setConfiguredChain(chain);
+            refreshShaderChainList();
+            updateShaderChainButtons();
+          });
+
+  connect(moveShaderUpBtn, &QPushButton::clicked, this,
+          [shaderChainList, refreshShaderChainList,
+           updateShaderChainButtons]() {
+            const int row = shaderChainList->currentRow();
+            QStringList chain =
+                Anime4KShaderManager::instance().configuredChain();
+            if (row <= 0 || row >= chain.size()) {
+              return;
+            }
+            chain.swapItemsAt(row - 1, row);
+            Anime4KShaderManager::instance().setConfiguredChain(chain);
+            refreshShaderChainList();
+            shaderChainList->setCurrentRow(row - 1);
+            updateShaderChainButtons();
+          });
+
+  connect(moveShaderDownBtn, &QPushButton::clicked, this,
+          [shaderChainList, refreshShaderChainList,
+           updateShaderChainButtons]() {
+            const int row = shaderChainList->currentRow();
+            QStringList chain =
+                Anime4KShaderManager::instance().configuredChain();
+            if (row < 0 || row + 1 >= chain.size()) {
+              return;
+            }
+            chain.swapItemsAt(row, row + 1);
+            Anime4KShaderManager::instance().setConfiguredChain(chain);
+            refreshShaderChainList();
+            shaderChainList->setCurrentRow(row + 1);
+            updateShaderChainButtons();
+          });
+
+  const QString anime4kPresetConfigKey = ConfigKeys::PlayerAnime4kPreset;
+  connect(ConfigStore::instance(), &ConfigStore::valueChanged, this,
+          [anime4kPresetConfigKey, refreshShaderChainList,
+           updateShaderChainButtons](const QString &key,
+                                     const QVariant &newValue) {
+            if (key != anime4kPresetConfigKey) {
+              return;
+            }
+            const QString presetValue = newValue.toString();
+            for (const Anime4KShaderManager::Preset preset :
+                 Anime4KShaderManager::availablePresets()) {
+              if (Anime4KShaderManager::presetId(preset) == presetValue) {
+                Anime4KShaderManager::instance().applyPresetTemplate(preset);
+                refreshShaderChainList();
+                updateShaderChainButtons();
+                return;
+              }
+            }
+          });
+
+  refreshShaderChainList();
+  updateShaderChainButtons();
 
   auto createLanguageRuleInput = [this](bool allowNone) {
     auto *input = new ModernTagInput(this);
