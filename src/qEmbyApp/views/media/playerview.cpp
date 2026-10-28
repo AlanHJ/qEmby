@@ -3,6 +3,7 @@
 #include "../../components/anime4kshadermanager.h"
 #include "../../components/danmakuprogressslider.h"
 #include "../../components/modernscrollpanel.h"
+#include "../../components/mpvinfodialog.h"
 #include "../../components/nativedanmakuoverlay.h"
 #include "../../components/playerdanmakuidentifydialog.h"
 #include "../../components/playerdanmakusettingsdialog.h"
@@ -3800,6 +3801,7 @@ void PlayerView::showSettingsMenu()
     {
         panel->addItem(tr("Danmaku Settings"), "danmaku_settings", false);
     }
+    panel->addItem(tr("MPV Info"), "mpv_info", false);
 
     const bool anime4kEnabled = ConfigStore::instance()->get<bool>(
         ConfigKeys::PlayerAnime4kEnabled, false);
@@ -3894,6 +3896,12 @@ void PlayerView::showSettingsMenu()
                 {
                     dismissPopup();
                     openDanmakuSettingsDialog();
+                    return;
+                }
+                else if (action == "mpv_info")
+                {
+                    dismissPopup();
+                    openMpvInfoDialog();
                     return;
                 }
                 else if (action == "anime4k_menu")
@@ -4031,6 +4039,7 @@ void PlayerView::showSubtitleMenu()
     panel->addItem(tr("Hide Subtitles"), QStringLiteral("hide_subtitles"), hideSubtitles);
     panel->addItem(tr("Load Local Subtitle File"), QStringLiteral("load_local"), false);
     panel->addItem(tr("Subtitle Settings"), QStringLiteral("settings"), false);
+    panel->addItem(tr("MPV Info"), QStringLiteral("mpv_info"), false);
 
     const bool anime4kEnabled = ConfigStore::instance()->get<bool>(
         ConfigKeys::PlayerAnime4kEnabled, false);
@@ -4062,6 +4071,12 @@ void PlayerView::showSubtitleMenu()
                 {
                     dismissPopup();
                     openSubtitleSettingsDialog();
+                    return;
+                }
+                if (action == QLatin1String("mpv_info"))
+                {
+                    dismissPopup();
+                    openMpvInfoDialog();
                     return;
                 }
                 if (action == QLatin1String("anime4k_menu"))
@@ -4123,6 +4138,7 @@ void PlayerView::showDanmakuMenu()
     panel->addItem(tr("Load Local Danmaku File"), QStringLiteral("load_local"), false);
     panel->addItem(tr("Search Danmaku"), QStringLiteral("search"), false);
     panel->addItem(tr("Danmaku Settings"), QStringLiteral("quick_settings"), false);
+    panel->addItem(tr("MPV Info"), QStringLiteral("mpv_info"), false);
 
     const bool anime4kEnabled = ConfigStore::instance()->get<bool>(
         ConfigKeys::PlayerAnime4kEnabled, false);
@@ -4184,6 +4200,12 @@ void PlayerView::showDanmakuMenu()
                 {
                     dismissPopup();
                     openDanmakuSettingsDialog();
+                    return;
+                }
+                else if (action == QLatin1String("mpv_info"))
+                {
+                    dismissPopup();
+                    openMpvInfoDialog();
                     return;
                 }
                 else if (action == QLatin1String("anime4k_menu"))
@@ -4507,6 +4529,20 @@ void PlayerView::openSubtitleSettingsDialog()
     }
 
     auto *dialog = new PlayerSubtitleSettingsDialog(this);
+    trackPlayerDialog(dialog);
+}
+
+void PlayerView::openMpvInfoDialog()
+{
+    if (m_activePopup)
+    {
+        m_activePopup->hide();
+        m_activePopup->close();
+        m_activePopup->deleteLater();
+        m_activePopup = nullptr;
+    }
+
+    auto *dialog = new MpvInfoDialog(m_mpvWidget->controller(), this);
     trackPlayerDialog(dialog);
 }
 
