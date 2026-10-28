@@ -97,6 +97,7 @@ private slots:
     void loadExternalSubtitleFile();
     void openSubtitleSettingsDialog();
     void openDanmakuSettingsDialog();
+    void openAnime4kMenu();
     void showSettingsMenu(); 
     
     void cycleVideoScale();
