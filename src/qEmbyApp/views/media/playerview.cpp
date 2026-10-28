@@ -3965,12 +3965,18 @@ void PlayerView::showSettingsMenu()
     
     panel->addItem(tr("Network Speed"), "network_speed", m_showNetworkSpeed);
     panel->addItem(tr("Statistics"), "statistics", m_showStatisticsOverlay);
+
+    ServerProfile profile = m_core->serverManager()->activeProfile();
+    bool defaultStrmDirect = (profile.type == ServerProfile::Jellyfin);
+    QSettings settings("qEmby", "Player");
+    bool strmDirect = settings.value("EnableStrmDirectPlay", defaultStrmDirect).toBool();
+
+    panel->addItem(tr("STRM Direct Play"), "strm_direct", strmDirect);
     panel->addItem(tr("Subtitle Settings"), "subtitle_settings", false);
     if (showDanmakuControls)
     {
         panel->addItem(tr("Danmaku Settings"), "danmaku_settings", false);
     }
-    panel->addItem(tr("MPV Info"), "mpv_info", false);
 
     const bool anime4kEnabled = ConfigStore::instance()->get<bool>(
         ConfigKeys::PlayerAnime4kEnabled, false);
@@ -3979,14 +3985,7 @@ void PlayerView::showSettingsMenu()
               ConfigStore::instance()->get<QString>(ConfigKeys::PlayerAnime4kPreset, "balanced")))
         : tr("Off");
     panel->addItem(tr("Anime4K: %1").arg(anime4kName), "anime4k_menu", anime4kEnabled);
-
-    
-    ServerProfile profile = m_core->serverManager()->activeProfile();
-    bool defaultStrmDirect = (profile.type == ServerProfile::Jellyfin);
-    QSettings settings("qEmby", "Player");
-    bool strmDirect = settings.value("EnableStrmDirectPlay", defaultStrmDirect).toBool();
-
-    panel->addItem(tr("STRM Direct Play"), "strm_direct", strmDirect);
+    panel->addItem(tr("MPV Info"), "mpv_info", false);
 
     int maxHeight = this->height() - m_bottomHUD->height() - 40;
     
@@ -4208,7 +4207,6 @@ void PlayerView::showSubtitleMenu()
     panel->addItem(tr("Hide Subtitles"), QStringLiteral("hide_subtitles"), hideSubtitles);
     panel->addItem(tr("Load Local Subtitle File"), QStringLiteral("load_local"), false);
     panel->addItem(tr("Subtitle Settings"), QStringLiteral("settings"), false);
-    panel->addItem(tr("MPV Info"), QStringLiteral("mpv_info"), false);
 
     const bool anime4kEnabled = ConfigStore::instance()->get<bool>(
         ConfigKeys::PlayerAnime4kEnabled, false);
@@ -4217,6 +4215,7 @@ void PlayerView::showSubtitleMenu()
               ConfigStore::instance()->get<QString>(ConfigKeys::PlayerAnime4kPreset, "balanced")))
         : tr("Off");
     panel->addItem(tr("Anime4K: %1").arg(anime4kName), QStringLiteral("anime4k_menu"), anime4kEnabled);
+    panel->addItem(tr("MPV Info"), QStringLiteral("mpv_info"), false);
 
     int maxHeight = this->height() - m_bottomHUD->height() - 40;
     panel->finalizeLayout(maxHeight < 150 ? 150 : maxHeight, 240);
@@ -4307,7 +4306,6 @@ void PlayerView::showDanmakuMenu()
     panel->addItem(tr("Load Local Danmaku File"), QStringLiteral("load_local"), false);
     panel->addItem(tr("Search Danmaku"), QStringLiteral("search"), false);
     panel->addItem(tr("Danmaku Settings"), QStringLiteral("quick_settings"), false);
-    panel->addItem(tr("MPV Info"), QStringLiteral("mpv_info"), false);
 
     const bool anime4kEnabled = ConfigStore::instance()->get<bool>(
         ConfigKeys::PlayerAnime4kEnabled, false);
@@ -4316,6 +4314,7 @@ void PlayerView::showDanmakuMenu()
               ConfigStore::instance()->get<QString>(ConfigKeys::PlayerAnime4kPreset, "balanced")))
         : tr("Off");
     panel->addItem(tr("Anime4K: %1").arg(anime4kName), QStringLiteral("anime4k_menu"), anime4kEnabled);
+    panel->addItem(tr("MPV Info"), QStringLiteral("mpv_info"), false);
 
     int maxHeight = this->height() - m_bottomHUD->height() - 40;
     panel->finalizeLayout(maxHeight < 160 ? 160 : maxHeight, 360);
@@ -4780,6 +4779,7 @@ void PlayerView::openAnime4kMenu()
         const QString id = Anime4KShaderManager::presetId(preset);
         panel->addItem(Anime4KShaderManager::presetDisplayName(preset), id, enabled && id == currentPreset);
     }
+    panel->addItem(tr("All Shader Configs..."), QStringLiteral("all_configs"), false);
 
     int maxHeight = this->height() - m_bottomHUD->height() - 40;
     panel->finalizeLayout(maxHeight < 150 ? 150 : maxHeight, 220);
@@ -4800,6 +4800,13 @@ void PlayerView::openAnime4kMenu()
                     }
                 };
 
+                if (target == QLatin1String("all_configs"))
+                {
+                    dismissPopup();
+                    openAnime4kChainMenu();
+                    return;
+                }
+
                 if (!m_mpvWidget->controller()->anime4kAvailable())
                 {
                     showToast(tr("Anime4K is unavailable on this rendering path"));
@@ -4811,6 +4818,12 @@ void PlayerView::openAnime4kMenu()
                 const QString presetId = enable
                     ? target
                     : ConfigStore::instance()->get<QString>(ConfigKeys::PlayerAnime4kPreset, "balanced");
+
+                if (enable)
+                {
+                    Anime4KShaderManager::instance().applyPresetTemplate(
+                        Anime4KShaderManager::presetFromId(presetId));
+                }
 
                 ConfigStore::instance()->set(ConfigKeys::PlayerAnime4kEnabled, enable);
                 ConfigStore::instance()->set(ConfigKeys::PlayerAnime4kPreset, presetId);
@@ -4824,6 +4837,97 @@ void PlayerView::openAnime4kMenu()
                     showToast(tr("Failed to apply Anime4K shaders"));
                 }
 
+                dismissPopup();
+            });
+
+    showCenteredPopup(panel, m_settingsBtn);
+}
+
+void PlayerView::openAnime4kChainMenu()
+{
+    if (m_activePopup)
+    {
+        m_activePopup->hide();
+        m_activePopup->close();
+        m_activePopup->deleteLater();
+        m_activePopup = nullptr;
+    }
+
+    auto *panel = new ModernScrollPanel(this);
+    const QStringList chain = Anime4KShaderManager::instance().configuredChain();
+    for (const Anime4KShaderManager::ShaderEntry &entry :
+         Anime4KShaderManager::instance().shaderCatalog())
+    {
+        const QString text = entry.bundled
+            ? tr("%1 (Bundled)").arg(entry.displayName)
+            : entry.displayName;
+        panel->addItem(text, entry.path, chain.contains(entry.path));
+        for (QPushButton *btn : panel->findChildren<QPushButton *>())
+        {
+            if (btn->text() == text)
+            {
+                btn->setToolTip(entry.path);
+                break;
+            }
+        }
+    }
+
+    int maxHeight = this->height() - m_bottomHUD->height() - 40;
+    panel->finalizeLayout(maxHeight < 150 ? 150 : maxHeight, 300);
+
+    connect(panel, &ModernScrollPanel::itemTriggered, this,
+            [this](const QVariant &data, const QString &text)
+            {
+                const QString path = data.toString();
+
+                auto dismissPopup = [this]()
+                {
+                    if (m_activePopup)
+                    {
+                        m_activePopup->hide();
+                        m_activePopup->close();
+                        m_activePopup->deleteLater();
+                        m_activePopup = nullptr;
+                    }
+                };
+
+                QStringList newChain = Anime4KShaderManager::instance().configuredChain();
+                const bool adding = !newChain.contains(path);
+                if (adding)
+                {
+                    newChain.append(path);
+                }
+                else
+                {
+                    newChain.removeAll(path);
+                }
+
+                QStringList ordered;
+                for (const Anime4KShaderManager::ShaderEntry &entry :
+                     Anime4KShaderManager::instance().shaderCatalog())
+                {
+                    if (newChain.contains(entry.path))
+                    {
+                        ordered.append(entry.path);
+                    }
+                }
+                for (const QString &shaderPath : newChain)
+                {
+                    if (!ordered.contains(shaderPath))
+                    {
+                        ordered.append(shaderPath);
+                    }
+                }
+
+                Anime4KShaderManager::instance().setConfiguredChain(ordered);
+
+                const bool enable = !ordered.isEmpty();
+                ConfigStore::instance()->set(ConfigKeys::PlayerAnime4kEnabled, enable);
+                m_mpvWidget->controller()->applyAnime4kShaders(
+                    enable, Anime4KShaderManager::presetIdOfCustom());
+
+                showToast(adding ? tr("Shader Enabled: %1").arg(text)
+                                 : tr("Shader Disabled: %1").arg(text));
                 dismissPopup();
             });
 
