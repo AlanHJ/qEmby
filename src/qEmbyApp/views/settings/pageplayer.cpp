@@ -1,4 +1,5 @@
 #include "pageplayer.h"
+#include "../../components/anime4kshadermanager.h"
 #include "../../components/danmakuserverdialog.h"
 #include "../../components/danmakuoptionslider.h"
 #include "../../components/moderncombobox.h"
@@ -82,6 +83,26 @@ PagePlayer::PagePlayer(QEmbyCore *core, QWidget *parent)
                        tr("Method for synchronizing video frames to display"),
                        vsyncCombo, ConfigKeys::PlayerVideoSync, this,
                        QVariant("display-resample")));
+
+  m_mainLayout->addWidget(new SettingsCard(
+      ":/svg/dark/video-output.svg", tr("Anime4K Upscaling"),
+      tr("Real-time AI upscaling and sharpening for anime video"),
+      new ModernSwitch(this), ConfigKeys::PlayerAnime4kEnabled, this,
+      QVariant(false)));
+
+  auto *anime4kPresetCombo = new ModernComboBox(this);
+  for (const Anime4KShaderManager::Preset preset :
+       Anime4KShaderManager::availablePresets()) {
+    anime4kPresetCombo->addItem(Anime4KShaderManager::presetDisplayName(preset),
+                                Anime4KShaderManager::presetId(preset));
+  }
+  anime4kPresetCombo->setCurrentIndex(
+      anime4kPresetCombo->findData("balanced"));
+  m_mainLayout->addWidget(new SettingsCard(
+      ":/svg/dark/video-output.svg", tr("Anime4K Preset"),
+      tr("Shader chain quality preset applied to video upscaling"),
+      anime4kPresetCombo, ConfigKeys::PlayerAnime4kPreset, this,
+      QVariant("balanced")));
 
   auto createLanguageRuleInput = [this](bool allowNone) {
     auto *input = new ModernTagInput(this);
