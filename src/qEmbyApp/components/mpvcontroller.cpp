@@ -292,8 +292,10 @@ bool MpvController::applyAnime4kShaders(bool enabled, const QString &presetId) {
         return false;
     }
 
-    const QStringList chain = Anime4KShaderManager::instance().shaderChain(
-        Anime4KShaderManager::presetFromId(presetId));
+    const QStringList chain = Anime4KShaderManager::isCustomPresetId(presetId)
+        ? Anime4KShaderManager::instance().configuredChain()
+        : Anime4KShaderManager::instance().shaderChain(
+              Anime4KShaderManager::presetFromId(presetId));
     if (chain.isEmpty()) {
         qDebug() << "[MpvController] Anime4K shaders unavailable"
                  << "| reason=empty shader chain" << "| preset=" << presetId;

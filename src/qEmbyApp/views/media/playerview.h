@@ -99,7 +99,8 @@ private slots:
     void openMpvInfoDialog();
     void openDanmakuSettingsDialog();
     void openAnime4kMenu();
-    void showSettingsMenu(); 
+    void openAnime4kChainMenu();
+    void showSettingsMenu();
     
     void cycleVideoScale();
     void toggleFullscreenWindow();
