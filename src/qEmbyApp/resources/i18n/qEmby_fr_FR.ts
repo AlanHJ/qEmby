@@ -8519,6 +8519,62 @@ Adresse: %2</translation>
         <source>Shader chain quality preset applied to video upscaling</source>
         <translation>Préréglage de qualité de la chaîne de shaders appliqué à l'agrandissement vidéo</translation>
     </message>
+    <message>
+        <source>Anime4K Advanced</source>
+        <translation>Anime4K avancé</translation>
+    </message>
+    <message>
+        <source>Shaders are mounted to mpv's glsl-shaders chain. It is not limited to Anime4K — any mpv GLSL user shader (e.g. FSRCNNX, SSimDownscaler) can be added. Order is execution order.</source>
+        <translation>Les shaders sont montés dans la chaîne glsl-shaders de mpv. Cela ne se limite pas à Anime4K — tout shader GLSL utilisateur mpv (par ex. FSRCNNX, SSimDownscaler) peut être ajouté. L'ordre de la liste est l'ordre d'exécution.</translation>
+    </message>
+    <message>
+        <source>GPU Device</source>
+        <translation>Périphérique GPU</translation>
+    </message>
+    <message>
+        <source>Select the GPU used for video rendering</source>
+        <translation>Sélectionnez le GPU utilisé pour le rendu vidéo</translation>
+    </message>
+    <message>
+        <source>Forces the rendering GPU at the platform level (Linux: DRI_PRIME; Windows: GPU performance preference). Changes apply to newly created playback surfaces; macOS does not support manual selection.</source>
+        <translation>Force le GPU de rendu au niveau de la plateforme (Linux : DRI_PRIME ; Windows : préférence de performance du GPU). Les changements s'appliquent aux surfaces de lecture nouvellement créées ; macOS ne prend pas en charge la sélection manuelle.</translation>
+    </message>
+    <message>
+        <source>Add Shader...</source>
+        <translation>Ajouter un shader...</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>Supprimer</translation>
+    </message>
+    <message>
+        <source>Move Up</source>
+        <translation>Monter</translation>
+    </message>
+    <message>
+        <source>Move Down</source>
+        <translation>Descendre</translation>
+    </message>
+    <message>
+        <source>Using preset template</source>
+        <translation>Utilisation du modèle de préréglage</translation>
+    </message>
+    <message>
+        <source>Add Shader</source>
+        <translation>Ajouter un shader</translation>
+    </message>
+    <message>
+        <source>GLSL Shaders (*.glsl)</source>
+        <translation>Shaders GLSL (*.glsl)</translation>
+    </message>
+    <message>
+        <source>MPV Key Passthrough</source>
+        <translation>Transmission des touches MPV</translation>
+    </message>
+    <message>
+        <source>Forward keys not handled by qEmby to mpv so input.conf and mpv keybindings work</source>
+        <translation>Transmet à mpv les touches non gérées par qEmby afin que input.conf et les raccourcis clavier mpv fonctionnent</translation>
+    </message>
 </context>
 <context>
     <name>PlayerView</name>
@@ -8537,6 +8593,61 @@ Adresse: %2</translation>
     <message>
         <source>Failed to apply Anime4K shaders</source>
         <translation>Échec de l'application des shaders Anime4K</translation>
+    </message>
+    <message>
+        <source>MPV Info</source>
+        <translation>Infos MPV</translation>
+    </message>
+    <message>
+        <source>All Shader Configs...</source>
+        <translation>Tous les shaders...</translation>
+    </message>
+    <message>
+        <source>%1 (Bundled)</source>
+        <translation>%1 (intégré)</translation>
+    </message>
+    <message>
+        <source>Shader Enabled: %1</source>
+        <translation>Shader activé : %1</translation>
+    </message>
+    <message>
+        <source>Shader Disabled: %1</source>
+        <translation>Shader désactivé : %1</translation>
+    </message>
+</context>
+<context>
+    <name>MpvInfoDialog</name>
+    <message>
+        <source>MPV Info</source>
+        <translation>Infos MPV</translation>
+    </message>
+    <message>
+        <source>MPV controller unavailable</source>
+        <translation>Contrôleur MPV indisponible</translation>
+    </message>
+    <message>
+        <source>File</source>
+        <translation>Fichier</translation>
+    </message>
+    <message>
+        <source>Video</source>
+        <translation>Vidéo</translation>
+    </message>
+    <message>
+        <source>Playback</source>
+        <translation>Lecture</translation>
+    </message>
+    <message>
+        <source>Audio</source>
+        <translation>Audio</translation>
+    </message>
+    <message>
+        <source>Bitrate/Cache</source>
+        <translation>Débit/Cache</translation>
+    </message>
+    <message>
+        <source>Output</source>
+        <translation>Sortie</translation>
     </message>
 </context>
 </TS>
