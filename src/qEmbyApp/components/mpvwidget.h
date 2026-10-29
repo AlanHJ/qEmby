@@ -121,11 +121,14 @@ private:
     void refreshVideoOutputState();
     void recordVideoFrameRendered(bool framePresent);
 #if defined(QEMBY_MPV_D3D11_RENDER)
-    // D3D11 渲染管线 (Qt RHI 桥 + 弹幕纹理混合)。
+    // D3D11 渲染管线 (Qt RHI 桥 + 视频纹理复用 + 覆盖层混合)。
     bool ensureD3D11Resources(const QSize &targetSize);
     void releaseD3D11Resources();
     bool rasterizeDanmaku(const QSize &targetSize);
-    void drawDanmakuQuad(const QSize &targetSize);
+    void drawOverlayQuad(ID3D11ShaderResourceView *srv, bool alphaBlend,
+                         const QSize &targetSize);
+    void updateUiRefreshTimer();
+    int uiRefreshIntervalMs() const;
     ID3D11Device *d3dDevice() const;
     ID3D11DeviceContext *d3dContext() const;
 #else
@@ -175,6 +178,12 @@ private:
 #if defined(QEMBY_MPV_D3D11_RENDER)
     // 借用 Qt RHI 的设备/上下文/颜色纹理 (不持有所有权的除外)。
     ID3D11Device *m_mpvDevice = nullptr;               // 渲染上下文创建时的设备 (不持有)
+    ID3D11Texture2D *m_videoTex = nullptr;             // owned: mpv 渲染目标 (视频帧缓存)
+    ID3D11ShaderResourceView *m_videoSrv = nullptr;    // owned
+    QSize m_videoTexSize;
+    bool m_videoTextureDirty = true;                   // 纹理新建/换尺寸后需强制重渲染
+    QTimer m_uiRefreshTimer;                           // 独立 UI 节拍 (屏幕刷新率)
+    bool m_playbackPaused = true;
     ID3D11Texture2D *m_d3dColorTex = nullptr;          // AddRef
     ID3D11RenderTargetView *m_d3dColorRtv = nullptr;   // owned
     ID3D11Texture2D *m_danmakuTex = nullptr;           // owned
