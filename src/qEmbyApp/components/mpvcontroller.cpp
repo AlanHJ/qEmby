@@ -275,9 +275,40 @@ bool MpvController::anime4kAvailable() const {
 bool MpvController::applyAnime4kShaders(bool enabled, const QString &presetId) {
     if (!m_mpv) return false;
 
+    // mpv 的 change-list 命令要求 name/operation/value 三个参数, 即使是 clr 也
+    // 必须传 value (空串即可, 会被忽略)。此前清空调用少传参数被 mpv 拒绝且错误
+    // 被吞, 导致列表从不清理、append 链不断叠加。
+    auto clearShaders = [this]() {
+        return command(QVariantList{"change-list", "glsl-shaders", "clr", ""},
+                       nullptr) >= 0;
+    };
+    // glsl-shaders 以节点字符串数组返回 (与 mpvinfodialog 的展示口径一致)。
+    auto shaderCount = [this]() -> int {
+        const QVariant value = getProperty(QStringLiteral("glsl-shaders"));
+        if (value.typeId() == QMetaType::QStringList) {
+            return value.toStringList().size();
+        }
+        int count = 0;
+        for (const QVariant &item : value.toList()) {
+            if (!item.toString().isEmpty()) {
+                ++count;
+            }
+        }
+        return count;
+    };
+
     if (!enabled) {
-        command(QVariantList{"change-list", "glsl-shaders", "clr"});
-        qDebug() << "[MpvController] Cleared Anime4K shaders";
+        if (!clearShaders()) {
+            qWarning() << "[MpvController] Failed to clear glsl-shaders";
+            return false;
+        }
+        const int remaining = shaderCount();
+        qDebug() << "[MpvController] Cleared Anime4K shaders"
+                 << "| remaining=" << remaining;
+        if (remaining != 0) {
+            qWarning() << "[MpvController] glsl-shaders not empty after clear"
+                       << "| remaining=" << remaining;
+        }
         return true;
     }
 
@@ -319,7 +350,12 @@ bool MpvController::applyAnime4kShaders(bool enabled, const QString &presetId) {
                  << "| preset=" << presetId;
     }
 
-    command(QVariantList{"change-list", "glsl-shaders", "clr"});
+    // 清空失败必须中止: 在残留链上继续 append 只会叠加。
+    if (!clearShaders()) {
+        qWarning() << "[MpvController] Failed to clear glsl-shaders before apply"
+                   << "| preset=" << presetId;
+        return false;
+    }
     for (const QString &shaderPath : chain) {
         if (command(QVariantList{"change-list", "glsl-shaders", "append",
                                  shaderPath},
@@ -329,8 +365,14 @@ bool MpvController::applyAnime4kShaders(bool enabled, const QString &presetId) {
             return false;
         }
     }
+    const int applied = shaderCount();
     qDebug() << "[MpvController] Applied Anime4K shaders"
-             << "| preset=" << presetId << "| count=" << chain.size();
+             << "| preset=" << presetId
+             << "| expected=" << chain.size() << "| actual=" << applied;
+    if (applied != chain.size()) {
+        qWarning() << "[MpvController] glsl-shaders count mismatch after apply"
+                   << "| expected=" << chain.size() << "| actual=" << applied;
+    }
     return true;
 }
 
