@@ -124,7 +124,7 @@ private:
     // D3D11 渲染管线 (Qt RHI 桥 + 视频纹理复用 + 覆盖层混合)。
     bool ensureD3D11Resources(const QSize &targetSize);
     void releaseD3D11Resources();
-    bool rasterizeDanmaku(const QSize &targetSize);
+    bool rasterizeDanmaku(const QSize &targetSize, qreal danmakuPosition);
     void drawOverlayQuad(ID3D11ShaderResourceView *srv, bool alphaBlend,
                          const QSize &targetSize);
     void updateUiRefreshTimer();
@@ -184,6 +184,16 @@ private:
     bool m_videoTextureDirty = true;                   // 纹理新建/换尺寸后需强制重渲染
     QTimer m_uiRefreshTimer;                           // 独立 UI 节拍 (屏幕刷新率)
     bool m_playbackPaused = true;
+    qreal m_lastDanmakuRasterPos = -1.0;               // 上次弹幕光栅的时钟位置
+    QSize m_lastDanmakuRasterSize;                     // 上次弹幕光栅的表面尺寸
+    // 渲染回路性能剖析 (每 2s 汇总一次, 用于定位顿挫瓶颈)。
+    QElapsedTimer m_perfClock;
+    qint64 m_perfPaints = 0;
+    qint64 m_perfRasterNs = 0;
+    qint64 m_perfRasterMaxNs = 0;
+    qint64 m_perfMpvNs = 0;
+    qint64 m_perfMpvMaxNs = 0;
+    qint64 m_perfFrameMaxNs = 0;
     ID3D11Texture2D *m_d3dColorTex = nullptr;          // AddRef
     ID3D11RenderTargetView *m_d3dColorRtv = nullptr;   // owned
     ID3D11Texture2D *m_danmakuTex = nullptr;           // owned

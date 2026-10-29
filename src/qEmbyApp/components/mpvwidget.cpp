@@ -690,6 +690,8 @@ void MpvWidget::releaseD3D11Resources() {
     m_videoTextureDirty = true;
     if (m_danmakuSrv) { m_danmakuSrv->Release(); m_danmakuSrv = nullptr; }
     if (m_danmakuTex) { m_danmakuTex->Release(); m_danmakuTex = nullptr; }
+    m_lastDanmakuRasterPos = -1.0;
+    m_lastDanmakuRasterSize = QSize();
     if (m_d3dColorRtv) { m_d3dColorRtv->Release(); m_d3dColorRtv = nullptr; }
     if (m_d3dColorTex) { m_d3dColorTex->Release(); m_d3dColorTex = nullptr; }
     if (m_quadVs) { m_quadVs->Release(); m_quadVs = nullptr; }
@@ -718,11 +720,18 @@ void MpvWidget::releaseResources() {
     }
 }
 
-bool MpvWidget::rasterizeDanmaku(const QSize &targetSize) {
+bool MpvWidget::rasterizeDanmaku(const QSize &targetSize, qreal danmakuPosition) {
     ID3D11Device *device = d3dDevice();
     ID3D11DeviceContext *context = d3dContext();
     if (!device || !context || !m_nativeDanmakuOverlay) {
         return false;
+    }
+
+    // 弹幕时钟位置未变 (暂停/定格) 时跳过 CPU 光栅与纹理上传, 复用上一帧覆盖层。
+    if (m_danmakuTex && m_danmakuTexSize == targetSize &&
+        m_lastDanmakuRasterSize == targetSize &&
+        m_lastDanmakuRasterPos == danmakuPosition) {
+        return true;
     }
 
     if (!m_danmakuTex) {
@@ -752,13 +761,14 @@ bool MpvWidget::rasterizeDanmaku(const QSize &targetSize) {
     QPainter painter(&m_danmakuBuffer);
     // NativeDanmakuOverlay 以逻辑坐标绘制 (与 QOpenGLWidget 的设备变换一致)。
     painter.scale(dpr, dpr);
-    const qreal danmakuPosition = m_nativeDanmakuOverlay->beginFrame();
     m_nativeDanmakuOverlay->paint(painter, danmakuPosition);
     painter.end();
 
     context->UpdateSubresource(m_danmakuTex, 0, nullptr,
                                m_danmakuBuffer.constBits(),
                                static_cast<UINT>(m_danmakuBuffer.bytesPerLine()), 0);
+    m_lastDanmakuRasterPos = danmakuPosition;
+    m_lastDanmakuRasterSize = targetSize;
     return true;
 }
 
@@ -804,6 +814,12 @@ void MpvWidget::updateUiRefreshTimer() {
     // UI 节拍与视频帧率解耦: 有媒体在播 (或弹幕活动) 时按屏幕刷新率驱动重绘,
     // 弹幕位移由引擎按物理时钟外推, 保证满刷新率平滑度。
     const bool needed = m_mediaLoaded && (danmakuActive || !m_playbackPaused);
+    if (needed != m_uiRefreshTimer.isActive()) {
+        qInfo() << "[MpvWidget] UI refresh timer | active:" << needed
+                << "| mediaLoaded:" << m_mediaLoaded
+                << "| paused:" << m_playbackPaused
+                << "| danmaku:" << danmakuActive;
+    }
     if (needed) {
         if (!m_uiRefreshTimer.isActive()) {
             m_uiRefreshTimer.start();
@@ -845,13 +861,25 @@ void MpvWidget::render(QRhiCommandBuffer *cb) {
         mpv_render_context_get_info(m_mpv_gl, {MPV_RENDER_PARAM_NEXT_FRAME_INFO, &info});
     }
 
+    QElapsedTimer perfFrame;
+    perfFrame.start();
+
     bool danmakuActive = pipelineReady && m_nativeDanmakuOverlay &&
                          m_nativeDanmakuOverlay->isActive() && !m_nativeCompositeFailed;
-    if (danmakuActive && !rasterizeDanmaku(targetSize)) {
-        qWarning() << "[Danmaku][Composite] Disabled after danmaku raster failure; preserving video";
-        m_nativeCompositeFailed = true;
-        m_nativeDanmakuOverlay->setGraphicsAvailable(false);
-        danmakuActive = false;
+    if (danmakuActive) {
+        QElapsedTimer perfRaster;
+        perfRaster.start();
+        const qreal danmakuPosition = m_nativeDanmakuOverlay->beginFrame();
+        const bool rasterOk = rasterizeDanmaku(targetSize, danmakuPosition);
+        const qint64 rasterNs = perfRaster.nsecsElapsed();
+        m_perfRasterNs += rasterNs;
+        m_perfRasterMaxNs = std::max(m_perfRasterMaxNs, rasterNs);
+        if (!rasterOk) {
+            qWarning() << "[Danmaku][Composite] Disabled after danmaku raster failure; preserving video";
+            m_nativeCompositeFailed = true;
+            m_nativeDanmakuOverlay->setGraphicsAvailable(false);
+            danmakuActive = false;
+        }
     }
 
     cb->beginPass(renderTarget(), Qt::black, {1.0f, 0}, nullptr,
@@ -867,7 +895,12 @@ void MpvWidget::render(QRhiCommandBuffer *cb) {
             {MPV_RENDER_PARAM_D3D11_FBO, &fbo},
             {MPV_RENDER_PARAM_INVALID, nullptr}
         };
+        QElapsedTimer perfMpv;
+        perfMpv.start();
         const int result = mpv_render_context_render(m_mpv_gl, params);
+        const qint64 mpvNs = perfMpv.nsecsElapsed();
+        m_perfMpvNs += mpvNs;
+        m_perfMpvMaxNs = std::max(m_perfMpvMaxNs, mpvNs);
         // 有限诊断: 首几帧打印渲染结果与帧信息标志, 便于定位呈现链路断点。
         static int diagnosticFrames = 0;
         static int diagnosticFailures = 0;
@@ -899,6 +932,28 @@ void MpvWidget::render(QRhiCommandBuffer *cb) {
 
     cb->endExternal();
     cb->endPass();
+
+    // 渲染回路性能剖析 (每 2s 汇总): 定位顿挫瓶颈在 mpv 渲染 / 弹幕光栅 / 帧耗时。
+    ++m_perfPaints;
+    m_perfFrameMaxNs = std::max(m_perfFrameMaxNs, perfFrame.nsecsElapsed());
+    if (!m_perfClock.isValid()) {
+        m_perfClock.start();
+    } else if (m_perfClock.elapsed() >= 2000) {
+        const qreal sec = m_perfClock.elapsed() / 1000.0;
+        const qreal paints = static_cast<qreal>(std::max<qint64>(1, m_perfPaints));
+        qInfo() << "[MpvWidget][Perf] paintsPerSec:" << m_perfPaints / sec
+                << "| rasterAvgMs:" << m_perfRasterNs / 1e6 / paints
+                << "| rasterMaxMs:" << m_perfRasterMaxNs / 1e6
+                << "| mpvAvgMs:" << m_perfMpvNs / 1e6 / paints
+                << "| mpvMaxMs:" << m_perfMpvMaxNs / 1e6
+                << "| frameMaxMs:" << m_perfFrameMaxNs / 1e6
+                << "| uiTimerActive:" << m_uiRefreshTimer.isActive();
+        m_perfClock.restart();
+        m_perfPaints = 0;
+        m_perfRasterNs = m_perfRasterMaxNs = 0;
+        m_perfMpvNs = m_perfMpvMaxNs = 0;
+        m_perfFrameMaxNs = 0;
+    }
 }
 
 #else
