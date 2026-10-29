@@ -133,8 +133,8 @@ PagePlayer::PagePlayer(QEmbyCore *core, QWidget *parent)
 
   auto *gpuDeviceDesc = new QLabel(
       tr("Forces the rendering GPU at the platform level (Linux: DRI_PRIME; "
-         "Windows: GPU performance preference). Changes apply to newly "
-         "created playback surfaces; macOS does not support manual "
+         "Windows: GPU performance preference). GPU changes take effect "
+         "after restarting the application; macOS does not support manual "
          "selection."),
       anime4kAdvanced);
   gpuDeviceDesc->setObjectName("SettingsCardDesc");
