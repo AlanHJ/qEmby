@@ -1,6 +1,6 @@
 #include "gpudevicemanager.h"
 
-#include <QCoreApplication>
+#include <QDebug>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -154,9 +154,12 @@ QList<GpuDevice> GpuDeviceManager::availableDevices() {
 
 void GpuDeviceManager::applyDevice(const QString &id) {
   const bool isAuto = id.isEmpty() || id == QLatin1String("auto");
+  qDebug() << "[GpuDeviceManager] applying GPU device:"
+           << (isAuto ? QStringLiteral("auto") : id);
 
 #ifdef Q_OS_LINUX
-  // Mesa 在每次创建 GL 上下文时读取 DRI_PRIME，运行中的上下文不受影响。
+  // DRI_PRIME 由 Mesa 在 GL 栈初始化时读取，auto 时清除；运行中变更仅对
+  // 下次启动生效。
   if (isAuto) {
     qunsetenv("DRI_PRIME");
   } else {
@@ -186,9 +189,13 @@ void GpuDeviceManager::applyDevice(const QString &id) {
 
   // 注：QSettings 的注册表后端把键中的 '\' 当作子键分隔符（Qt 文档明确禁止
   // 键名含 '/' 或 '\'），无法写出"exe 绝对路径"形式的值名，因此直接调用
-  // 注册表 API（advapi32 由 CMake 默认链接）。
+  // 注册表 API（advapi32 由 CMake 默认链接）。本函数会在 QApplication 构造前
+  // （main 启动早期）调用，QCoreApplication::applicationFilePath() 此时返回
+  // 空，故用 Win32 API 取当前 exe 绝对路径。
+  wchar_t modulePath[MAX_PATH] = {0};
+  GetModuleFileNameW(nullptr, modulePath, MAX_PATH);
   const QString valueName =
-      QDir::toNativeSeparators(QCoreApplication::applicationFilePath());
+      QDir::toNativeSeparators(QString::fromWCharArray(modulePath));
   const QString valueData =
       QStringLiteral("GpuPreference=%1;").arg(preference);
   HKEY key = nullptr;
