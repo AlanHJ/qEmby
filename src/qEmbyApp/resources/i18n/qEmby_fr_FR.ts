@@ -8536,8 +8536,8 @@ Adresse: %2</translation>
         <translation>Sélectionnez le GPU utilisé pour le rendu vidéo</translation>
     </message>
     <message>
-        <source>Forces the rendering GPU at the platform level (Linux: DRI_PRIME; Windows: GPU performance preference). Changes apply to newly created playback surfaces; macOS does not support manual selection.</source>
-        <translation>Force le GPU de rendu au niveau de la plateforme (Linux : DRI_PRIME ; Windows : préférence de performance du GPU). Les changements s'appliquent aux surfaces de lecture nouvellement créées ; macOS ne prend pas en charge la sélection manuelle.</translation>
+        <source>Forces the rendering GPU at the platform level (Linux: DRI_PRIME; Windows: GPU performance preference). GPU changes take effect after restarting the application; macOS does not support manual selection.</source>
+        <translation>Force le GPU de rendu au niveau de la plateforme (Linux : DRI_PRIME ; Windows : préférence de performance du GPU). Les changements de GPU prennent effet après le redémarrage de l'application ; macOS ne prend pas en charge la sélection manuelle.</translation>
     </message>
     <message>
         <source>Add Shader...</source>
@@ -8574,6 +8574,10 @@ Adresse: %2</translation>
     <message>
         <source>Forward keys not handled by qEmby to mpv so input.conf and mpv keybindings work</source>
         <translation>Transmet à mpv les touches non gérées par qEmby afin que input.conf et les raccourcis clavier mpv fonctionnent</translation>
+    </message>
+    <message>
+        <source> (Custom)</source>
+        <translation> (personnalisé)</translation>
     </message>
 </context>
 <context>
@@ -8613,6 +8617,26 @@ Adresse: %2</translation>
     <message>
         <source>Shader Disabled: %1</source>
         <translation>Shader désactivé : %1</translation>
+    </message>
+    <message>
+        <source>MPV Key Passthrough</source>
+        <translation>Transmission des touches MPV</translation>
+    </message>
+    <message>
+        <source>MPV Key Passthrough: ON</source>
+        <translation>Transmission des touches MPV : ON</translation>
+    </message>
+    <message>
+        <source>MPV Key Passthrough: OFF</source>
+        <translation>Transmission des touches MPV : OFF</translation>
+    </message>
+    <message>
+        <source>No shaders selected</source>
+        <translation>Aucun shader sélectionné</translation>
+    </message>
+    <message>
+        <source>%1 (Custom)</source>
+        <translation>%1 (personnalisé)</translation>
     </message>
 </context>
 <context>

@@ -10563,8 +10563,8 @@ This cannot be undone.</source>
         <translation>选择用于视频渲染的 GPU</translation>
     </message>
     <message>
-        <source>Forces the rendering GPU at the platform level (Linux: DRI_PRIME; Windows: GPU performance preference). Changes apply to newly created playback surfaces; macOS does not support manual selection.</source>
-        <translation>在平台层面强制指定渲染 GPU（Linux：DRI_PRIME；Windows：GPU 性能首选项）。更改对新建的播放画面生效；macOS 不支持手动选择。</translation>
+        <source>Forces the rendering GPU at the platform level (Linux: DRI_PRIME; Windows: GPU performance preference). GPU changes take effect after restarting the application; macOS does not support manual selection.</source>
+        <translation>在平台层面强制指定渲染 GPU（Linux：DRI_PRIME；Windows：GPU 性能首选项）。GPU 更改将在重启应用后生效；macOS 不支持手动选择。</translation>
     </message>
     <message>
         <source>Add Shader...</source>
@@ -10601,6 +10601,10 @@ This cannot be undone.</source>
     <message>
         <source>Forward keys not handled by qEmby to mpv so input.conf and mpv keybindings work</source>
         <translation>将 qEmby 未处理的按键转发给 mpv，使 input.conf 和 mpv 快捷键绑定生效</translation>
+    </message>
+    <message>
+        <source> (Custom)</source>
+        <translation>（自定义）</translation>
     </message>
 </context>
 <context>
@@ -10640,6 +10644,26 @@ This cannot be undone.</source>
     <message>
         <source>Shader Disabled: %1</source>
         <translation>着色器已禁用：%1</translation>
+    </message>
+    <message>
+        <source>MPV Key Passthrough</source>
+        <translation>MPV 快捷键透传</translation>
+    </message>
+    <message>
+        <source>MPV Key Passthrough: ON</source>
+        <translation>MPV 快捷键透传：开</translation>
+    </message>
+    <message>
+        <source>MPV Key Passthrough: OFF</source>
+        <translation>MPV 快捷键透传：关</translation>
+    </message>
+    <message>
+        <source>No shaders selected</source>
+        <translation>未选择着色器</translation>
+    </message>
+    <message>
+        <source>%1 (Custom)</source>
+        <translation>%1（自定义）</translation>
     </message>
 </context>
 <context>
