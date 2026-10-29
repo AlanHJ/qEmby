@@ -83,6 +83,18 @@ target_link_libraries(qEmbyApp PRIVATE
 )
 target_link_libraries(qEmbyApp PRIVATE Qt${QT_VERSION_MAJOR}::Core)
 
+# ==========================================
+# Windows Direct3D 11 零拷贝渲染通道 (Qt RHI 桥)
+# 仅 WIN32 且 Qt >= 6.7 (QRhiWidget) 时启用: 需要 Qt GuiPrivate (rhi/qrhi.h)
+# 提取 ID3D11Device 交给 mpv 的 MPV_RENDER_API_TYPE_D3D11 渲染上下文。
+# 其余平台/旧 Qt 自动回退 QOpenGLWidget + OpenGL 渲染管线, 不引入任何
+# Windows 独占头文件/库 (d3d11 仅用 COM vtable, d3dcompiler 运行期动态加载)。
+# ==========================================
+if(WIN32 AND NOT QT_VERSION VERSION_LESS 6.7.0)
+    target_link_libraries(qEmbyApp PRIVATE Qt${QT_VERSION_MAJOR}::GuiPrivate)
+    target_compile_definitions(qEmbyApp PRIVATE QEMBY_MPV_D3D11_RENDER=1)
+endif()
+
 if(APPLE)
     target_link_libraries(qEmbyApp PRIVATE
         "-framework CoreFoundation"

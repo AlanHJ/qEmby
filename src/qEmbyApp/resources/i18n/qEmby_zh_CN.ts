@@ -10725,4 +10725,22 @@ This cannot be undone.</source>
         <translation>（无）</translation>
     </message>
 </context>
+<context>
+    <name>PagePlayer</name>
+    <message>
+        <source>D3D11VA (Zero-Copy)</source>
+        <translation>D3D11VA（零拷贝）</translation>
+    </message>
+    <message>
+        <source>Auto (Zero-Copy)</source>
+        <translation>自动（零拷贝）</translation>
+    </message>
+</context>
+<context>
+    <name>MpvWidget</name>
+    <message>
+        <source>Direct3D 11 rendering initialization failed.</source>
+        <translation>Direct3D 11 渲染初始化失败。</translation>
+    </message>
+</context>
 </TS>

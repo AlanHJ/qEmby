@@ -156,25 +156,37 @@ bool MpvController::init() {
     
     
     
-    QString hwdec = ConfigStore::instance()->get<QString>(ConfigKeys::PlayerHwDec, "auto-copy");
+    // 默认硬解策略按平台零拷贝通道下发 (用户配置优先, 未配置时生效):
+    //  - Windows + D3D11 渲染通道 (QEMBY_MPV_D3D11_RENDER): d3d11va 原生零拷贝
+    //    (与 Qt RHI 共享 ID3D11Device, 无 PCIe 回传); d3d11va-copy 保留为容灾;
+    //  - Windows GL 回退构建 (Qt < 6.7): 维持 auto-copy (GL 无法互操作 D3D11 帧);
+    //  - Linux: vaapi (Intel/AMD, EGL dma-buf 零拷贝) -> nvdec (NVIDIA CUDA-GL)
+    //    -> auto-safe, 全部为无 -copy 后缀的直通解码;
+    //  - 其余平台: 维持 auto-copy。
+#if defined(QEMBY_MPV_D3D11_RENDER)
+    const QString hwdecDefault = QStringLiteral("d3d11va");
+#elif defined(Q_OS_WIN)
+    const QString hwdecDefault = QStringLiteral("auto-copy");
+#elif defined(Q_OS_LINUX)
+    const QString hwdecDefault = QStringLiteral("vaapi,nvdec,auto-safe");
+#else
+    const QString hwdecDefault = QStringLiteral("auto-copy");
+#endif
+    QString hwdec = ConfigStore::instance()->get<QString>(ConfigKeys::PlayerHwDec, hwdecDefault);
 
 #ifdef Q_OS_WIN
-    mpv_set_option_string(m_mpv, "gpu-api", "opengl");
-    mpv_set_option_string(m_mpv, "opengl-es", "no");
     bool isRDP = GetSystemMetrics(SM_REMOTESESSION) != 0;
     if (isRDP) {
-        
+
         hwdec = "no";
         mpv_set_option_string(m_mpv, "profile", "sw-fast");
-
-        
-        mpv_set_option_string(m_mpv, "gpu-dumb-mode", "yes");
-        mpv_set_option_string(m_mpv, "opengl-pbo", "no");
-        mpv_set_option_string(m_mpv, "dither-depth", "no");
         m_gpuDumbMode = true;
     }
 #endif
     mpv_set_option_string(m_mpv, "hwdec", hwdec.toUtf8().constData());
+    qDebug() << "[MpvController] Hardware decoding policy"
+             << "| hwdec=" << hwdec
+             << "| source=" << (hwdec == hwdecDefault ? "default" : "config");
 
     
     

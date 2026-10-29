@@ -58,6 +58,12 @@ PagePlayer::PagePlayer(QEmbyCore *core, QWidget *parent)
   const QString sid = m_core->serverManager()->activeProfile().id;
   
   auto *hwCombo = new ModernComboBox(this);
+#if defined(QEMBY_MPV_D3D11_RENDER)
+  hwCombo->addItem(tr("D3D11VA (Zero-Copy)"), "d3d11va");
+#endif
+#ifdef Q_OS_LINUX
+  hwCombo->addItem(tr("Auto (Zero-Copy)"), "vaapi,nvdec,auto-safe");
+#endif
   hwCombo->addItem(tr("Auto"), "auto-copy");
   hwCombo->addItem(tr("D3D11VA"), "d3d11va-copy");
   hwCombo->addItem(tr("DXVA2"), "dxva2-copy");
