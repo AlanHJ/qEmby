@@ -491,9 +491,11 @@ bool MpvWidget::initMpvRenderContext() {
     }
 
     mpv_render_context_set_update_callback(m_mpv_gl, onMpvRenderUpdate, this);
+    m_mpvDevice = device;
 
     qInfo() << "[MpvWidget] MPV render context initialized"
             << "| backend:D3D11 | zeroCopyHwdec:d3d11va"
+            << "| device:" << device
             << "| resumePending:" << m_resumeWhenRenderReady;
 
     onRenderContextReady();
@@ -502,6 +504,24 @@ bool MpvWidget::initMpvRenderContext() {
 
 void MpvWidget::initialize(QRhiCommandBuffer *cb) {
     Q_UNUSED(cb);
+    ID3D11Device *device = d3dDevice();
+    if (m_mpv_gl && device && device == m_mpvDevice) {
+        // Qt 在颜色纹理重建 (窗口缩放等) 时会再次回调 initialize()。设备未变时
+        // 绝不能重建 mpv 渲染上下文: 重建会销毁 VO ("Video: no video"), 当前
+        // mpv 构建的视频链无法恢复, 表现为缩放窗口后永久黑屏 (实测日志)。
+        qInfo() << "[MpvWidget] Qt RHI texture re-initialized | device unchanged"
+                << "| keeping MPV D3D11 render context";
+        if (m_d3dColorRtv) {
+            m_d3dColorRtv->Release();
+            m_d3dColorRtv = nullptr;
+        }
+        if (m_d3dColorTex) {
+            m_d3dColorTex->Release();
+            m_d3dColorTex = nullptr;
+        }
+        return;
+    }
+
     resetVideoPresentation(false);
     releaseD3D11Resources();
     m_nativeCompositeFailed = false;
@@ -510,7 +530,8 @@ void MpvWidget::initialize(QRhiCommandBuffer *cb) {
     }
 
     qInfo() << "[MpvWidget] Qt RHI initialized"
-            << "| api:" << (api() == QRhiWidget::Api::Direct3D11 ? "d3d11" : "other");
+            << "| api:" << (api() == QRhiWidget::Api::Direct3D11 ? "d3d11" : "other")
+            << "| device:" << device;
     initMpvRenderContext();
 }
 
@@ -612,6 +633,7 @@ bool MpvWidget::ensureD3D11Resources(const QSize &targetSize) {
 
 void MpvWidget::releaseD3D11Resources() {
     freeMpvRenderContext();
+    m_mpvDevice = nullptr;
     if (m_danmakuSrv) { m_danmakuSrv->Release(); m_danmakuSrv = nullptr; }
     if (m_danmakuTex) { m_danmakuTex->Release(); m_danmakuTex = nullptr; }
     if (m_d3dColorRtv) { m_d3dColorRtv->Release(); m_d3dColorRtv = nullptr; }
@@ -627,13 +649,19 @@ void MpvWidget::releaseD3D11Resources() {
 }
 
 void MpvWidget::releaseResources() {
-    resetVideoPresentation(false);
-    m_videoDueTimer.stop();
-    if (m_nativeDanmakuOverlay) {
-        m_nativeDanmakuOverlay->setGraphicsAvailable(false);
+    // Qt 即将销毁/更换 QRhi (窗口变更)。mpv 渲染上下文持有 ID3D11Device 引用,
+    // 设备不会随之销毁 —— 保留上下文以维持视频链 (VO) 存活, 仅丢弃绑定在 Qt
+    // 纹理上的 RTV。若后续 initialize() 发现设备已更换, 会整体重建。
+    qInfo() << "[MpvWidget] Qt RHI released | keeping MPV render context"
+            << "| hasContext:" << (m_mpv_gl != nullptr);
+    if (m_d3dColorRtv) {
+        m_d3dColorRtv->Release();
+        m_d3dColorRtv = nullptr;
     }
-    releaseD3D11Resources();
-    qInfo() << "[MpvWidget] MPV D3D11 render context released with Qt RHI resources";
+    if (m_d3dColorTex) {
+        m_d3dColorTex->Release();
+        m_d3dColorTex = nullptr;
+    }
 }
 
 bool MpvWidget::rasterizeDanmaku(const QSize &targetSize) {
