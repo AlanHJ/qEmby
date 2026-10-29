@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QPointer>
+#include <QTimer>
 #include <QVariantMap>
 
 #include <models/danmaku/danmakumodels.h>
@@ -85,6 +86,10 @@ private:
     QPointer<MpvWidget> m_mpvWidget;
     QPointer<NativeDanmakuOverlay> m_nativeDanmakuOverlay;
     QVariant m_trackListNotification;
+    // track-list 变更防抖: applyTrackSelection 写 sid/secondary-sid 会触发 mpv
+    // 重发 track-list, 逐条同步处理曾放大成 ~520ms 的 GUI 阻塞; 合并为一轮。
+    QTimer m_trackListDebounce;
+    QVariant m_pendingTrackList;
     PlayerLaunchContext m_launchContext;
     DanmakuMediaContext m_mediaContext;
     DanmakuMatchCandidate m_activeCandidate;
