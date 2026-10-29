@@ -190,47 +190,76 @@ PagePlayer::PagePlayer(QEmbyCore *core, QWidget *parent)
 
   m_mainLayout->addWidget(anime4kAdvanced);
 
-  const auto refreshShaderChainList = [shaderChainList]() {
+  const auto shaderItemText =
+      [](const Anime4KShaderManager::ShaderEntry &entry) {
+        return entry.bundled ? entry.displayName
+                             : entry.displayName + PagePlayer::tr(" (Custom)");
+      };
+
+  // Rebuilds the full catalog checklist: checked entries first (in chain
+  // order), then the remaining catalog entries. The checked rows in list
+  // order are the source of truth for the glsl-shaders chain.
+  const auto refreshShaderChainList = [shaderChainList, shaderItemText]() {
+    const QSignalBlocker blocker(shaderChainList);
     shaderChainList->clear();
-    const QString rawChain =
-        ConfigStore::instance()->get<QString>(ConfigKeys::PlayerAnime4kChain);
-    const bool chainConfigured = !rawChain.trimmed().isEmpty() &&
-        rawChain.trimmed() != QLatin1String("[]");
-    if (!chainConfigured) {
-      auto *hintItem = new QListWidgetItem(tr("Using preset template"));
-      hintItem->setFlags(hintItem->flags() & ~Qt::ItemIsSelectable);
-      shaderChainList->addItem(hintItem);
-      return;
-    }
 
     const QList<Anime4KShaderManager::ShaderEntry> catalog =
         Anime4KShaderManager::instance().shaderCatalog();
-    for (const QString &path :
-         Anime4KShaderManager::instance().configuredChain()) {
-      QString displayName;
+    const QStringList chain =
+        Anime4KShaderManager::instance().configuredChain();
+
+    QList<Anime4KShaderManager::ShaderEntry> ordered;
+    for (const QString &path : chain) {
       for (const Anime4KShaderManager::ShaderEntry &entry : catalog) {
         if (entry.path == path) {
-          displayName = entry.displayName;
+          ordered.append(entry);
           break;
         }
       }
-      if (displayName.isEmpty()) {
-        displayName = QFileInfo(path).fileName();
+    }
+    for (const Anime4KShaderManager::ShaderEntry &entry : catalog) {
+      if (!chain.contains(entry.path)) {
+        ordered.append(entry);
       }
-      auto *item = new QListWidgetItem(displayName);
-      item->setData(Qt::UserRole, path);
-      item->setToolTip(QDir::toNativeSeparators(path));
+    }
+
+    for (const Anime4KShaderManager::ShaderEntry &entry : ordered) {
+      auto *item = new QListWidgetItem(shaderItemText(entry));
+      item->setData(Qt::UserRole, entry.path);
+      item->setData(Qt::UserRole + 1, entry.bundled);
+      item->setToolTip(QDir::toNativeSeparators(entry.path));
+      item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+      item->setCheckState(chain.contains(entry.path) ? Qt::Checked
+                                                     : Qt::Unchecked);
       shaderChainList->addItem(item);
     }
+  };
+
+  // Persists the checked entries (in list order) as the shader chain.
+  const auto collectShaderChain = [shaderChainList]() {
+    QStringList chain;
+    for (int row = 0; row < shaderChainList->count(); ++row) {
+      QListWidgetItem *item = shaderChainList->item(row);
+      if (item && item->checkState() == Qt::Checked) {
+        chain.append(item->data(Qt::UserRole).toString());
+      }
+    }
+    Anime4KShaderManager::instance().setConfiguredChain(chain);
   };
 
   const auto updateShaderChainButtons =
       [shaderChainList, removeShaderBtn, moveShaderUpBtn,
        moveShaderDownBtn]() {
         const int row = shaderChainList->currentRow();
-        const bool hasSelection = row >= 0 && shaderChainList->item(row) &&
-            !shaderChainList->item(row)->data(Qt::UserRole).toString().isEmpty();
-        removeShaderBtn->setEnabled(hasSelection);
+        QListWidgetItem *item =
+            row >= 0 ? shaderChainList->item(row) : nullptr;
+        const bool hasSelection = item &&
+            !item->data(Qt::UserRole).toString().isEmpty();
+        // Only user-imported shaders can be deleted; bundled ones can merely
+        // be unchecked.
+        const bool removable =
+            hasSelection && !item->data(Qt::UserRole + 1).toBool();
+        removeShaderBtn->setEnabled(removable);
         moveShaderUpBtn->setEnabled(hasSelection && row > 0);
         moveShaderDownBtn->setEnabled(hasSelection &&
                                       row < shaderChainList->count() - 1);
@@ -239,73 +268,101 @@ PagePlayer::PagePlayer(QEmbyCore *core, QWidget *parent)
   connect(shaderChainList, &QListWidget::itemSelectionChanged, this,
           updateShaderChainButtons);
 
+  connect(shaderChainList, &QListWidget::itemChanged, this,
+          [collectShaderChain](QListWidgetItem *) { collectShaderChain(); });
+
   connect(addShaderBtn, &QPushButton::clicked, this,
-          [this, refreshShaderChainList, updateShaderChainButtons]() {
+          [this, shaderChainList, shaderItemText, collectShaderChain,
+           updateShaderChainButtons]() {
             const QString path = QFileDialog::getOpenFileName(
                 this, tr("Add Shader"), QString(),
                 tr("GLSL Shaders (*.glsl)"));
             if (path.isEmpty()) {
               return;
             }
-            QStringList chain =
-                Anime4KShaderManager::instance().configuredChain();
-            if (chain.contains(path)) {
+            const QString imported =
+                Anime4KShaderManager::instance().importCustomShader(path);
+            if (imported.isEmpty()) {
               return;
             }
-            chain.append(path);
-            Anime4KShaderManager::instance().setConfiguredChain(chain);
-            refreshShaderChainList();
+
+            QString text = QFileInfo(imported).fileName();
+            for (const Anime4KShaderManager::ShaderEntry &entry :
+                 Anime4KShaderManager::instance().shaderCatalog()) {
+              if (entry.path == imported) {
+                text = shaderItemText(entry);
+                break;
+              }
+            }
+
+            {
+              const QSignalBlocker blocker(shaderChainList);
+              auto *item = new QListWidgetItem(text);
+              item->setData(Qt::UserRole, imported);
+              item->setData(Qt::UserRole + 1, false);
+              item->setToolTip(QDir::toNativeSeparators(imported));
+              item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+              item->setCheckState(Qt::Checked);
+              shaderChainList->addItem(item);
+              shaderChainList->setCurrentItem(item);
+            }
+            collectShaderChain();
             updateShaderChainButtons();
           });
 
   connect(removeShaderBtn, &QPushButton::clicked, this,
-          [shaderChainList, refreshShaderChainList,
-           updateShaderChainButtons]() {
+          [shaderChainList, collectShaderChain, updateShaderChainButtons]() {
             QListWidgetItem *item = shaderChainList->currentItem();
             if (!item) {
+              return;
+            }
+            if (item->data(Qt::UserRole + 1).toBool()) {
               return;
             }
             const QString path = item->data(Qt::UserRole).toString();
             if (path.isEmpty()) {
               return;
             }
-            QStringList chain =
-                Anime4KShaderManager::instance().configuredChain();
-            chain.removeAll(path);
-            Anime4KShaderManager::instance().setConfiguredChain(chain);
-            refreshShaderChainList();
+            if (!Anime4KShaderManager::instance().removeCustomShader(path)) {
+              return;
+            }
+            {
+              const QSignalBlocker blocker(shaderChainList);
+              delete shaderChainList->takeItem(shaderChainList->row(item));
+            }
+            collectShaderChain();
             updateShaderChainButtons();
           });
 
   connect(moveShaderUpBtn, &QPushButton::clicked, this,
-          [shaderChainList, refreshShaderChainList,
-           updateShaderChainButtons]() {
+          [shaderChainList, collectShaderChain, updateShaderChainButtons]() {
             const int row = shaderChainList->currentRow();
-            QStringList chain =
-                Anime4KShaderManager::instance().configuredChain();
-            if (row <= 0 || row >= chain.size()) {
+            if (row <= 0) {
               return;
             }
-            chain.swapItemsAt(row - 1, row);
-            Anime4KShaderManager::instance().setConfiguredChain(chain);
-            refreshShaderChainList();
-            shaderChainList->setCurrentRow(row - 1);
+            {
+              const QSignalBlocker blocker(shaderChainList);
+              QListWidgetItem *item = shaderChainList->takeItem(row);
+              shaderChainList->insertItem(row - 1, item);
+              shaderChainList->setCurrentItem(item);
+            }
+            collectShaderChain();
             updateShaderChainButtons();
           });
 
   connect(moveShaderDownBtn, &QPushButton::clicked, this,
-          [shaderChainList, refreshShaderChainList,
-           updateShaderChainButtons]() {
+          [shaderChainList, collectShaderChain, updateShaderChainButtons]() {
             const int row = shaderChainList->currentRow();
-            QStringList chain =
-                Anime4KShaderManager::instance().configuredChain();
-            if (row < 0 || row + 1 >= chain.size()) {
+            if (row < 0 || row + 1 >= shaderChainList->count()) {
               return;
             }
-            chain.swapItemsAt(row, row + 1);
-            Anime4KShaderManager::instance().setConfiguredChain(chain);
-            refreshShaderChainList();
-            shaderChainList->setCurrentRow(row + 1);
+            {
+              const QSignalBlocker blocker(shaderChainList);
+              QListWidgetItem *item = shaderChainList->takeItem(row);
+              shaderChainList->insertItem(row + 1, item);
+              shaderChainList->setCurrentItem(item);
+            }
+            collectShaderChain();
             updateShaderChainButtons();
           });
 

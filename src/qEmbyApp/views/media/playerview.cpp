@@ -4847,7 +4847,7 @@ void PlayerView::openAnime4kChainMenu()
     {
         const QString text = entry.bundled
             ? tr("%1 (Bundled)").arg(entry.displayName)
-            : entry.displayName;
+            : tr("%1 (Custom)").arg(entry.displayName);
         panel->addItem(text, entry.path, chain.contains(entry.path));
         for (QPushButton *btn : panel->findChildren<QPushButton *>())
         {
@@ -4889,26 +4889,11 @@ void PlayerView::openAnime4kChainMenu()
                     newChain.removeAll(path);
                 }
 
-                QStringList ordered;
-                for (const Anime4KShaderManager::ShaderEntry &entry :
-                     Anime4KShaderManager::instance().shaderCatalog())
-                {
-                    if (newChain.contains(entry.path))
-                    {
-                        ordered.append(entry.path);
-                    }
-                }
-                for (const QString &shaderPath : newChain)
-                {
-                    if (!ordered.contains(shaderPath))
-                    {
-                        ordered.append(shaderPath);
-                    }
-                }
+                // Keep the user-defined chain order; toggling only changes
+                // membership (new shaders are appended at the end).
+                Anime4KShaderManager::instance().setConfiguredChain(newChain);
 
-                Anime4KShaderManager::instance().setConfiguredChain(ordered);
-
-                const bool enable = !ordered.isEmpty();
+                const bool enable = !newChain.isEmpty();
                 ConfigStore::instance()->set(ConfigKeys::PlayerAnime4kEnabled, enable);
                 const bool applied = m_mpvWidget->controller()->applyAnime4kShaders(
                     enable, Anime4KShaderManager::presetIdOfCustom());

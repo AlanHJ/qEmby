@@ -12,11 +12,13 @@
 #include <QJsonDocument>
 #include <QJsonValue>
 #include <QStandardPaths>
+#include <algorithm>
 
 namespace {
 const QString kShaderResourceRoot = QStringLiteral(":/shaders/anime4k/v4.0.1/");
 const QString kShaderVersion = QStringLiteral("4.0.1");
 const QString kExtractSubdir = QStringLiteral("anime4k/v4.0.1");
+const QString kCustomSubdir = QStringLiteral("anime4k/custom");
 const QString kMarkerFileName = QStringLiteral(".complete");
 
 QString chainToJson(const QStringList &paths) {
@@ -49,6 +51,105 @@ QString readableShaderName(const QString &path) {
     name.replace(QLatin1Char('_'), QLatin1Char(' '));
     name.replace(QLatin1Char('-'), QLatin1Char(' '));
     return name;
+}
+
+// Variant rank for size/quality suffixes, ordered from fastest to highest
+// quality (S < M < L < VL < UL, VeryFast < Fast < HQ).
+int variantRank(const QString &fileName) {
+    static const struct {
+        const char *suffix;
+        int rank;
+    } kVariants[] = {
+        {"_UL", 4}, {"_VL", 3}, {"_L", 2}, {"_M", 1}, {"_S", 0},
+        {"VeryFast", 0}, {"Fast", 1}, {"HQ", 2},
+    };
+    const QString baseName = QFileInfo(fileName).completeBaseName();
+    for (const auto &variant : kVariants) {
+        if (baseName.endsWith(QLatin1String(variant.suffix))) {
+            return variant.rank;
+        }
+    }
+    return 9;
+}
+
+// Stable catalog order for the bundled shaders: grouped by function in
+// pipeline order (clamp -> restore -> denoise -> deblur -> thin -> upscale ->
+// darken -> auto-downscale), then by variant from fastest to highest quality,
+// with the file name as the final tiebreaker.
+struct BundledOrder {
+    int group = 9;
+    int sub = 0;
+    int variant = 9;
+    QString fileName;
+
+    bool operator<(const BundledOrder &other) const {
+        if (group != other.group) {
+            return group < other.group;
+        }
+        if (sub != other.sub) {
+            return sub < other.sub;
+        }
+        if (variant != other.variant) {
+            return variant < other.variant;
+        }
+        return fileName < other.fileName;
+    }
+};
+
+BundledOrder bundledOrder(const QString &fileName) {
+    BundledOrder order;
+    order.fileName = fileName;
+    if (fileName == QLatin1String("Anime4K_Clamp_Highlights.glsl")) {
+        order.group = 0;
+        return order;
+    }
+    if (fileName.startsWith(QLatin1String("Anime4K_Restore_CNN_Soft_"))) {
+        order.group = 1;
+        order.sub = 1;
+    } else if (fileName.startsWith(QLatin1String("Anime4K_Restore_CNN_"))) {
+        order.group = 1;
+    } else if (fileName.startsWith(QLatin1String("Anime4K_Denoise_"))) {
+        order.group = 2;
+    } else if (fileName.startsWith(QLatin1String("Anime4K_Deblur_DoG"))) {
+        order.group = 3;
+    } else if (fileName.startsWith(QLatin1String("Anime4K_Deblur_"))) {
+        order.group = 3;
+        order.sub = 1;
+    } else if (fileName.startsWith(QLatin1String("Anime4K_Thin_"))) {
+        order.group = 4;
+    } else if (fileName.startsWith(QLatin1String("Anime4K_Upscale_CNN_x2_"))) {
+        order.group = 5;
+    } else if (fileName.startsWith(
+                   QLatin1String("Anime4K_Upscale_Denoise_CNN_x2_"))) {
+        order.group = 5;
+        order.sub = 1;
+    } else if (fileName.startsWith(
+                   QLatin1String("Anime4K_Upscale_Deblur_DoG_x2"))) {
+        order.group = 5;
+        order.sub = 2;
+    } else if (fileName.startsWith(
+                   QLatin1String("Anime4K_Upscale_Deblur_Original_x2"))) {
+        order.group = 5;
+        order.sub = 3;
+    } else if (fileName.startsWith(QLatin1String("Anime4K_Upscale_DoG_x2"))) {
+        order.group = 5;
+        order.sub = 4;
+    } else if (fileName.startsWith(QLatin1String("Anime4K_Upscale_DTD_x2"))) {
+        order.group = 5;
+        order.sub = 5;
+    } else if (fileName.startsWith(
+                   QLatin1String("Anime4K_Upscale_Original_x2"))) {
+        order.group = 5;
+        order.sub = 6;
+    } else if (fileName.startsWith(QLatin1String("Anime4K_Darken_"))) {
+        order.group = 6;
+    } else if (fileName.startsWith(QLatin1String("Anime4K_AutoDownscalePre_"))) {
+        order.group = 7;
+    }
+    if (order.variant == 9) {
+        order.variant = variantRank(fileName);
+    }
+    return order;
 }
 }
 
@@ -252,48 +353,97 @@ void Anime4KShaderManager::applyPresetTemplate(Preset preset) {
 }
 
 QList<Anime4KShaderManager::ShaderEntry> Anime4KShaderManager::shaderCatalog() const {
-    struct BundledShaderInfo {
-        const char *fileName;
-        const char *displayName;
-    };
-    static const BundledShaderInfo kBundledShaders[] = {
-        {"Anime4K_Clamp_Highlights.glsl", QT_TR_NOOP("Anime4K Clamp Highlights")},
-        {"Anime4K_Restore_CNN_S.glsl", QT_TR_NOOP("Anime4K Restore CNN S")},
-        {"Anime4K_Restore_CNN_M.glsl", QT_TR_NOOP("Anime4K Restore CNN M")},
-        {"Anime4K_Restore_CNN_L.glsl", QT_TR_NOOP("Anime4K Restore CNN L")},
-        {"Anime4K_Upscale_CNN_x2_S.glsl", QT_TR_NOOP("Anime4K Upscale CNN x2 S")},
-        {"Anime4K_Upscale_CNN_x2_M.glsl", QT_TR_NOOP("Anime4K Upscale CNN x2 M")},
-        {"Anime4K_Upscale_CNN_x2_L.glsl", QT_TR_NOOP("Anime4K Upscale CNN x2 L")},
-    };
-
     const QString targetDirPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
             + QLatin1Char('/') + kExtractSubdir;
 
     QList<ShaderEntry> catalog;
-    for (const BundledShaderInfo &info : kBundledShaders) {
+
+    QStringList bundledNames;
+    QDirIterator it(kShaderResourceRoot, QDir::Files);
+    while (it.hasNext()) {
+        it.next();
+        if (it.fileName().endsWith(QLatin1String(".glsl"))) {
+            bundledNames.append(it.fileName());
+        }
+    }
+    std::sort(bundledNames.begin(), bundledNames.end(),
+              [](const QString &left, const QString &right) {
+                  return bundledOrder(left) < bundledOrder(right);
+              });
+    for (const QString &name : bundledNames) {
         ShaderEntry entry;
-        entry.path = targetDirPath + QLatin1Char('/') + QString::fromLatin1(info.fileName);
-        entry.displayName = tr(info.displayName);
+        entry.path = targetDirPath + QLatin1Char('/') + name;
+        entry.displayName = readableShaderName(name);
         entry.bundled = true;
         catalog.append(entry);
     }
 
-    for (const QString &path : configuredChain()) {
-        bool listed = false;
-        for (const ShaderEntry &entry : catalog) {
-            if (entry.path == path) {
-                listed = true;
-                break;
-            }
-        }
-        if (listed) {
-            continue;
-        }
+    QDir customDir(customShaderDir());
+    const QStringList customNames =
+        customDir.entryList({QStringLiteral("*.glsl")}, QDir::Files, QDir::Name);
+    for (const QString &name : customNames) {
         ShaderEntry entry;
-        entry.path = path;
-        entry.displayName = readableShaderName(path);
+        entry.path = customDir.filePath(name);
+        entry.displayName = readableShaderName(name);
         entry.bundled = false;
         catalog.append(entry);
     }
     return catalog;
+}
+
+QString Anime4KShaderManager::customShaderDir() {
+    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+            + QLatin1Char('/') + kCustomSubdir;
+}
+
+QString Anime4KShaderManager::importCustomShader(const QString &srcPath) {
+    const QFileInfo srcInfo(srcPath);
+    if (!srcInfo.exists() || !srcInfo.isFile()) {
+        qWarning() << "[Anime4KShaderManager] importCustomShader failed"
+                   << "| error: source file not found"
+                   << "| srcPath:" << srcPath;
+        return QString();
+    }
+
+    const QString dirPath = customShaderDir();
+    if (!QDir().mkpath(dirPath)) {
+        qWarning() << "[Anime4KShaderManager] importCustomShader failed"
+                   << "| error: cannot create directory"
+                   << "| targetDir:" << dirPath;
+        return QString();
+    }
+
+    const QString baseName = srcInfo.completeBaseName();
+    const QString suffix = srcInfo.suffix();
+    QString fileName = srcInfo.fileName();
+    QString targetPath = dirPath + QLatin1Char('/') + fileName;
+    for (int index = 1; QFile::exists(targetPath); ++index) {
+        fileName = baseName + QLatin1Char('_') + QString::number(index);
+        if (!suffix.isEmpty()) {
+            fileName += QLatin1Char('.') + suffix;
+        }
+        targetPath = dirPath + QLatin1Char('/') + fileName;
+    }
+
+    if (!QFile::copy(srcPath, targetPath)) {
+        qWarning() << "[Anime4KShaderManager] importCustomShader failed"
+                   << "| error: cannot copy shader"
+                   << "| srcPath:" << srcPath
+                   << "| targetPath:" << targetPath;
+        return QString();
+    }
+    return targetPath;
+}
+
+bool Anime4KShaderManager::removeCustomShader(const QString &path) {
+    const QFileInfo info(path);
+    const QString dirPath = QDir::cleanPath(customShaderDir());
+    if (QDir::cleanPath(info.absolutePath()) != dirPath) {
+        qWarning() << "[Anime4KShaderManager] removeCustomShader failed"
+                   << "| error: path outside custom shader directory"
+                   << "| path:" << path
+                   << "| customShaderDir:" << dirPath;
+        return false;
+    }
+    return QFile::remove(info.absoluteFilePath());
 }
