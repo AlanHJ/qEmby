@@ -3,6 +3,7 @@
 #include "../utils/subtitlestyleutils.h"
 #include "../utils/playerpreferenceutils.h"
 #include <QDebug>
+#include <QFile>
 #include <QMetaType>
 #include <QElapsedTimer>
 #include <QThreadPool>
@@ -286,11 +287,7 @@ bool MpvController::applyAnime4kShaders(bool enabled, const QString &presetId) {
         return false;
     }
 
-    if (!Anime4KShaderManager::instance().ensureShadersExtracted()) {
-        qDebug() << "[MpvController] Anime4K shaders unavailable"
-                 << "| reason=shader extraction failed";
-        return false;
-    }
+    const bool extracted = Anime4KShaderManager::instance().ensureShadersExtracted();
 
     const QStringList chain = Anime4KShaderManager::isCustomPresetId(presetId)
         ? Anime4KShaderManager::instance().configuredChain()
@@ -300,6 +297,26 @@ bool MpvController::applyAnime4kShaders(bool enabled, const QString &presetId) {
         qDebug() << "[MpvController] Anime4K shaders unavailable"
                  << "| reason=empty shader chain" << "| preset=" << presetId;
         return false;
+    }
+
+    if (!extracted) {
+        // Tolerate leftovers of a previous extraction: when every shader file
+        // of the chain already exists on disk, applying is still safe.
+        bool allPresent = true;
+        for (const QString &shaderPath : chain) {
+            if (!QFile::exists(shaderPath)) {
+                allPresent = false;
+                break;
+            }
+        }
+        if (!allPresent) {
+            qDebug() << "[MpvController] Anime4K shaders unavailable"
+                     << "| reason=shader extraction failed";
+            return false;
+        }
+        qDebug() << "[MpvController] Using previously extracted Anime4K shaders"
+                 << "| reason=extraction failed but chain files present"
+                 << "| preset=" << presetId;
     }
 
     command(QVariantList{"change-list", "glsl-shaders", "clr"});
