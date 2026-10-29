@@ -891,8 +891,13 @@ void MpvWidget::render(QRhiCommandBuffer *cb) {
         // mpv 渲染进视频缓存纹理 (同设备 d3d11va Surface, 零拷贝直通);
         // mpv 使用即时上下文且不恢复状态, 其后我们显式重建自身状态。
         mpv_d3d11_fbo fbo{pipelineReady ? m_videoTex : colorTex};
+        // 必须显式关闭 BLOCK_FOR_TARGET_TIME (默认开启!): 否则 mpv 会把渲染
+        // 线程阻塞到帧的目标显示时间 (24fps 视频 => 每帧 ~41ms), 把整个 GUI
+        // 循环拖到视频帧率 (实测 paintsPerSec=24 / mpvMaxMs≈42ms)。
+        int blockForTarget = 0;
         mpv_render_param params[] = {
             {MPV_RENDER_PARAM_D3D11_FBO, &fbo},
+            {MPV_RENDER_PARAM_BLOCK_FOR_TARGET_TIME, &blockForTarget},
             {MPV_RENDER_PARAM_INVALID, nullptr}
         };
         QElapsedTimer perfMpv;

@@ -155,6 +155,11 @@ bool MpvController::init() {
                    << "| reason=D3D11 render loop decoupling";
         vsyncMode = QStringLiteral("audio");
     }
+    // 渲染 API 的内部计时等待 (BLOCK_FOR_TARGET_TIME 默认开启) 会阻塞渲染
+    // 调用方直至帧目标显示时间; 除在渲染调用中禁用外, 按 render.h 的建议把
+    // video-timing-offset 归零 —— mpv 在目标时间才投递帧, 调用方即时呈现,
+    // 音画同步保持且 GUI 线程零阻塞。
+    mpv_set_option_string(m_mpv, "video-timing-offset", "0");
 #else
     QString vsyncMode = ConfigStore::instance()->get<QString>(
         ConfigKeys::PlayerVideoSync, "display-resample");
