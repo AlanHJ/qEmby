@@ -114,14 +114,22 @@ PlayerDanmakuController::PlayerDanmakuController(QEmbyCore *core,
     connect(m_mpvWidget->controller(), &MpvController::propertyChanged, this,
             [this](const QString &property, const QVariant &value) {
                 if (property == QLatin1String("track-list")) {
-                    
-                    
-                    
-                    QScopedValueRollback<QVariant> notification(m_trackListNotification,
-                        prefersNativeRenderer() ? value : QVariant());
-                    onTrackListChanged();
+                    // 防抖合并: applyTrackSelection 写 sid/secondary-sid 会让 mpv
+                    // 重发 track-list, 逐条同步处理会放大成数百毫秒 GUI 阻塞
+                    // (实测 520ms) —— 50ms 窗口合并为一轮处理。
+                    m_pendingTrackList = prefersNativeRenderer() ? value : QVariant();
+                    m_trackListDebounce.start();
                 }
             });
+
+    m_trackListDebounce.setSingleShot(true);
+    m_trackListDebounce.setInterval(50);
+    connect(&m_trackListDebounce, &QTimer::timeout, this, [this]() {
+        m_trackListNotification = m_pendingTrackList;
+        m_pendingTrackList = QVariant();
+        onTrackListChanged();
+        m_trackListNotification = QVariant();
+    });
 
     connect(ConfigStore::instance(), &ConfigStore::valueChanged, this,
             [this](const QString &key, const QVariant &) {
