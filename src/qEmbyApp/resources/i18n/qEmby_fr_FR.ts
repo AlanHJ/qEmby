@@ -8716,4 +8716,50 @@ Adresse: %2</translation>
         <translation>Échec de l'initialisation du rendu Direct3D 11.</translation>
     </message>
 </context>
+<context>
+    <name>PagePlayer</name>
+    <message>
+        <source>Software only</source>
+        <translation>Logiciel uniquement</translation>
+    </message>
+    <message>
+        <source>Decoder priority with automatic CPU fallback</source>
+        <translation>Priorité des décodeurs avec repli automatique sur le CPU</translation>
+    </message>
+</context>
+<context>
+    <name>HwdecPriorityDialog</name>
+    <message>
+        <source>Decoder Priority</source>
+        <translation>Priorité des décodeurs</translation>
+    </message>
+    <message>
+        <source>Enable hardware decoding</source>
+        <translation>Activer le décodage matériel</translation>
+    </message>
+    <message>
+        <source>Move Up</source>
+        <translation>Monter</translation>
+    </message>
+    <message>
+        <source>Move Down</source>
+        <translation>Descendre</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>Retirer</translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation>Ajouter</translation>
+    </message>
+    <message>
+        <source>Restore Defaults</source>
+        <translation>Rétablir les valeurs par défaut</translation>
+    </message>
+    <message>
+        <source>Decoders are tried top to bottom; playback falls back to CPU (software) automatically, so it never breaks.</source>
+        <translation>Les décodeurs sont essayés de haut en bas ; la lecture bascule automatiquement sur le CPU (logiciel), elle ne s'interrompt donc jamais.</translation>
+    </message>
+</context>
 </TS>

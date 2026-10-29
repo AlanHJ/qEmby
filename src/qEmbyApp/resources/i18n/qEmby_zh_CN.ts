@@ -10743,4 +10743,50 @@ This cannot be undone.</source>
         <translation>Direct3D 11 渲染初始化失败。</translation>
     </message>
 </context>
+<context>
+    <name>PagePlayer</name>
+    <message>
+        <source>Software only</source>
+        <translation>仅软件解码</translation>
+    </message>
+    <message>
+        <source>Decoder priority with automatic CPU fallback</source>
+        <translation>解码器优先级，自动回退 CPU 软解</translation>
+    </message>
+</context>
+<context>
+    <name>HwdecPriorityDialog</name>
+    <message>
+        <source>Decoder Priority</source>
+        <translation>解码器优先级</translation>
+    </message>
+    <message>
+        <source>Enable hardware decoding</source>
+        <translation>启用硬件解码</translation>
+    </message>
+    <message>
+        <source>Move Up</source>
+        <translation>上移</translation>
+    </message>
+    <message>
+        <source>Move Down</source>
+        <translation>下移</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>移除</translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation>添加</translation>
+    </message>
+    <message>
+        <source>Restore Defaults</source>
+        <translation>恢复默认</translation>
+    </message>
+    <message>
+        <source>Decoders are tried top to bottom; playback falls back to CPU (software) automatically, so it never breaks.</source>
+        <translation>解码器自上而下依次尝试；全部失败时自动回退 CPU 软解，播放不会中断。</translation>
+    </message>
+</context>
 </TS>

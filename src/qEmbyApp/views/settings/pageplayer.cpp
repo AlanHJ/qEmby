@@ -3,6 +3,7 @@
 #include "../../components/collapsiblesection.h"
 #include "../../components/danmakuserverdialog.h"
 #include "../../components/danmakuoptionslider.h"
+#include "../../components/hwdecprioritydialog.h"
 #include "../../components/moderncombobox.h"
 #include "../../components/modernswitch.h"
 #include "../../components/moderntaginput.h"
@@ -57,22 +58,38 @@ PagePlayer::PagePlayer(QEmbyCore *core, QWidget *parent)
     : SettingsPageBase(core, tr("Player"), parent) {
   const QString sid = m_core->serverManager()->activeProfile().id;
   
-  auto *hwCombo = new ModernComboBox(this);
-#if defined(QEMBY_MPV_D3D11_RENDER)
-  hwCombo->addItem(tr("D3D11VA (Zero-Copy)"), "d3d11va");
-#endif
-#ifdef Q_OS_LINUX
-  hwCombo->addItem(tr("Auto (Zero-Copy)"), "vaapi,nvdec,auto-safe");
-#endif
-  hwCombo->addItem(tr("Auto"), "auto-copy");
-  hwCombo->addItem(tr("D3D11VA"), "d3d11va-copy");
-  hwCombo->addItem(tr("DXVA2"), "dxva2-copy");
-  hwCombo->addItem(tr("CUDA (NVIDIA)"), "cuda-copy");
-  hwCombo->addItem(tr("None (Software)"), "no");
+  auto *hwButton = new QPushButton(this);
+  const auto refreshHwButton = [this, hwButton]() {
+      const bool enabled = ConfigStore::instance()->get<bool>(
+          ConfigKeys::PlayerHwDecEnabled, true);
+      if (!enabled) {
+          hwButton->setText(tr("Software only"));
+          return;
+      }
+      QString chain = ConfigStore::instance()->get<QString>(
+          ConfigKeys::PlayerHwDecPriority, QString()).trimmed();
+      if (chain.isEmpty()) {
+          chain = QStringLiteral("auto,auto-safe");
+      }
+      hwButton->setText(chain);
+  };
+  refreshHwButton();
+  hwButton->setToolTip(tr("Decoder priority with automatic CPU fallback"));
+  connect(hwButton, &QPushButton::clicked, this, [this, refreshHwButton]() {
+      HwdecPriorityDialog dialog(this);
+      if (dialog.exec() != QDialog::Accepted) {
+          return;
+      }
+      ConfigStore::instance()->set(ConfigKeys::PlayerHwDecPriority,
+                                   dialog.priorityChain());
+      ConfigStore::instance()->set(ConfigKeys::PlayerHwDecEnabled,
+                                   dialog.hwdecEnabled());
+      refreshHwButton();
+  });
   m_mainLayout->addWidget(
       new SettingsCard(":/svg/dark/hw-decode.svg", tr("Hardware Decoding"),
-                       tr("Select GPU acceleration method for video decoding"),
-                       hwCombo, ConfigKeys::PlayerHwDec, this));
+                       tr("Decoder priority with automatic CPU fallback"),
+                       hwButton, QString(), this));
 
   
   auto *voCombo = new ModernComboBox(this);
