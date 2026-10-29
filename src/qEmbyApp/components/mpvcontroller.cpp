@@ -144,8 +144,21 @@ bool MpvController::init() {
     
     
     
+#if defined(QEMBY_MPV_D3D11_RENDER)
+    // D3D11 渲染通道: display-resample 以 vsync 反馈为节拍, 会把渲染 API 的
+    // 重绘循环拖到视频帧率 (24fps 视频 => 全 UI 24Hz 顿挫), 强制回落音频主
+    // 时钟; 弹幕/UI 动画由 MpvWidget 的独立高刷定时器驱动。
+    QString vsyncMode = ConfigStore::instance()->get<QString>(
+        ConfigKeys::PlayerVideoSync, "audio");
+    if (vsyncMode == QLatin1String("display-resample")) {
+        qWarning() << "[MpvController] video-sync=display-resample downgraded to audio"
+                   << "| reason=D3D11 render loop decoupling";
+        vsyncMode = QStringLiteral("audio");
+    }
+#else
     QString vsyncMode = ConfigStore::instance()->get<QString>(
         ConfigKeys::PlayerVideoSync, "display-resample");
+#endif
     mpv_set_option_string(m_mpv, "video-sync", vsyncMode.toUtf8().constData());
     
     mpv_set_option_string(m_mpv, "interpolation", vsyncMode == "display-resample" ? "yes" : "no");
