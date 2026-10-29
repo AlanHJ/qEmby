@@ -16,7 +16,9 @@ class QPushButton;
 class QStandardItemModel;
 class QTableView;
 class QTimer;
-class ModernSwitch;
+class InlineToggleButton;
+class SslVerificationButton;
+class TrailingWidgetLineEdit;
 class ServerManager;
 class WebdavProfileStore;
 
@@ -65,6 +67,7 @@ private:
     void buildUi();
     void wireSignals();
     void loadProfileToUi();
+    void updateSslOptionsVisibility();
     WebdavProfile collectProfileFromUi() const;
 
     void refreshSnapshotList();
@@ -90,18 +93,18 @@ private:
     WebdavSyncService *m_service = nullptr;
 
     
-    QLineEdit *m_baseUrlEdit = nullptr;
+    TrailingWidgetLineEdit *m_baseUrlEdit = nullptr;
     QLineEdit *m_userEdit = nullptr;
     QLineEdit *m_passwordEdit = nullptr;
     QAction *m_togglePwdAction = nullptr;
     QLineEdit *m_rootDirEdit = nullptr;
-    ModernSwitch *m_ignoreSslSwitch = nullptr;
+    SslVerificationButton *m_ignoreSslButton = nullptr;
     QPushButton *m_testBtn = nullptr;
     QPushButton *m_saveProfileBtn = nullptr;
 
     
-    QLineEdit *m_snapshotTagEdit = nullptr;
-    ModernSwitch *m_encryptSnapshotSwitch = nullptr;
+    TrailingWidgetLineEdit *m_snapshotTagEdit = nullptr;
+    InlineToggleButton *m_encryptSnapshotButton = nullptr;
     QLabel *m_proposedFileLabel = nullptr;
     QPushButton *m_uploadBtn = nullptr;
 

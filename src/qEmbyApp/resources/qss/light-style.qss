@@ -18,7 +18,8 @@
     /* 核心：一键消除所有控件的选中虚框 */
 }
 
-MainWindow {
+MainWindow,
+StandaloneLoginWindow {
     background-color: #F1F5F9;
 }
 
@@ -535,30 +536,41 @@ QWidget#login-add-page QLineEdit:focus {
     background-color: #EFF6FF;
 }
 
-QWidget#login-add-page QWidget#login-ssl-card {
-    background-color: #FFFFFF;
-    border: 1px solid #E2E8F0;
-    border-radius: 12px;
-}
-
-QWidget#login-add-page QWidget#login-ssl-card:hover {
-    background-color: #F8FAFC;
-    border-color: #CBD5E1;
-}
-
-QWidget#login-add-page QLabel#login-ssl-title {
-    color: #1E293B;
-    font-size: 13px;
+InlineToggleButton {
+    color: #64748B;
+    font-size: 11px;
     font-weight: 400;
     font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
     background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    padding: 2px 6px;
+    min-height: 0px;
 }
 
-QWidget#login-add-page QLabel#login-ssl-description {
-    color: #94A3B8;
-    font-size: 12px;
-    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+InlineToggleButton:!checked,
+InlineToggleButton:!checked:hover {
+    color: #64748B;
     background-color: transparent;
+    border-color: transparent;
+}
+
+InlineToggleButton:checked {
+    color: #2563EB;
+    background-color: rgba(59, 130, 246, 0.08);
+    border-color: rgba(59, 130, 246, 0.16);
+}
+
+InlineToggleButton:checked:hover {
+    background-color: rgba(59, 130, 246, 0.14);
+}
+
+InlineToggleButton:focus:!checked {
+    border-bottom: 1px dotted #94A3B8;
+}
+
+InlineToggleButton:focus:checked {
+    border-color: #3B82F6;
 }
 
 QWidget#server-card {
@@ -810,12 +822,6 @@ QWidget#login-add-page QPushButton:hover {
 QWidget#login-add-page QPushButton:pressed {
     background-color: #F1F5F9;
     color: #334155;
-}
-
-QWidget#login-add-page ModernSwitch {
-    qproperty-trackColorActive: #3B82F6;
-    qproperty-trackColorInactive: #CBD5E1;
-    qproperty-thumbColor: #FFFFFF;
 }
 
 QWidget#login-add-page QPushButton#login-button {
@@ -1802,14 +1808,15 @@ QListWidget#sidebar-list::item {
     color: #4B5563;
     font-size: 14px;
     font-weight: 500;
-    padding: 8px 12px;
+    /* Embedded rows need the full height for macOS text and emoji metrics. */
+    padding: 0px 12px;
     border-radius: 8px;
     margin-bottom: 4px;
     /* 列表项之间的间距 */
 }
 
 QWidget#floating-sidebar[pinned="true"] QListWidget#sidebar-list::item {
-    padding: 8px 10px;
+    padding: 0px 10px;
 }
 
 /* 列表悬停 - 【同步加深】 */
@@ -1881,6 +1888,12 @@ QLabel#dashboard-section-title {
     font-size: 20px;
     font-weight: 700;
     color: #111827;
+}
+
+/* 首页各区域标题统一左对齐，避免带 margin 的 QLabel 产生自动文字缩进。 */
+QWidget#dashboard-container QLabel#dashboard-section-title,
+QWidget#dashboard-container QLabel#detail-section-title {
+    qproperty-indent: 0;
 }
 
 /* 【新增】：Dashboard "查看全部" 浮动按钮，彻底脱离硬编码 */
@@ -2130,6 +2143,12 @@ QLabel#detail-section-title {
     margin-bottom: 4px;
 }
 
+/* 详情页标题留白统一交给栏布局，避免与 QSS margin 叠加。 */
+QWidget#detail-view QLabel#detail-section-title {
+    margin: 0px;
+    qproperty-indent: 0;
+}
+
 /* 2. 交互按钮 (纯正方形的心形收藏按钮) */
 QPushButton#detail-play-btn,
 QPushButton#detail-resume-btn {
@@ -2164,7 +2183,7 @@ QPushButton#detail-fav-btn:hover {
 
 QPushButton#detail-fav-btn[isFavorite="true"] {
     border-color: transparent;
-    background-color: #FEF2F2;
+    background-color: transparent;
 }
 
 QPushButton#detail-fav-btn[isFavorite="true"]:hover {
@@ -2172,15 +2191,21 @@ QPushButton#detail-fav-btn[isFavorite="true"]:hover {
     border-color: #D1D5DB;
 }
 
-QPushButton#detail-played-btn {
+QPushButton#detail-played-btn,
+QPushButton#detail-more-btn {
     background-color: transparent;
     border: 1px solid transparent;
     border-radius: 8px;
     padding: 0px;
 }
-QPushButton#detail-played-btn:hover {
+QPushButton#detail-played-btn:hover,
+QPushButton#detail-more-btn:hover {
     background-color: #F3F4F6;
     border-color: #D1D5DB;
+}
+
+QPushButton#detail-more-btn {
+    qproperty-icon: url(":/svg/light/more-thin.svg");
 }
 
 /* 3. 药丸式标签 (Tags) - 缩小字号变得更精致 */
@@ -2331,6 +2356,12 @@ MediaCardThemeHelper#media-card-theme {
     /* 图像未加载前的骨架屏背景 */
     qproperty-placeholderTextColor: #9CA3AF;
     /* No Image 的提示字 */
+    qproperty-progressTrackColor: #CBD5E1;
+    qproperty-progressFillColor: #16A34A;
+    qproperty-progressOpacity: 0.65;
+    qproperty-ratingBackgroundColor: rgba(15, 23, 42, 0.55);
+    qproperty-ratingTextColor: #FFFFFF;
+    qproperty-hoverButtonBackgroundColor: rgba(0, 0, 0, 0.55);
 }
 
 /* =========================================
@@ -2368,34 +2399,96 @@ QLabel#MediaImageEditIntroText {
     padding-top: 0px;
 }
 
-QWidget#MediaImageEditSidePanel {
-    background-color: #F8FAFC;
-    border: 1px solid #E2E8F0;
-    border-radius: 14px;
+QScrollArea#MediaImageEditScrollArea,
+QWidget#MediaImageEditPage {
+    background: transparent;
+    border: none;
 }
 
 QLabel#MediaImageEditSectionTitle {
     color: #0F172A;
-    font-size: 12px;
+    font-size: 17px;
     font-weight: 700;
-    padding-top: 0px;
+    padding: 0px;
 }
 
-QLabel#MediaImageEditSideStatus {
-    background-color: #FFFFFF;
-    border: 1px solid rgba(59, 130, 246, 0.16);
+QFrame#MediaImageEditCard {
+    background-color: #F8FAFC;
+    border: 1px solid #E2E8F0;
     border-radius: 10px;
-    color: #475569;
-    font-size: 12px;
-    padding: 8px 10px;
 }
 
-QLabel#MediaImageEditMetaText {
-    color: #475569;
-    font-size: 12px;
-    padding-top: 0px;
+QFrame#MediaImageEditCard:hover {
+    border-color: #CBD5E1;
 }
 
+QFrame#MediaImageEditCard[drag-over="true"] {
+    background-color: #EFF6FF;
+    border: 1px solid #3B82F6;
+}
+
+QLabel#MediaImageCardPreview {
+    background: transparent;
+    border: none;
+    color: #64748B;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 0px;
+}
+
+QLabel#MediaImageCardTitle {
+    background: transparent;
+    border: none;
+    color: #0F172A;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 0px;
+}
+
+QLabel#MediaImageCardDetails {
+    background: transparent;
+    border: none;
+    color: #64748B;
+    font-size: 11px;
+    padding: 0px;
+}
+
+QPushButton#MediaImageCardAction {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 0px;
+    min-width: 0px;
+    min-height: 0px;
+}
+
+QPushButton#MediaImageCardAction:hover:!disabled,
+QPushButton#MediaImageCardAction:focus:!disabled {
+    background-color: #E2E8F0;
+    border-color: #CBD5E1;
+}
+
+QPushButton#MediaImageCardAction:pressed {
+    background-color: #EFF6FF;
+    border-color: #3B82F6;
+}
+
+QPushButton#MediaImageCardAction[destructive="true"]:hover:!disabled {
+    background-color: #FEE2E2;
+    border-color: #EF4444;
+}
+
+QPushButton#MediaImageCardAction:disabled {
+    background: transparent;
+    border-color: transparent;
+    color: #94A3B8;
+}
+
+QWidget#MediaImageEditFooter {
+    background-color: #F1F5F9;
+    border: none;
+    border-top: 1px solid #E2E8F0;
+}
 QLabel#identify-preview-label {
     background-color: #E5E7EB;
     border: 2px dashed transparent;
@@ -2404,13 +2497,6 @@ QLabel#identify-preview-label {
     font-size: 13px;
     font-weight: 600;
     padding: 16px;
-}
-
-QLabel#identify-preview-label[media-image-editor="true"] {
-    background-color: #EEF2F7;
-    border: 1px solid #D8E0EA;
-    border-radius: 12px;
-    padding: 0px;
 }
 
 QLabel#identify-preview-label[drag-over="true"] {
@@ -2471,7 +2557,7 @@ SplitPlayerButton#detail-ext-player-btn {
 }
 
 /* =========================================================
-   PlayerView 沉浸式 HUD 皮肤 (Infuse / Apple TV Style)
+   PlayerView 沉浸式 HUD：统一线性图标与轻量交互层
    ========================================================= */
 
 QWidget#playerTopHUD {
@@ -2539,18 +2625,28 @@ QPushButton#hud-close-btn:hover {
     background-color: #E81123;
 }
 
-QPushButton.player-hud-btn {
+/* Shared HUD geometry and states; video controls stay light in both themes. */
+QPushButton.player-hud-btn,
+QPushButton#playerSpeedBtn {
     background: transparent;
     border: none;
-    border-radius: 12px;
+    border-radius: 10px;
+    padding: 0px;
+    margin: 0px;
+    min-width: 0px;
+    outline: none;
 }
 
-QPushButton.player-hud-btn:hover {
-    background: rgba(255, 255, 255, 30);
+QPushButton.player-hud-btn:hover,
+QPushButton#playerSpeedBtn:hover {
+    background: rgba(255, 255, 255, 22);
+    border: none;
 }
 
-QPushButton.player-hud-btn:pressed {
-    background: rgba(255, 255, 255, 50);
+QPushButton.player-hud-btn:pressed,
+QPushButton#playerSpeedBtn:pressed {
+    background: rgba(255, 255, 255, 38);
+    border: none;
 }
 
 /* =========================================================
@@ -2577,47 +2673,12 @@ QLabel#playerToastLabel {
     background: transparent;
 }
 
-/* 【修复】：纯文字版本的倍速按钮，彻底抹除边框和焦点虚线 */
+/* Keep the current rate legible, with the same surface as the HUD icons. */
 QPushButton#playerSpeedBtn {
-    color: white;
+    color: #F1F5F9;
     font-weight: 500;
     font-size: 14px;
-    font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
-    background: transparent;
-    border: none;
-    /* 彻底抹除边框 */
-    outline: none;
-    /* 彻底抹除焦点虚线 */
-    border-radius: 12px;
-    padding: 0 10px;
-}
-
-QPushButton#playerMediaSwitchBtn {
-    min-width: 0px;
-    padding: 0px;
-    border: none;
-    border-radius: 12px;
-}
-
-QPushButton#playerMediaSwitchBtn:hover {
-    background: rgba(255, 255, 255, 30);
-}
-
-QPushButton#playerMediaSwitchBtn:pressed {
-    background: rgba(255, 255, 255, 50);
-}
-
-QPushButton#playerSpeedBtn:focus {
-    outline: none;
-    border: none;
-}
-
-QPushButton#playerSpeedBtn:hover {
-    background: rgba(255, 255, 255, 30);
-}
-
-QPushButton#playerSpeedBtn:pressed {
-    background: rgba(255, 255, 255, 50);
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
 }
 
 QPushButton#playerMediaSwitchBtn[drawerActive="true"] {
@@ -2782,6 +2843,22 @@ QWidget#playerMediaSwitcherLoading {
     background: transparent;
 }
 
+QPushButton#playerMediaSwitcherRetry {
+    color: #2563EB;
+    background: rgba(59, 130, 246, 16);
+    border: 1px solid rgba(37, 99, 235, 100);
+    border-radius: 6px;
+    padding: 4px 14px;
+    min-height: 20px;
+    font-size: 12px;
+}
+
+QPushButton#playerMediaSwitcherRetry:hover,
+QPushButton#playerMediaSwitcherRetry:focus {
+    background: rgba(59, 130, 246, 36);
+    border-color: #2563EB;
+}
+
 QWidget#playerMediaSwitcherMovieGallery,
 QWidget#playerMediaSwitcherSeasonGallery,
 QWidget#playerMediaSwitcherEpisodeGallery {
@@ -2813,7 +2890,7 @@ QWidget#playerMediaSwitcherEpisodeGallery {
 DanmakuProgressSlider#playerSlider {
     min-height: 40px;
     max-height: 40px;
-    qproperty-heatmapColor: rgba(255, 255, 255, 72);
+    qproperty-heatmapColor: rgba(255, 255, 255, 48);
 }
 
 /* ========== 浅色模式：沉浸式流选项卡 (Immersive Stream Selector) ========== */
@@ -2998,7 +3075,20 @@ QProgressBar#osdSeekLine::chunk {
     border-radius: 0px;
 }
 
-QLabel#osdSeekTimeLabel {
+/* Shared by the HUD hover preview and the compact seek OSD. */
+QWidget#playerSeekIndicator {
+    background: transparent;
+    border: none;
+}
+
+QLabel#playerSeekPreviewImage {
+    background-color: #0B1020;
+    border: 1px solid rgba(255, 255, 255, 28);
+    border-radius: 6px;
+    padding: 0px;
+}
+
+QLabel#playerSeekTimeLabel {
     background-color: rgba(15, 23, 42, 168);
     color: #F8FAFC;
     font-family: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
@@ -3009,12 +3099,12 @@ QLabel#osdSeekTimeLabel {
     border: 1px solid rgba(255, 255, 255, 28);
 }
 
-QWidget#osdSeekStem {
+QWidget#playerSeekStem {
     background-color: rgba(96, 165, 250, 180);
     border-radius: 1px;
 }
 
-QWidget#osdSeekMarker {
+QWidget#playerSeekMarker {
     background-color: rgba(248, 250, 252, 220);
     border: 1px solid rgba(96, 165, 250, 230);
     border-radius: 3px;
@@ -3247,6 +3337,39 @@ LoadingOverlay {
     /* 加载条：底轨浅灰，主轨采用 Primary Blue 主题蓝 */
     qproperty-trackColor: rgba(0, 0, 0, 10);
     qproperty-sweepColor: #3B82F6;
+}
+
+/* 登录过渡：保留浅色空间感，光弧与文字维持足够对比度。 */
+LoadingOverlay#login-loading-overlay {
+    qproperty-overlayBgColor: rgba(248, 250, 255, 232);
+    qproperty-glowColor: rgba(96, 165, 250, 24);
+    qproperty-trackColor: rgba(59, 112, 190, 32);
+    qproperty-sweepColor: #3975D8;
+    color: #475569;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+LoadingOverlay#login-loading-overlay QPushButton#loading-cancel-button {
+    color: #475569;
+    background-color: rgba(59, 112, 190, 10);
+    border: 1px solid rgba(59, 112, 190, 40);
+    border-radius: 8px;
+    padding: 5px 18px;
+    font-size: 12px;
+}
+
+LoadingOverlay#login-loading-overlay QPushButton#loading-cancel-button:hover {
+    color: #1E40AF;
+    background-color: rgba(59, 112, 190, 22);
+}
+
+LoadingOverlay#login-loading-overlay QPushButton#loading-cancel-button:focus {
+    border-color: #3975D8;
+}
+
+LoadingOverlay#login-loading-overlay QPushButton#loading-cancel-button:pressed {
+    background-color: rgba(59, 112, 190, 34);
 }
 
 /* =========================================
@@ -4948,33 +5071,6 @@ QListWidget#ManageLibPathList[flush-right-scrollbar="true"] {
     padding: 0px;
 }
 
-QListWidget#ManageLibPathList[media-image-list="true"] {
-    background: transparent;
-    border: none;
-    padding: 0px;
-}
-
-QListWidget#ManageLibPathList[media-image-list="true"]::item {
-    padding: 8px 10px;
-    border-radius: 8px;
-}
-
-QListWidget#ManageLibPathList[media-image-list="true"] QScrollBar:vertical {
-    background: transparent;
-    width: 8px;
-    margin: 2px 0px 2px 0px;
-}
-
-QListWidget#ManageLibPathList[media-image-list="true"] QScrollBar::handle:vertical {
-    background: rgba(148, 163, 184, 0.30);
-    border-radius: 4px;
-    min-height: 24px;
-}
-
-QListWidget#ManageLibPathList[media-image-list="true"] QScrollBar::handle:vertical:hover {
-    background: rgba(100, 116, 139, 0.40);
-}
-
 QListWidget#ManageLibPathList::item {
     padding: 4px 8px;
     border-radius: 4px;
@@ -6521,3 +6617,137 @@ QPushButton#sidebar-library-visibility {
 QPushButton#sidebar-library-visibility:hover {
     background-color: #D1D5DB;
 }
+
+/* Original image viewer; vertical scrollbars inherit the global theme. */
+QScrollArea#ImagePreviewScrollArea,
+QWidget#ImagePreviewViewport {
+    background-color: #F1F5F9;
+    border: none;
+}
+
+QLabel#ImagePreviewContent {
+    background: transparent;
+    border: none;
+    padding: 0px;
+    color: #64748B;
+    font-size: 13px;
+}
+
+QScrollArea#ImagePreviewScrollArea QScrollBar:horizontal {
+    border: none;
+    background: transparent;
+    height: 10px;
+    margin: 0px;
+}
+
+QScrollArea#ImagePreviewScrollArea QScrollBar::handle:horizontal {
+    background: rgba(15, 23, 42, 0.15);
+    min-width: 30px;
+    margin: 3px 0px;
+    border-radius: 2px;
+}
+
+QScrollArea#ImagePreviewScrollArea QScrollBar::handle:horizontal:hover,
+QScrollArea#ImagePreviewScrollArea QScrollBar::handle:horizontal:pressed {
+    background: rgba(15, 23, 42, 0.35);
+    margin: 1px 0px;
+    border-radius: 4px;
+}
+
+QScrollArea#ImagePreviewScrollArea QScrollBar::add-line:horizontal,
+QScrollArea#ImagePreviewScrollArea QScrollBar::sub-line:horizontal,
+QScrollArea#ImagePreviewScrollArea QScrollBar::add-page:horizontal,
+QScrollArea#ImagePreviewScrollArea QScrollBar::sub-page:horizontal {
+    border: none;
+    background: none;
+    width: 0px;
+}
+
+/* Home carousel shares the detail-page backdrop and fades into the galleries. */
+DetailContentWidget#dashboard-container {
+    qproperty-pageShadowColor: #000000;
+    qproperty-baseColor: #F9FAFB;
+    qproperty-gradientColor: #F9FAFB;
+}
+QFrame#media-carousel {
+    qproperty-textOutlineColor: transparent;
+    qproperty-textOutlineWidth: 0.0;
+    qproperty-textShadowColor: transparent;
+    qproperty-textShadowRadius: 0.0;
+    qproperty-textShadowOffset: 0.0;
+}
+QFrame#media-carousel, QWidget#carousel-content, QWidget#carousel-text, QWidget#carousel-logo-layer,
+QScrollArea#carousel-dot-scroll, QWidget#carousel-dot-viewport, QWidget#carousel-dots {
+    background: transparent;
+    border: none;
+}
+GlassBackdropWidget#carousel-glass {
+    background: transparent;
+    border: none;
+    qproperty-tintColor: rgba(248, 250, 252, 240);
+    qproperty-cornerLight: true;
+    qproperty-blurRadius: 28.0;
+    qproperty-fadeOpacity: 0.98;
+    qproperty-horizontalSpread: 224.0;
+    qproperty-verticalSpread: 144.0;
+}
+QFrame#media-carousel QLabel {
+    background: transparent;
+    border: none;
+    padding: 0;
+    color: #111827;
+}
+QFrame#media-carousel QLabel#carousel-title {
+    font-size: 28px;
+    font-weight: 700;
+}
+QFrame#media-carousel QLabel#carousel-metadata,
+QFrame#media-carousel QLabel#carousel-tags {
+    font-size: 13px;
+    color: #1F2937;
+}
+QFrame#media-carousel QLabel#carousel-overview {
+    font-size: 14px;
+    color: #1F2937;
+}
+CarouselNavigationWidget#carousel-navigation {
+    background: rgba(15, 23, 42, 115);
+    border: none;
+    border-radius: 11px;
+    qproperty-outlineColor: transparent;
+    qproperty-outlineWidth: 0.0;
+}
+QPushButton#carousel-arrow, QPushButton#carousel-dot, QPushButton#carousel-refresh {
+    qproperty-disabledSymbolColor: rgba(255, 255, 255, 95);
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+}
+QPushButton#carousel-arrow, QPushButton#carousel-refresh {
+    qproperty-symbolColor: rgba(255, 255, 255, 210);
+    qproperty-activeSymbolColor: #FFFFFF;
+}
+QPushButton#carousel-dot {
+    qproperty-symbolColor: rgba(255, 255, 255, 145);
+    qproperty-activeSymbolColor: #FFFFFF;
+}
+QPushButton#carousel-arrow:hover, QPushButton#carousel-arrow:focus,
+QPushButton#carousel-dot:hover, QPushButton#carousel-dot:focus,
+QPushButton#carousel-refresh:hover, QPushButton#carousel-refresh:focus {
+    background: transparent;
+}
+QPushButton#carousel-arrow:focus, QPushButton#carousel-dot:focus, QPushButton#carousel-refresh:focus {
+    border: none; outline: none;
+}
+
+/* Persistent music session controls */
+QWidget#MiniMusicPlayer { background: #FFFFFF; border-top: 1px solid #DDE3EB; }
+QWidget#MiniMusicPlayer QPushButton { color: #263244; background: transparent; border: 1px solid #DDE3EB; border-radius: 6px; padding: 6px 10px; }
+QWidget#MiniMusicPlayer QPushButton:hover { border-color: #3B82F6; }
+QWidget#MusicTrackListWidget QTreeWidget { background: #FFFFFF; color: #263244; border: 1px solid #DDE3EB; border-radius: 8px; }
+QWidget#MusicTrackListWidget QTreeWidget::item { padding: 9px 6px; }
+QWidget#MiniMusicPlayer ModernSlider { qproperty-themeColor: #3B82F6; qproperty-trackColor: #D6DEEA; qproperty-bufferColor: #D6DEEA; qproperty-handleColor: #3B82F6; }
+QWidget#MusicTrackListWidget QHeaderView::section { background: #F3F6FA; color: #263244; border: none; border-bottom: 1px solid #DDE3EB; padding: 8px 6px; font-weight: 600; }
+QWidget#MusicTrackListWidget QTreeWidget::item:hover:!selected { background: #F3F6FA; }
+QWidget#MusicTrackListWidget QTreeWidget::item:selected { background: #3B82F6; color: #FFFFFF; }

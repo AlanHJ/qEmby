@@ -6,6 +6,7 @@
 #include <QLabel>
 #include <QPointer>
 #include <QListView>
+#include <QStyleOptionViewItem>
 
 MediaSectionWidget::MediaSectionWidget(const QString& title, QEmbyCore* core, QWidget* parent)
     : QWidget(parent), m_core(core)
@@ -81,8 +82,27 @@ void MediaSectionWidget::setGalleryHeight(int height) {
     m_gallery->setFixedHeight(height);
 }
 
+void MediaSectionWidget::fitGalleryHeightToCards() {
+    auto *view = m_gallery->listView();
+    QStyleOptionViewItem option;
+    option.initFrom(view);
+    const QSize cardSize = view->itemDelegate()->sizeHint(option, QModelIndex());
+    m_gallery->setFixedHeight(cardSize.height());
+}
+
 void MediaSectionWidget::setTileSize(const QSize &size) {
     m_gallery->setTileSize(size);
+}
+
+int MediaSectionWidget::galleryBottomInset() const {
+    auto *view = m_gallery->listView();
+    auto *delegate = qobject_cast<MediaCardDelegate *>(view->itemDelegate());
+    if (!delegate)
+        return 0;
+    QStyleOptionViewItem option;
+    option.initFrom(view);
+    const int cardHeight = delegate->sizeHint(option, QModelIndex()).height();
+    return qMax(0, m_gallery->height() - cardHeight + delegate->contentBottomInset());
 }
 
 void MediaSectionWidget::clear() {

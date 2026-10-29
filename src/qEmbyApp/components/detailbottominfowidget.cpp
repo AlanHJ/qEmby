@@ -2,7 +2,9 @@
 #include "detailtagbutton.h"
 #include "flowlayout.h"
 #include "horizontalwidgetgallery.h"
+#include "../utils/layoututils.h"
 #include <QDesktopServices> 
+#include <QDebug>
 #include <QEvent>
 #include <QFileInfo>
 #include <QHBoxLayout>
@@ -18,34 +20,31 @@
 DetailBottomInfoWidget::DetailBottomInfoWidget(QWidget *parent)
     : QWidget(parent) {
   auto *mainLayout = new QVBoxLayout(this);
-  mainLayout->setContentsMargins(40, 8, 40, 0);
-  mainLayout->setSpacing(12);
+  mainLayout->setContentsMargins(LayoutUtils::DetailSectionMetrics::HorizontalMargin, 0,
+                                LayoutUtils::DetailSectionMetrics::HorizontalMargin, 0);
+  mainLayout->setSpacing(0);
 
   
   setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
 
-  m_tagsBottomTitle = new QLabel(tr("Tags"), this);
-  m_tagsBottomTitle->setObjectName("detail-section-title");
+  auto *tagsTitle = new QLabel(tr("Tags"), this);
   m_tagsBottomWidget = new QWidget(this);
   m_tagsBottomLayout = new FlowLayout(m_tagsBottomWidget, 0, 8, 8);
 
-  m_studiosTitle = new QLabel(tr("Studios"), this);
-  m_studiosTitle->setObjectName("detail-section-title");
+  auto *studiosTitle = new QLabel(tr("Studios"), this);
   m_studiosWidget = new QWidget(this);
   m_studiosLayout = new FlowLayout(m_studiosWidget, 0, 8, 8);
 
   
-  m_externalLinksTitle = new QLabel(tr("External Links"), this);
-  m_externalLinksTitle->setObjectName("detail-section-title");
+  auto *externalLinksTitle = new QLabel(tr("External Links"), this);
   m_externalLinksWidget = new QWidget(this);
   m_externalLinksLayout = new FlowLayout(m_externalLinksWidget, 0, 8, 8);
 
-  m_mediaInfoTitle = new QLabel(tr("Media Info"), this);
-  m_mediaInfoTitle->setObjectName("detail-section-title");
+  auto *mediaInfoTitle = new QLabel(tr("Media Info"), this);
 
   m_fileInfoWidget = new QWidget(this);
   auto *fileInfoLayout = new QVBoxLayout(m_fileInfoWidget);
-  fileInfoLayout->setContentsMargins(0, 0, 0, 4);
+  fileInfoLayout->setContentsMargins(0, 0, 0, 0);
   fileInfoLayout->setSpacing(6);
 
   m_filePathLabel = new QLabel(m_fileInfoWidget);
@@ -63,21 +62,20 @@ DetailBottomInfoWidget::DetailBottomInfoWidget(QWidget *parent)
   m_mediaInfoGallery->setObjectName("detail-media-info-gallery");
 
   m_tagsBottomWrapper = wrapMaxWidth(m_tagsBottomWidget, 1200);
-  mainLayout->addWidget(m_tagsBottomTitle);
-  mainLayout->addWidget(m_tagsBottomWrapper);
+  m_tagsSection = createSection(tagsTitle, {m_tagsBottomWrapper});
+  mainLayout->addWidget(m_tagsSection);
 
   m_studiosWrapper = wrapMaxWidth(m_studiosWidget, 1200);
-  mainLayout->addWidget(m_studiosTitle);
-  mainLayout->addWidget(m_studiosWrapper);
+  m_studiosSection = createSection(studiosTitle, {m_studiosWrapper});
+  mainLayout->addWidget(m_studiosSection);
 
   
   m_externalLinksWrapper = wrapMaxWidth(m_externalLinksWidget, 1200);
-  mainLayout->addWidget(m_externalLinksTitle);
-  mainLayout->addWidget(m_externalLinksWrapper);
+  m_externalLinksSection = createSection(externalLinksTitle, {m_externalLinksWrapper});
+  mainLayout->addWidget(m_externalLinksSection);
 
-  mainLayout->addWidget(m_mediaInfoTitle);
-  mainLayout->addWidget(m_fileInfoWidget);
-  mainLayout->addWidget(m_mediaInfoGallery);
+  m_mediaInfoSection = createSection(mediaInfoTitle, {m_fileInfoWidget, m_mediaInfoGallery});
+  mainLayout->addWidget(m_mediaInfoSection);
 
   auto watchFlowGeometry = [this](QWidget *widget, QWidget *wrapper) {
     if (widget)
@@ -90,6 +88,20 @@ DetailBottomInfoWidget::DetailBottomInfoWidget(QWidget *parent)
   watchFlowGeometry(m_externalLinksWidget, m_externalLinksWrapper);
 
   clear();
+}
+
+QWidget *DetailBottomInfoWidget::createSection(QLabel *title, const QList<QWidget *> &contents) {
+  auto *section = new QWidget(this);
+  section->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+  auto *sectionLayout = new QVBoxLayout(section);
+  
+  sectionLayout->setContentsMargins(0, LayoutUtils::DetailSectionMetrics::SectionSpacing, 0, 0);
+  sectionLayout->setSpacing(LayoutUtils::DetailSectionMetrics::ContentSpacing);
+  title->setObjectName("detail-section-title");
+  sectionLayout->addWidget(title);
+  for (QWidget *content : contents)
+    sectionLayout->addWidget(content);
+  return section;
 }
 
 QWidget *DetailBottomInfoWidget::wrapMaxWidth(QWidget *child, int maxW) {
@@ -106,21 +118,42 @@ QWidget *DetailBottomInfoWidget::wrapMaxWidth(QWidget *child, int maxW) {
   return wrapper;
 }
 
+void DetailBottomInfoWidget::setLeadingContentInset(int inset) {
+  const int contentInset = qMax(0, inset);
+  if (m_leadingContentInset != contentInset) {
+    m_leadingContentInset = contentInset;
+    qDebug() << "[DetailBottomInfoWidget] Leading spacing adjusted"
+             << "previousContentInset=" << m_leadingContentInset
+             << "topSpacing=" << qMax(0, LayoutUtils::DetailSectionMetrics::SectionSpacing - m_leadingContentInset);
+  }
+  updateSectionSpacing();
+}
+
+void DetailBottomInfoWidget::updateSectionSpacing() {
+  bool firstVisible = true;
+  for (QWidget *section : {m_tagsSection, m_studiosSection,
+                           m_externalLinksSection, m_mediaInfoSection}) {
+    if (section->isHidden())
+      continue;
+    const int topSpacing = qMax(0, LayoutUtils::DetailSectionMetrics::SectionSpacing -
+                                      (firstVisible ? m_leadingContentInset : 0));
+    QLayout *sectionLayout = section->layout();
+    if (sectionLayout->contentsMargins().top() != topSpacing)
+      sectionLayout->setContentsMargins(0, topSpacing, 0, 0);
+    firstVisible = false;
+  }
+}
+
 void DetailBottomInfoWidget::clear() {
   clearLayout(m_tagsBottomLayout);
   clearLayout(m_studiosLayout);
   clearLayout(m_externalLinksLayout); 
   m_mediaInfoGallery->clear();
 
-  m_tagsBottomTitle->hide();
-  m_tagsBottomWrapper->hide();
-  m_studiosTitle->hide();
-  m_studiosWrapper->hide();
-  m_externalLinksTitle->hide();
-  m_externalLinksWrapper->hide();
-  m_mediaInfoTitle->hide();
-  m_fileInfoWidget->hide();
-  m_mediaInfoGallery->hide();
+  m_tagsSection->hide();
+  m_studiosSection->hide();
+  m_externalLinksSection->hide();
+  m_mediaInfoSection->hide();
   updateFlowLayoutHeights();
 }
 
@@ -304,8 +337,7 @@ void DetailBottomInfoWidget::setInfo(const MediaItem &item,
   clear();
 
   if (!item.tags.isEmpty()) {
-    m_tagsBottomTitle->show();
-    m_tagsBottomWrapper->show();
+    m_tagsSection->show();
     for (const QString &tag : item.tags) {
       auto *btn = new DetailTagButton(tag, m_tagsBottomWidget);
       connect(btn, &QPushButton::clicked, this,
@@ -315,8 +347,7 @@ void DetailBottomInfoWidget::setInfo(const MediaItem &item,
   }
 
   if (!item.studios.isEmpty()) {
-    m_studiosTitle->show();
-    m_studiosWrapper->show();
+    m_studiosSection->show();
     for (const auto &studio : item.studios) {
       auto *btn = new DetailTagButton(studio.name, m_studiosWidget);
       connect(btn, &QPushButton::clicked, this,
@@ -327,8 +358,7 @@ void DetailBottomInfoWidget::setInfo(const MediaItem &item,
 
   
   if (!item.externalUrls.isEmpty()) {
-    m_externalLinksTitle->show();
-    m_externalLinksWrapper->show();
+    m_externalLinksSection->show();
     for (const auto &link : item.externalUrls) {
       auto *btn = new DetailTagButton(link.name, m_externalLinksWidget);
       
@@ -341,10 +371,13 @@ void DetailBottomInfoWidget::setInfo(const MediaItem &item,
   updateFlowLayoutHeights();
   scheduleFlowLayoutHeightUpdate();
 
-  if (sources.isEmpty())
+  if (sources.isEmpty()) {
+    updateSectionSpacing();
     return;
+  }
 
-  m_mediaInfoTitle->show();
+  m_mediaInfoSection->show();
+  updateSectionSpacing();
   m_fileInfoWidget->show();
   m_mediaInfoGallery->show();
 

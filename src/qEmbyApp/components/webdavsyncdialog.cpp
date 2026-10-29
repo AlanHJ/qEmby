@@ -1,8 +1,10 @@
 #include "webdavsyncdialog.h"
 
+#include "inlinetogglebutton.h"
 #include "modernmessagebox.h"
-#include "modernswitch.h"
 #include "moderntoast.h"
+#include "sslverificationbutton.h"
+#include "trailingwidgetlineedit.h"
 #include "webdavpassphraseprompt.h"
 
 #include "../managers/thememanager.h"
@@ -32,6 +34,7 @@
 #include <QStandardItemModel>
 #include <QTableView>
 #include <QTimer>
+#include <QUrl>
 #include <QVBoxLayout>
 
 #include <qcoro/qcorotask.h>
@@ -167,6 +170,10 @@ void WebdavSyncDialog::buildUi()
 {
     auto *root = contentLayout();
     root->setSpacing(10);
+#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
+    
+    layout()->setSizeConstraint(QLayout::SetMinimumSize);
+#endif
 
     
     {
@@ -206,9 +213,11 @@ void WebdavSyncDialog::buildUi()
             edit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         };
 
-        m_baseUrlEdit = new QLineEdit(card);
+        m_baseUrlEdit = new TrailingWidgetLineEdit(card);
         m_baseUrlEdit->setPlaceholderText(QStringLiteral("https://dav.example.com/dav/"));
         tuneEdit(m_baseUrlEdit);
+        m_ignoreSslButton = new SslVerificationButton(m_baseUrlEdit);
+        m_baseUrlEdit->setTrailingWidget(m_ignoreSslButton);
         form->addWidget(makeFieldLabel(tr("Server URL:"), kPrimaryLabelWidth), 0, 0);
         form->addWidget(m_baseUrlEdit, 0, 1, 1, 3);
 
@@ -238,24 +247,8 @@ void WebdavSyncDialog::buildUi()
         m_rootDirEdit->setPlaceholderText(QStringLiteral("/qEmby"));
         tuneEdit(m_rootDirEdit);
 
-        
-        {
-            auto *sslControls = new QHBoxLayout();
-            sslControls->setContentsMargins(0, 0, 0, 0);
-            sslControls->setSpacing(8);
-            m_ignoreSslSwitch = new ModernSwitch(card);
-            auto *hint = new QLabel(tr("Ignore SSL certificate errors"), card);
-            hint->setObjectName("webdav-hint");
-            hint->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-            sslControls->addWidget(m_ignoreSslSwitch, 0, Qt::AlignVCenter);
-            sslControls->addWidget(hint, 0, Qt::AlignVCenter);
-            sslControls->addStretch(1);
-
-            form->addWidget(makeFieldLabel(tr("Root directory:"), kPrimaryLabelWidth), 2, 0);
-            form->addWidget(m_rootDirEdit, 2, 1);
-            form->addWidget(makeFieldLabel(tr("HTTPS:"), kSecondaryLabelWidth), 2, 2);
-            form->addLayout(sslControls, 2, 3);
-        }
+        form->addWidget(makeFieldLabel(tr("Root directory:"), kPrimaryLabelWidth), 2, 0);
+        form->addWidget(m_rootDirEdit, 2, 1, 1, 3);
 
         
         {
@@ -302,19 +295,17 @@ void WebdavSyncDialog::buildUi()
         tagLabel->setObjectName("webdav-hint");
         tagRow->addWidget(tagLabel, 0, Qt::AlignVCenter);
 
-        m_snapshotTagEdit = new QLineEdit(card);
+        m_snapshotTagEdit = new TrailingWidgetLineEdit(card);
         m_snapshotTagEdit->setPlaceholderText(tr("Snapshot tag"));
         m_snapshotTagEdit->setText(QStringLiteral("snapshot"));
         m_snapshotTagEdit->setMinimumWidth(120);
         m_snapshotTagEdit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        m_encryptSnapshotButton = new InlineToggleButton(m_snapshotTagEdit);
+        m_encryptSnapshotButton->setText(tr("Encrypt save"));
+        m_encryptSnapshotButton->setToolTip(tr("Encrypt save"));
+        m_encryptSnapshotButton->setChecked(true);
+        m_snapshotTagEdit->setTrailingWidget(m_encryptSnapshotButton);
         tagRow->addWidget(m_snapshotTagEdit, 1);
-
-        m_encryptSnapshotSwitch = new ModernSwitch(card);
-        m_encryptSnapshotSwitch->setChecked(true);
-        auto *encryptLabel = new QLabel(tr("Encrypt save"), card);
-        encryptLabel->setObjectName("webdav-hint");
-        tagRow->addWidget(m_encryptSnapshotSwitch, 0, Qt::AlignVCenter);
-        tagRow->addWidget(encryptLabel, 0, Qt::AlignVCenter);
 
         m_uploadBtn = new QPushButton(tr("Upload Now"), card);
         m_uploadBtn->setObjectName("dialog-btn-primary");
@@ -389,6 +380,9 @@ void WebdavSyncDialog::buildUi()
         m_snapshotTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::Stretch);
 
         cardLayout->addWidget(m_snapshotTable);
+#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
+        cardLayout->setStretchFactor(m_snapshotTable, 1);
+#endif
 
         
         {
@@ -464,6 +458,8 @@ void WebdavSyncDialog::buildUi()
 
 void WebdavSyncDialog::wireSignals()
 {
+    connect(m_baseUrlEdit, &QLineEdit::textChanged, this,
+            &WebdavSyncDialog::updateSslOptionsVisibility);
     connect(m_testBtn, &QPushButton::clicked, this,
             &WebdavSyncDialog::onTestConnectionClicked);
     connect(m_saveProfileBtn, &QPushButton::clicked, this,
@@ -475,6 +471,9 @@ void WebdavSyncDialog::wireSignals()
             &WebdavSyncDialog::onUploadClicked);
     connect(m_snapshotTagEdit, &QLineEdit::textChanged, this,
             &WebdavSyncDialog::updateProposedFileName);
+    connect(m_encryptSnapshotButton, &QToolButton::toggled, this, [](bool checked) {
+        qDebug() << "[WebdavSyncDialog] Snapshot encryption changed | enabled:" << checked;
+    });
     connect(m_refreshBtn, &QPushButton::clicked, this,
             &WebdavSyncDialog::onRefreshSnapshotsClicked);
     connect(m_applyBtn, &QPushButton::clicked, this,
@@ -523,7 +522,8 @@ void WebdavSyncDialog::loadProfileToUi()
     m_userEdit->setText(p.username);
     m_passwordEdit->setText(p.password);
     m_rootDirEdit->setText(p.rootDir);
-    m_ignoreSslSwitch->setChecked(p.ignoreSsl);
+    m_ignoreSslButton->setChecked(p.ignoreSsl);
+    updateSslOptionsVisibility();
 
     if (p.lastSyncAt > 0)
     {
@@ -541,6 +541,13 @@ void WebdavSyncDialog::loadProfileToUi()
 
     if (m_snapshotStatusLabel)
         m_snapshotStatusLabel->clear();
+}
+
+void WebdavSyncDialog::updateSslOptionsVisibility()
+{
+    const QUrl url(m_baseUrlEdit->text().trimmed());
+    m_ignoreSslButton->setHttpsEnabled(
+        url.scheme().compare(QLatin1String("https"), Qt::CaseInsensitive) == 0);
 }
 
 WebdavProfile WebdavSyncDialog::collectProfileFromUi() const
@@ -563,8 +570,9 @@ WebdavProfile WebdavSyncDialog::collectProfileFromUi() const
     {
         p.rootDir = QStringLiteral("/qEmby");
     }
-    p.ignoreSsl = m_ignoreSslSwitch->isChecked();
     p.normalize();
+    p.ignoreSsl = QUrl(p.baseUrl).scheme().compare(QLatin1String("https"), Qt::CaseInsensitive) == 0
+        && m_ignoreSslButton->isChecked();
     return p;
 }
 
@@ -712,7 +720,7 @@ void WebdavSyncDialog::onUploadClicked()
 
     updateProposedFileName();
 
-    const bool encrypt = !m_encryptSnapshotSwitch || m_encryptSnapshotSwitch->isChecked();
+    const bool encrypt = !m_encryptSnapshotButton || m_encryptSnapshotButton->isChecked();
     QString passphrase;
     if (encrypt)
     {
@@ -1009,8 +1017,8 @@ void WebdavSyncDialog::setBusy(bool busy, const QString &hint)
     m_uploadBtn->setEnabled(!busy);
     if (m_snapshotTagEdit)
         m_snapshotTagEdit->setEnabled(!busy);
-    if (m_encryptSnapshotSwitch)
-        m_encryptSnapshotSwitch->setEnabled(!busy);
+    if (m_encryptSnapshotButton)
+        m_encryptSnapshotButton->setEnabled(!busy);
     m_refreshBtn->setEnabled(!busy);
     onSnapshotSelectionChanged();
 

@@ -23,9 +23,19 @@ QList<MediaItem> ResumeItemResolver::buildFallbackItems(
     QSet<QString> seenSeriesIds;
     int duplicateEpisodeCount = 0;
     int fallbackWithoutImageCount = 0;
+    int itemsWithPosition = 0;
+    int itemsWithPartialPercentage = 0;
+    int playedItemsWithProgress = 0;
 
     for (const MediaItem &item : std::as_const(rawItems))
     {
+        const bool hasPosition = item.userData.playbackPositionTicks > 0;
+        const bool hasPartialPercentage = item.userData.playedPercentage > 0.0 &&
+                                          item.userData.playedPercentage < 100.0;
+        itemsWithPosition += hasPosition;
+        itemsWithPartialPercentage += hasPartialPercentage;
+        playedItemsWithProgress += item.userData.played &&
+                                   (hasPosition || hasPartialPercentage);
         const QString seriesId = item.seriesId.trimmed();
         if (item.type == QStringLiteral("Episode") && !seriesId.isEmpty())
         {
@@ -86,6 +96,9 @@ QList<MediaItem> ResumeItemResolver::buildFallbackItems(
              << "| raw=" << rawItems.size()
              << "| duplicateEpisodes=" << duplicateEpisodeCount
              << "| fallbacksWithoutImage=" << fallbackWithoutImageCount
+             << "| itemsWithPosition=" << itemsWithPosition
+             << "| itemsWithPartialPercentage=" << itemsWithPartialPercentage
+             << "| playedItemsWithProgress=" << playedItemsWithProgress
              << "| display=" << displayItems.size();
 
     return displayItems;

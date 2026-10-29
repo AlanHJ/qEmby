@@ -6,6 +6,7 @@
 #include <config/config_keys.h>
 #include <services/manager/servermanager.h>
 #include "../../components/horizontallistviewgallery.h"
+#include "../../managers/libraryartworkmanager.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QScrollArea>
@@ -45,7 +46,7 @@ void FavoritesView::setupUi()
     containerLayout->setSpacing(0); 
 
     
-    bool isTile = (ConfigStore::instance()->get<QString>(ConfigKeys::DefaultLibraryView, "poster") == "tile");
+    bool isTile = LibraryArtworkManager::instance()->fallbackViewMode() == QLatin1String("tile");
     MediaCardDelegate::CardStyle defaultStyle = isTile ? MediaCardDelegate::LibraryTile : MediaCardDelegate::Poster;
     int galleryHeight = isTile ? 230 : 300;
 
@@ -184,7 +185,7 @@ QCoro::Task<void> FavoritesView::loadFavoritesData()
     QPointer<FavoritesView> guard(this);
 
     
-    bool isTileFav = (ConfigStore::instance()->get<QString>(ConfigKeys::DefaultLibraryView, "poster") == "tile");
+    bool isTileFav = LibraryArtworkManager::instance()->fallbackViewMode() == QLatin1String("tile");
     MediaCardDelegate::CardStyle favStyle = isTileFav ? MediaCardDelegate::LibraryTile : MediaCardDelegate::Poster;
     int favGalleryHeight = isTileFav ? 230 : 300;
     auto applyStyle = [&](HorizontalListViewGallery* g) {

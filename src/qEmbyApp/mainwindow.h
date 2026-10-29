@@ -16,6 +16,7 @@ class QStringListModel;
 class TrayManager; 
 class SearchHistoryPopup;
 class UpdateIndicatorButton;
+class StandaloneLoginWindow;
 
 class MainWindow : public QMainWindow
 {
@@ -26,6 +27,7 @@ class MainWindow : public QMainWindow
         ~MainWindow();
 
     public Q_SLOTS:
+        void showCurrentWindow();
         void navigateToHome();
         void navigateToLogin();
 
@@ -34,6 +36,9 @@ class MainWindow : public QMainWindow
         void closeEvent(QCloseEvent * event) override; 
 
     private:
+        enum class WindowSizeMode { Login, Transition, Home };
+        void applyWindowSizeMode(WindowSizeMode mode);
+        void switchStandaloneWindow(bool toHome);
         void setupGlobalSearchHistory();
         void hideGlobalSearchTransientUi();
         void updateGlobalSearchCompleter(const QString &text = QString());
@@ -60,6 +65,10 @@ class MainWindow : public QMainWindow
 
         quint32 m_defaultWidth{450};
         quint32 m_defaultHeight{320};
+        StandaloneLoginWindow *m_loginWindow = nullptr;
+        bool m_showingLoginWindow = true;
+        WindowSizeMode m_windowSizeMode = WindowSizeMode::Transition;
+        bool m_windowTransitioning = false;
         bool m_realQuit{false};        
         bool m_themeAnimating{false};  
         bool m_wasPausedByTray{false}; 

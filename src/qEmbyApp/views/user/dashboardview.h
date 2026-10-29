@@ -2,6 +2,8 @@
 #define DASHBOARDVIEW_H
 
 #include "../baseview.h"
+#include "../../utils/featuredmediautils.h"
+#include <QSet>
 #include <QStringList>
 #include <qcorotask.h>
 
@@ -15,15 +17,19 @@ class QScrollArea;
 class HorizontalListViewGallery;
 class MediaSectionWidget;
 class SmoothScrollController;
+class MediaCarouselWidget;
 
 class DashboardView : public BaseView
 {
     Q_OBJECT
 public:
     explicit DashboardView(QEmbyCore* core, QWidget *parent = nullptr);
+
+    enum class CarouselRefreshPolicy { Reuse, Refresh, NewSelection };
     
     
-    QCoro::Task<void> loadDashboardData();
+    QCoro::Task<void> loadDashboardData(
+        CarouselRefreshPolicy carouselPolicy = CarouselRefreshPolicy::Refresh);
 
 public Q_SLOTS:
     void scrollToTop() override;
@@ -52,6 +58,9 @@ private:
     void launchDashboardTask(QCoro::Task<void>&& task);
     void setupUi();
     void applyDashboardSectionOrder();
+    void applyCarouselPreference(bool loadIfEnabled,
+        CarouselRefreshPolicy policy = CarouselRefreshPolicy::Reuse);
+    void updateCarouselHeight();
     QStringList dashboardSectionOrder() const;
     QString currentServerId() const;
     QString currentDashboardContextKey() const;
@@ -74,16 +83,20 @@ private:
     void adjustLibraryGridHeight();
 
     
+    QCoro::Task<void> loadFeaturedSection(int carouselGeneration, bool newSelection);
+    QCoro::Task<void> loadFeaturedItemMetadata(MediaItem item, int carouselGeneration);
     QCoro::Task<void> loadResumeSection(bool show, int generation);
     QCoro::Task<void> loadLatestSection(bool show, int generation);
     QCoro::Task<void> loadRecommendedSection(bool show, int generation);
     QCoro::Task<void> loadCompletedSection(bool show, int generation);
+    QCoro::Task<void> loadResourceSection(bool music, int generation);
     QCoro::Task<void> loadLibrarySections(bool showLibraries, bool showEachLibrary, int generation);
     QCoro::Task<void> executeDashboardLibraryRefresh(
         MediaItem item, bool replaceAllMetadata, bool replaceAllImages,
         bool isMetadataRefresh);
 
     QScrollArea* m_mainScrollArea = nullptr; 
+    MediaCarouselWidget* m_featuredCarousel = nullptr;
 
     SmoothScrollController* m_vScrollController = nullptr;
 
@@ -104,6 +117,10 @@ private:
 
     
     QWidget* m_completedSection = nullptr;
+    QWidget* m_liveTvSection = nullptr;
+    QWidget* m_musicSection = nullptr;
+    HorizontalListViewGallery* m_liveTvGallery = nullptr;
+    HorizontalListViewGallery* m_musicGallery = nullptr;
     QWidget* m_completedHeader = nullptr;
     HorizontalListViewGallery* m_completedGallery = nullptr;
 
@@ -125,6 +142,16 @@ private:
 
     
     int m_loadGeneration = 0;
+    int m_liveTvGeneration = 0;
+    int m_musicGeneration = 0;
+    
+    int m_featuredLoadGeneration = 0;
+    bool m_featuredLoaded = false;
+    bool m_featuredLoading = false;
+    bool m_featuredNeedsRefresh = false;
+    FeaturedMediaUtils::DailySelection m_featuredSelection;
+    QDate m_featuredRequestDate;
+    QSet<QString> m_featuredUnavailableIds;
     QString m_dashboardContextKey;
 };
 

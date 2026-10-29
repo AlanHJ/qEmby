@@ -11,6 +11,7 @@ class QGraphicsOpacityEffect;
 class QPropertyAnimation;
 class QTimer;
 class DanmakuHeatmapWidget;
+class PlayerSeekIndicator;
 
 
 class PlayerOsdLayer : public QObject
@@ -61,9 +62,7 @@ private:
     QProgressBar *m_seekLine = nullptr;
     DanmakuHeatmapWidget *m_seekHeatmap = nullptr;
     bool m_hasSeekHeatmap = false;
-    QLabel *m_seekTimeLabel = nullptr;
-    QWidget *m_seekStem = nullptr;
-    QWidget *m_seekMarker = nullptr;
+    PlayerSeekIndicator *m_seekIndicator = nullptr;
     QWidget *m_volumePanel = nullptr;
     QLabel *m_volumeIconLabel = nullptr;
     QProgressBar *m_volumeBar = nullptr;

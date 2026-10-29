@@ -1,9 +1,11 @@
 #include "networkmanager.h"
+#include "networkrequesterror.h"
 #include "useragentmanager.h"
 #include <QJsonArray>
 #include <QJsonParseError>
 #include <QJsonValue>
 #include <QNetworkRequest>
+#include <QPointer>
 #include <QRegularExpression>
 #include <QStringConverter>
 #include <QStringList>
@@ -69,8 +71,9 @@ bool tryParseJsonWithEncoding(const QByteArray &responseData,
                               QJsonDocument &jsonDoc,
                               QJsonParseError &parseError)
 {
+    const QByteArray encodingNameBytes = encodingName.toLatin1();
     const auto encoding =
-        QStringConverter::encodingForName(encodingName);
+        QStringConverter::encodingForName(encodingNameBytes.constData());
     if (!encoding.has_value()) {
         return false;
     }
@@ -168,6 +171,14 @@ void NetworkManager::attachReplyHandlers(QNetworkReply* reply,
                                          const QString& requestKind) {
     reply->setProperty("ignoreSslErrors", options.ignoreSslErrors);
 
+    if (options.cancellationContext) {
+        connect(options.cancellationContext.data(), &QObject::destroyed,
+                reply, [reply]() {
+                    if (!reply->isFinished())
+                        reply->abort();
+                });
+    }
+
     connect(reply, &QNetworkReply::sslErrors, reply,
             [reply, options, requestKind](const QList<QSslError>& errors) {
                 QStringList errorMessages;
@@ -239,7 +250,7 @@ QJsonObject NetworkManager::parseReply(QNetworkReply* reply) {
                    << "| responseBody:" << responseBody.left(500);
         
         QString errorMsg = buildReplyErrorMessage(reply, httpStatus);
-        throw std::runtime_error(errorMsg.toStdString());
+        throw NetworkRequestError(errorMsg, httpStatus, responseBody);
     }
 
     QByteArray responseData = reply->readAll();
@@ -336,19 +347,53 @@ QJsonObject NetworkManager::parseReply(QNetworkReply* reply) {
 }
 
 QCoro::Task<QJsonObject> NetworkManager::get(
-    const QString& url, const QMap<QString, QString>& headers,
-    const NetworkRequestOptions& options)
+    QString url, QMap<QString, QString> headers,
+    NetworkRequestOptions options)
 {
     QNetworkRequest request((QUrl(url)));
     applyHeaders(request, headers);
     applyRequestOptions(request, options);
     request.setHeader(QNetworkRequest::ContentTypeHeader, QVariant());
 
-    QNetworkReply* reply = m_networkManager->get(request);
-    attachReplyHandlers(reply, options, QStringLiteral("GET"));
-    co_await reply;
+    QPointer<NetworkManager> guard(this);
+    constexpr int maxAttempts = 2;
+    for (int attempt = 1; ; ++attempt) {
+        QPointer<QNetworkReply> reply(m_networkManager->get(request));
+        attachReplyHandlers(reply.data(), options, QStringLiteral("GET"));
+        co_await reply.data();
 
-    co_return parseReply(reply);
+        if (!guard || !reply) {
+            throw std::runtime_error("JSON GET interrupted: network object destroyed");
+        }
+
+        const auto error = reply->error();
+        const int httpStatus =
+            reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const bool transientTransportFailure =
+            httpStatus == 0 &&
+            (error == QNetworkReply::TimeoutError ||
+             error == QNetworkReply::RemoteHostClosedError ||
+             error == QNetworkReply::TemporaryNetworkFailureError ||
+             error == QNetworkReply::NetworkSessionFailedError);
+        if (transientTransportFailure && attempt < maxAttempts) {
+            
+            
+            qWarning() << "[NetworkManager] Retrying JSON GET after transport failure"
+                       << "| qtError:" << error
+                       << "| nextAttempt:" << attempt + 1
+                       << "| maxAttempts:" << maxAttempts;
+            reply->deleteLater();
+            continue;
+        }
+
+        if (attempt > 1) {
+            qDebug() << "[NetworkManager] JSON GET retry completed"
+                     << "| attempt:" << attempt
+                     << "| httpStatus:" << httpStatus
+                     << "| qtError:" << error;
+        }
+        co_return parseReply(reply.data());
+    }
 }
 
 QCoro::Task<QList<NetworkJsonResult>> NetworkManager::getBatch(
@@ -423,7 +468,8 @@ QString NetworkManager::parseReplyAsText(QNetworkReply* reply) {
 
     
     if (!charsetName.isEmpty() && !isUtf8Charset(charsetName)) {
-        auto encoding = QStringConverter::encodingForName(charsetName);
+        const QByteArray charsetNameBytes = charsetName.toLatin1();
+        auto encoding = QStringConverter::encodingForName(charsetNameBytes.constData());
         if (encoding.has_value()) {
             QStringDecoder decoder(*encoding);
             return decoder(responseData);

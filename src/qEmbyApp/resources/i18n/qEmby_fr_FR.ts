@@ -1251,8 +1251,8 @@ Sélectionnez un fichier, collez URL d'une image ou faites-en glisser une.</tran
         <translation>Distribution et équipe</translation>
     </message>
     <message>
-        <source>Additional Parts</source>
-        <translation>Pièces supplémentaires</translation>
+        <source>Chapters</source>
+        <translation>Chapitres</translation>
     </message>
     <message>
         <source>Collection</source>
@@ -8361,6 +8361,14 @@ Adresse: %2</translation>
 <context>
     <name>PlayerMediaSwitcherPanel</name>
     <message>
+        <source>Retry</source>
+        <translation>Réessayer</translation>
+    </message>
+    <message>
+        <source>Media Switcher</source>
+        <translation>Sélecteur de médias</translation>
+    </message>
+    <message>
         <source>Continue Watching</source>
         <translation>Continuer à regarder</translation>
     </message>
@@ -8422,4 +8430,60 @@ Adresse: %2</translation>
     </message>
 </context>
 
+<context>
+    <name>SslVerificationButton</name>
+    <message>
+        <source>Ignore certificate</source>
+        <translation>Ignorer le certificat</translation>
+    </message>
+    <message>
+        <source>Ignore SSL certificate verification</source>
+        <translation>Ignorer la vérification du certificat SSL</translation>
+    </message>
+    <message>
+        <source>Use this only for trusted self-signed or private CA HTTPS servers.</source>
+        <translation>N'utilisez cette option que pour les serveurs HTTPS auto-signés ou gérés par une autorité de certification privée de confiance.</translation>
+    </message>
+</context>
+<context>
+    <name>MediaPartUtils</name>
+    <message>
+        <source>Chapter %1 / %2</source>
+        <translation>Chapitre %1 / %2</translation>
+    </message>
+    <message>
+        <source>%1 — %2</source>
+        <translation>%1 — %2</translation>
+    </message>
+</context>
+<context>
+    <name>PlayerMediaSwitcherPanel</name>
+    <message>
+        <source>Chapters</source>
+        <translation>Chapitres</translation>
+    </message>
+</context>
+<context>
+    <name>PlayerView</name>
+    <message>
+        <source>Chapters</source>
+        <translation>Chapitres</translation>
+    </message>
+    <message>
+        <source>Switch chapter</source>
+        <translation>Changer de chapitre</translation>
+    </message>
+    <message>
+        <source>Retry</source>
+        <translation>Réessayer</translation>
+    </message>
+    <message>
+        <source>Loading timed out. Please try again.</source>
+        <translation>Le chargement a expiré. Veuillez réessayer.</translation>
+    </message>
+    <message>
+        <source>Unable to load media. Please check your connection and try again.</source>
+        <translation>Impossible de charger les médias. Vérifiez votre connexion et réessayez.</translation>
+    </message>
+</context>
 </TS>

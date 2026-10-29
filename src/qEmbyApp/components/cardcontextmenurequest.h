@@ -22,7 +22,8 @@ enum class CardContextMenuAction {
     RemoveMedia,
     MarkPlayed,
     MarkUnplayed,
-    RemoveFromResume
+    RemoveFromResume,
+    RemoveIdentification
 };
 
 struct CardContextMenuRequest {

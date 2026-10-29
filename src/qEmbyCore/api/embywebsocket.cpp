@@ -29,7 +29,12 @@ EmbyWebSocket::EmbyWebSocket(const ServerProfile& profile, QObject* parent)
     connect(m_socket, &QWebSocket::disconnected, this, &EmbyWebSocket::onDisconnected);
     connect(m_socket, &QWebSocket::textMessageReceived,
             this, &EmbyWebSocket::onTextMessageReceived);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
     connect(m_socket, &QWebSocket::errorOccurred, this, &EmbyWebSocket::onError);
+#else
+    connect(m_socket, qOverload<QAbstractSocket::SocketError>(&QWebSocket::error),
+            this, &EmbyWebSocket::onError);
+#endif
     connect(m_socket, &QWebSocket::sslErrors, this, &EmbyWebSocket::onSslErrors);
 
     

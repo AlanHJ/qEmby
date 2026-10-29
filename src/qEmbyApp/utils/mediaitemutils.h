@@ -10,6 +10,9 @@ class MediaItemUtils
 {
     Q_DECLARE_TR_FUNCTIONS(MediaItemUtils)
 public:
+    static QString releaseDateText(const MediaItem& item);
+    static QStringList displayTags(const MediaItem& item);
+    static MediaItem withMissingDisplayMetadata(MediaItem item, const MediaItem& detail);
     static QStringList personBiographicalDetails(const MediaItem& item);
     static QString effectiveSeriesTitle(
         const MediaItem &item,
@@ -23,6 +26,7 @@ public:
         const MediaItem &resumeItem);
     static bool isCompletedWatchingItem(const MediaItem &item);
     static bool hasResumeProgress(const MediaItem &item);
+    static double playbackProgressPercentage(const MediaItem &item);
     static bool canRemoveFromResume(const MediaItem &item);
     static QString resumeActionItemId(const MediaItem &item);
 };

@@ -32,6 +32,7 @@ class PlaybackManager;
 class PlayerView;      
 class ManageView;      
 class WebdavProfileStore;
+class MiniMusicPlayer;
 
 
 struct RouteInfo {
@@ -41,6 +42,7 @@ struct RouteInfo {
     QString routeId;          
     QString routeTitle;       
     QString routeExtraId;     
+    QString owningLibraryId;
 };
 
 class HomeView : public QWidget
@@ -128,6 +130,7 @@ private:
     void launchPlayer(const QString& mediaId, const QString& title, const QString& streamUrl, long long startPositionTicks, const QVariant& extraData);
 
     QEmbyCore* m_core;
+    MiniMusicPlayer* m_miniMusicPlayer = nullptr;
 
     SlidingStackedWidget* m_contentSwitcher = nullptr;
     bool m_isDestroying = false;

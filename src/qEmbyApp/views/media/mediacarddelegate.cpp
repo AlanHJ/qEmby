@@ -1,5 +1,6 @@
 #include "mediacarddelegate.h"
 #include "medialistmodel.h"
+#include "../../utils/artworkpolicyutils.h"
 
 #include "../../managers/thememanager.h"
 #include <QAbstractItemView>
@@ -10,6 +11,9 @@
 #include <QPainter>
 #include <QPainterPath>
 #include "../../utils/imageutils.h"
+#include "../../utils/mediaitemutils.h"
+#include "config/config_keys.h"
+#include "config/configstore.h"
 #include <QStyle>
 
 namespace
@@ -19,12 +23,14 @@ enum class HoverOverlayMode
 {
     None,
     FullControls,
+    FavoriteAndMenu,
     MenuOnly
 };
 
 bool isPlayableItem(const MediaItem &item)
 {
-    return item.mediaType == "Video" || item.type == "Movie" || item.type == "Episode" || item.type == "Video" ||
+    return item.type == "MusicAlbum" || item.type == "Audio" || item.type == "TvChannel" ||
+           item.mediaType == "Video" || item.type == "Movie" || item.type == "Episode" || item.type == "Video" ||
            item.type == "MusicVideo";
 }
 
@@ -49,6 +55,11 @@ bool canShowMenuOnlyButtonForTile(const MediaItem &item)
 HoverOverlayMode hoverOverlayModeForItem(const MediaItem &item, MediaCardDelegate::CardStyle style,
                                          bool showMoreButtonForNonPlayableTiles)
 {
+    if (item.type == "Person")
+    {
+        return item.id.trimmed().isEmpty() ? HoverOverlayMode::None : HoverOverlayMode::FavoriteAndMenu;
+    }
+
     if (style == MediaCardDelegate::EpisodeList)
     {
         return isPlayableItem(item) ? HoverOverlayMode::FullControls : HoverOverlayMode::None;
@@ -83,7 +94,7 @@ QRect baseImageRectForCard(MediaCardDelegate::CardStyle style, const QRect &rect
         return QRect(rect.x() + padding, rect.y() + padding, imgWidth, imgHeight);
     }
 
-    const int imgHeight = qRound(imgWidth * 1.5);
+    const int imgHeight = style == MediaCardDelegate::AlbumCover ? imgWidth : qRound(imgWidth * 1.5);
     return QRect(rect.x() + padding, rect.y() + padding, imgWidth, imgHeight);
 }
 
@@ -103,15 +114,15 @@ QRect centerPlayButtonRect(const QRect &targetImgRect)
 
 QRect moreButtonRect(const QRect &targetImgRect)
 {
-    const int btnWidth = 28;
-    const int btnHeight = 28;
+    const int btnWidth = 24;
+    const int btnHeight = 24;
     return QRect(targetImgRect.right() - btnWidth - 8, targetImgRect.bottom() - btnHeight - 8, btnWidth, btnHeight);
 }
 
 QRect favoriteButtonRect(const QRect &moreRect)
 {
-    const int btnWidth = 28;
-    const int spacing = 6;
+    const int btnWidth = 24;
+    const int spacing = 5;
     return QRect(moreRect.left() - btnWidth - spacing, moreRect.top(), btnWidth, moreRect.height());
 }
 
@@ -122,7 +133,8 @@ bool shouldShowPlayButton(HoverOverlayMode overlayMode, MediaCardDelegate::Hover
 
 bool shouldShowFavoriteButton(HoverOverlayMode overlayMode, MediaCardDelegate::HoverControls controls)
 {
-    return overlayMode == HoverOverlayMode::FullControls && controls.testFlag(MediaCardDelegate::HoverControlFavorite);
+    return (overlayMode == HoverOverlayMode::FullControls || overlayMode == HoverOverlayMode::FavoriteAndMenu) &&
+           controls.testFlag(MediaCardDelegate::HoverControlFavorite);
 }
 
 bool shouldShowMoreButton(HoverOverlayMode overlayMode, MediaCardDelegate::HoverControls controls)
@@ -159,13 +171,12 @@ HoverButtonLayout buildHoverButtonLayout(const QRect &targetImgRect, bool showPl
     return layout;
 }
 
-void drawPlayedBadge(QPainter *painter, const QRect &targetImgRect, bool alignLeft)
+void drawPlayedBadge(QPainter *painter, const QRect &targetImgRect)
 {
     const int checkSize = 16;
     const int checkMargin = 4;
-    const int checkX = alignLeft ? targetImgRect.left() + checkMargin
-                                 : targetImgRect.right() - checkSize - checkMargin;
-    const QRect checkRect(checkX, targetImgRect.top() + checkMargin, checkSize, checkSize);
+    const QRect checkRect(targetImgRect.left() + checkMargin,
+                          targetImgRect.top() + checkMargin, checkSize, checkSize);
 
     painter->save();
     painter->setRenderHint(QPainter::Antialiasing, true);
@@ -188,7 +199,10 @@ void drawPlayedBadge(QPainter *painter, const QRect &targetImgRect, bool alignLe
 MediaCardThemeHelper::MediaCardThemeHelper(QWidget *parent)
     : QWidget(parent), m_hoverBg(229, 231, 235), 
       m_selectedBg(219, 234, 254), m_titleColor(31, 41, 55), m_subTitleColor(107, 114, 128),
-      m_placeholderBg(229, 231, 235), m_placeholderTextColor(156, 163, 175)
+      m_placeholderBg(229, 231, 235), m_placeholderTextColor(156, 163, 175),
+      m_progressTrackColor(203, 213, 225), m_progressFillColor(22, 163, 74),
+      m_ratingBackgroundColor(15, 23, 42, 140), m_ratingTextColor(Qt::white),
+      m_hoverButtonBackgroundColor(0, 0, 0, 140)
 {
     hide(); 
 }
@@ -198,14 +212,78 @@ MediaCardThemeHelper::MediaCardThemeHelper(QWidget *parent)
 MediaCardDelegate::MediaCardDelegate(CardStyle style, QObject *parent)
     : QStyledItemDelegate(parent), m_style(style), m_tileSize(160, 270), m_themeHelper(nullptr)
 {
+    m_showPlaybackProgress = ConfigStore::instance()->get<bool>(
+        ConfigKeys::ShowMediaPlaybackProgress, true);
+    m_showCoverRating = ConfigStore::instance()->get<bool>(
+        ConfigKeys::ShowCoverRating, true);
+    connect(ConfigStore::instance(), &ConfigStore::valueChanged, this,
+            [this](const QString &key, const QVariant &value) {
+                if (key == QLatin1String(ConfigKeys::ShowMediaPlaybackProgress))
+                    m_showPlaybackProgress = value.toBool();
+                else if (key == QLatin1String(ConfigKeys::ShowCoverRating))
+                    m_showCoverRating = value.toBool();
+                else
+                    return;
+                for (QWidget *viewport : m_installedViewports)
+                    viewport->update();
+            });
 }
 
 QSize MediaCardDelegate::sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const
 {
     Q_UNUSED(option);
-    Q_UNUSED(index);
+    if (m_style == Poster && effectiveStyle(index) == LibraryTile)
+        return QSize(qMax(m_tileSize.width(), qRound((m_tileSize.height() - 48) * 16.0 / 9.0)), m_tileSize.height());
+    if (m_style == LibraryTile && effectiveStyle(index) == Poster)
+        return QSize(qMax(80, qRound((m_tileSize.height() - 60) / 1.5) + 16), m_tileSize.height());
     
     return m_tileSize;
+}
+
+MediaCardDelegate::CardGeometry MediaCardDelegate::cardGeometry(const QRect &rect) const
+{
+    return cardGeometry(rect, m_style);
+}
+
+MediaCardDelegate::CardStyle MediaCardDelegate::effectiveStyle(const QModelIndex& index) const
+{
+    if (!index.isValid()) return m_style;
+    const auto item = index.data(MediaListModel::ItemDataRole).value<MediaItem>();
+    if (item.type == QLatin1String("MusicAlbum")) return AlbumCover;
+    if (item.type == QLatin1String("Episode") || item.type == QLatin1String("Season") ||
+        item.type == QLatin1String("TvChannel")) return m_style;
+    if ((m_style == Poster || m_style == LibraryTile) && index.model()->property("variableArtworkLayout").toBool()) {
+        const int layout = index.data(MediaListModel::ArtworkLayoutRole).toInt();
+        if (layout == int(ArtworkPolicyUtils::Layout::Landscape)) return LibraryTile;
+        if (layout == int(ArtworkPolicyUtils::Layout::Portrait)) return Poster;
+    }
+    return m_style;
+}
+
+MediaCardDelegate::CardGeometry MediaCardDelegate::cardGeometry(const QRect &rect, CardStyle style) const
+{
+    CardGeometry geometry;
+    geometry.image = baseImageRectForCard(style, rect, m_contentPadding);
+    if (style == AlbumCover) geometry.image.setHeight(geometry.image.width());
+    const int titleGap = style == Cast ? 5 : 4;
+    geometry.title = QRect(rect.x() + m_contentPadding, geometry.image.bottom() + titleGap,
+                           geometry.image.width(), qMax(16, m_titleFontPixelSize + 6));
+    geometry.subtitle = QRect(geometry.title.left(), geometry.title.bottom() + 1,
+                              geometry.image.width(), qMax(14, m_subTitleFontPixelSize + 4));
+    return geometry;
+}
+
+int MediaCardDelegate::contentBottomInset() const
+{
+    if (m_style == EpisodeList)
+        return 0;
+
+    const QRect cardRect(QPoint(0, 0), m_tileSize);
+    const CardGeometry geometry = cardGeometry(cardRect);
+    
+    const QRect lastRow = (m_style == Cast || geometry.subtitle.bottom() <= cardRect.bottom())
+                              ? geometry.subtitle : geometry.title;
+    return qMax(0, cardRect.bottom() - lastRow.bottom());
 }
 
 
@@ -228,9 +306,10 @@ bool MediaCardDelegate::eventFilter(QObject *object, QEvent *event)
 
                 if (index.isValid())
                 {
+                    const CardStyle style = effectiveStyle(index);
                     MediaItem item = index.data(MediaListModel::ItemDataRole).value<MediaItem>();
                     const HoverOverlayMode overlayMode =
-                        hoverOverlayModeForItem(item, m_style, m_showMoreButtonForNonPlayableTiles);
+                        hoverOverlayModeForItem(item, style, m_showMoreButtonForNonPlayableTiles);
 
                     if (overlayMode != HoverOverlayMode::None)
                     {
@@ -240,7 +319,7 @@ bool MediaCardDelegate::eventFilter(QObject *object, QEvent *event)
                         
                         
                         
-                        if (m_style == EpisodeList)
+                        if (style == EpisodeList)
                         {
                             int padding = 10;
                             int imgWidth = 250;
@@ -278,7 +357,7 @@ bool MediaCardDelegate::eventFilter(QObject *object, QEvent *event)
                         }
                         else
                         {
-                            const QRect baseImgRect = baseImageRectForCard(m_style, rect, m_contentPadding);
+                            const QRect baseImgRect = baseImageRectForCard(style, rect, m_contentPadding);
                             const QRect targetImgRect = hoverImageRect(baseImgRect);
                             const bool showPlayButton = shouldShowPlayButton(overlayMode, m_hoverControls);
                             const bool showFavoriteButton = shouldShowFavoriteButton(overlayMode, m_hoverControls);
@@ -323,6 +402,7 @@ bool MediaCardDelegate::eventFilter(QObject *object, QEvent *event)
 
 void MediaCardDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const
 {
+    const CardStyle style = effectiveStyle(index);
     
     if (option.widget)
     {
@@ -369,17 +449,74 @@ void MediaCardDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opt
     QRect rect = option.rect;
     MediaItem item = index.data(MediaListModel::ItemDataRole).value<MediaItem>();
     QPixmap poster = index.data(MediaListModel::PosterPixmapRole).value<QPixmap>();
+    const double progressPercentage = MediaItemUtils::playbackProgressPercentage(item);
+    const bool showPlaybackProgress =
+        m_showPlaybackProgress && style != Cast && progressPercentage > 0.0;
+    const auto drawPlaybackProgress = [&](const QRect &imageRect) {
+        if (!showPlaybackProgress || imageRect.isEmpty())
+            return;
+
+        constexpr qreal barHeight = 4.0;
+        const QRectF track(imageRect.left(), imageRect.bottom() + 1 - barHeight,
+                           imageRect.width(), barHeight);
+        
+        const qreal fillWidth = qMin(track.width(),
+                                     qMax(track.width() * progressPercentage / 100.0, 10.0));
+        QPainterPath imageClip;
+        imageClip.addRoundedRect(QRectF(imageRect), 8, 8);
+        painter->save();
+        painter->setClipPath(imageClip, Qt::IntersectClip);
+        painter->setOpacity(m_themeHelper ? m_themeHelper->progressOpacity() : 0.65);
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(m_themeHelper ? m_themeHelper->progressTrackColor() : QColor(203, 213, 225));
+        painter->drawRect(QRectF(track.left() + fillWidth, track.top(),
+                                 track.width() - fillWidth, track.height()));
+        painter->setBrush(m_themeHelper ? m_themeHelper->progressFillColor() : QColor(22, 163, 74));
+        painter->drawRect(QRectF(track.topLeft(), QSizeF(fillWidth, track.height())));
+        painter->restore();
+    };
     bool isHovered = option.state & QStyle::State_MouseOver;
-    const HoverOverlayMode overlayMode = hoverOverlayModeForItem(item, m_style, m_showMoreButtonForNonPlayableTiles);
+    const HoverOverlayMode overlayMode = hoverOverlayModeForItem(item, style, m_showMoreButtonForNonPlayableTiles);
     const bool showPlayButton = shouldShowPlayButton(overlayMode, m_hoverControls);
     const bool showFavoriteButton = shouldShowFavoriteButton(overlayMode, m_hoverControls);
     const bool showMoreButton = shouldShowMoreButton(overlayMode, m_hoverControls);
     const bool hasHoverButtons = showPlayButton || showFavoriteButton || showMoreButton;
+    const bool showCoverRating = m_showCoverRating && style != Cast &&
+                                 item.communityRating > 0.0;
+    const auto drawCoverRating = [&](const QRect &imageRect) {
+        if (!showCoverRating || imageRect.isEmpty())
+            return;
+
+        QFont ratingFont = option.font;
+        ratingFont.setPixelSize(qMax(9, qRound(11 * fontScale)));
+        ratingFont.setBold(true);
+        const QString ratingText = QString::number(item.communityRating, 'f', 1);
+        const QFontMetrics metrics(ratingFont);
+        const int badgeWidth = metrics.horizontalAdvance(ratingText) + 24;
+        const QRect trailingButtonRect = moreButtonRect(imageRect);
+        const QRect badgeRect(imageRect.left() + 5,
+                              trailingButtonRect.top() + (trailingButtonRect.height() - 20) / 2,
+                              badgeWidth, 20);
+        painter->save();
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(m_themeHelper ? m_themeHelper->ratingBackgroundColor()
+                                        : QColor(15, 23, 42, 140));
+        painter->drawRoundedRect(badgeRect, 6, 6);
+        const QIcon starIcon(isDarkTheme ? ":/svg/dark/star-filled.svg"
+                                         : ":/svg/light/star-filled.svg");
+        starIcon.paint(painter, QRect(badgeRect.left() + 5,
+                                     badgeRect.top() + 4, 12, 12));
+        painter->setFont(ratingFont);
+        painter->setPen(m_themeHelper ? m_themeHelper->ratingTextColor() : Qt::white);
+        painter->drawText(badgeRect.adjusted(20, 0, -4, 0),
+                          Qt::AlignCenter, ratingText);
+        painter->restore();
+    };
 
     
     
     
-    if (m_style == EpisodeList)
+    if (style == EpisodeList)
     {
         if (isHovered)
         {
@@ -446,8 +583,10 @@ void MediaCardDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opt
 
         if (item.userData.played)
         {
-            drawPlayedBadge(painter, baseImgRect, false);
+            drawPlayedBadge(painter, baseImgRect);
         }
+        drawPlaybackProgress(baseImgRect);
+        drawCoverRating(baseImgRect);
 
         
         int textX = baseImgRect.right() + 20;
@@ -536,37 +675,11 @@ void MediaCardDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opt
         painter->drawRoundedRect(rect, 8, 8);
     }
 
-    const int padding = m_contentPadding;
-    QRect baseImgRect, titleRect, yearRect;
-
     
-    if (m_style == Poster)
-    {
-        baseImgRect = baseImageRectForCard(m_style, rect, padding);
-        const int imgWidth = baseImgRect.width();
-        const int titleHeight = qMax(16, m_titleFontPixelSize + 6);
-        const int subTitleHeight = qMax(14, m_subTitleFontPixelSize + 4);
-        titleRect = QRect(rect.x() + padding, baseImgRect.bottom() + 4, imgWidth, titleHeight);
-        yearRect = QRect(rect.x() + padding, titleRect.bottom() + 1, imgWidth, subTitleHeight);
-    }
-    else if (m_style == LibraryTile)
-    {
-        baseImgRect = baseImageRectForCard(m_style, rect, padding);
-        const int imgWidth = baseImgRect.width();
-        const int titleHeight = qMax(16, m_titleFontPixelSize + 6);
-        const int subTitleHeight = qMax(14, m_subTitleFontPixelSize + 4);
-        titleRect = QRect(rect.x() + padding, baseImgRect.bottom() + 4, imgWidth, titleHeight);
-        yearRect = QRect(rect.x() + padding, titleRect.bottom() + 1, imgWidth, subTitleHeight);
-    }
-    else if (m_style == Cast)
-    {
-        baseImgRect = baseImageRectForCard(m_style, rect, padding);
-        const int imgWidth = baseImgRect.width();
-        const int titleHeight = qMax(16, m_titleFontPixelSize + 6);
-        const int subTitleHeight = qMax(14, m_subTitleFontPixelSize + 4);
-        titleRect = QRect(rect.x() + padding, baseImgRect.bottom() + 5, imgWidth, titleHeight);
-        yearRect = QRect(rect.x() + padding, titleRect.bottom() + 1, imgWidth, subTitleHeight);
-    }
+    const CardGeometry geometry = cardGeometry(rect, style);
+    QRect baseImgRect = geometry.image;
+    QRect titleRect = geometry.title;
+    QRect yearRect = geometry.subtitle;
 
     
     QRect targetImgRect = baseImgRect;
@@ -652,14 +765,6 @@ void MediaCardDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opt
     
     
     
-    if ((item.type == "Episode" || item.type == "Season") && item.userData.played)
-    {
-        drawPlayedBadge(painter, targetImgRect, item.type == "Season");
-    }
-
-    
-    
-    
     if (isHovered && hasHoverButtons)
     {
         
@@ -694,8 +799,9 @@ void MediaCardDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opt
 
         if (showMoreButton)
         {
-            painter->setBrush(QColor(0, 0, 0, 160));
-            painter->drawRoundedRect(buttonLayout.moreRect, 6, 6);
+            painter->setBrush(m_themeHelper ? m_themeHelper->hoverButtonBackgroundColor()
+                                            : QColor(0, 0, 0, 140));
+            painter->drawRoundedRect(buttonLayout.moreRect, 5, 5);
 
             QIcon moreIcon(":/svg/dark/more-line.svg");
             if (!moreIcon.isNull())
@@ -715,14 +821,15 @@ void MediaCardDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opt
 
         if (showFavoriteButton)
         {
-            painter->setBrush(QColor(0, 0, 0, 160));
-            painter->drawRoundedRect(buttonLayout.favoriteRect, 6, 6);
+            painter->setBrush(m_themeHelper ? m_themeHelper->hoverButtonBackgroundColor()
+                                            : QColor(0, 0, 0, 140));
+            painter->drawRoundedRect(buttonLayout.favoriteRect, 5, 5);
 
             QString favIconPath = item.isFavorite() ? ":/svg/dark/heart-fill.svg" : ":/svg/dark/heart-outline.svg";
             QIcon favIcon(favIconPath);
             if (!favIcon.isNull())
             {
-                favIcon.paint(painter, buttonLayout.favoriteRect.adjusted(5, 5, -5, -5), Qt::AlignCenter);
+                favIcon.paint(painter, buttonLayout.favoriteRect.adjusted(4, 4, -4, -4), Qt::AlignCenter);
             }
             else
             {
@@ -731,6 +838,16 @@ void MediaCardDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opt
             }
         }
     }
+
+    
+    if (item.userData.played &&
+        (isPlayableItem(item) || item.type == "Series" || item.type == "Season"))
+    {
+        drawPlayedBadge(painter, targetImgRect);
+    }
+
+    drawPlaybackProgress(targetImgRect);
+    drawCoverRating(targetImgRect);
 
     
     
@@ -764,13 +881,13 @@ void MediaCardDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opt
     }
     QString elidedTitle = fm.elidedText(displayTitle, Qt::ElideRight, titleRect.width());
     Qt::Alignment titleAlign =
-        (m_style == Poster) ? (Qt::AlignHCenter | Qt::AlignVCenter) : (Qt::AlignHCenter | Qt::AlignVCenter);
+        (style == Poster) ? (Qt::AlignHCenter | Qt::AlignVCenter) : (Qt::AlignHCenter | Qt::AlignVCenter);
     painter->drawText(titleRect, titleAlign, elidedTitle);
 
     
     
     const bool canDrawYear = item.productionYear > 0 && yearRect.isValid() && yearRect.bottom() <= rect.bottom();
-    if ((m_style == Poster || m_style == LibraryTile) && canDrawYear)
+    if ((style == Poster || style == LibraryTile) && canDrawYear)
     {
         QFont subFont = option.font;
         subFont.setPixelSize(qMax(8, qRound(m_subTitleFontPixelSize * fontScale)));
@@ -778,7 +895,16 @@ void MediaCardDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opt
         painter->setPen(subTitleColor);
         painter->drawText(yearRect, Qt::AlignHCenter | Qt::AlignVCenter, QString::number(item.productionYear));
     }
-    else if (m_style == Cast)
+    else if (style == AlbumCover)
+    {
+        QFont subFont = option.font;
+        subFont.setPixelSize(qMax(8, qRound(m_subTitleFontPixelSize * fontScale)));
+        painter->setFont(subFont);
+        painter->setPen(subTitleColor);
+        const QString artist = item.albumArtist.isEmpty() ? item.artists.join(QStringLiteral(", ")) : item.albumArtist;
+        painter->drawText(yearRect, Qt::AlignCenter, QFontMetrics(subFont).elidedText(artist, Qt::ElideRight, yearRect.width()));
+    }
+    else if (style == Cast)
     {
         QFont subFont = option.font;
         subFont.setPixelSize(qMax(8, qRound(m_subTitleFontPixelSize * fontScale)));

@@ -1,4 +1,7 @@
 #include "homeview.h"
+#include "../../utils/servericonutils.h"
+#include "../../components/minimusicplayer.h"
+#include "../../managers/musicplaybackmanager.h"
 #include "../../components/sidebarlibraryrow.h"
 #include "../../components/searchcompleterpopup.h"
 #include "../../components/downloadmanagerdialog.h"
@@ -107,6 +110,7 @@ HomeView::HomeView(QEmbyCore *core, QWidget *parent) : QWidget(parent), m_core(c
 
 HomeView::~HomeView()
 {
+    MusicPlaybackManager::instance()->stop();
     m_isDestroying = true;
 
     if (m_contentSwitcher)
@@ -240,6 +244,7 @@ void HomeView::setupUi()
                 if (current)
                 {
                     bool isImmersive = current->property("isImmersive").toBool();
+                    m_miniMusicPlayer->setSuppressed(isImmersive);
                     syncSidebarVisibility();
                     
                     Q_EMIT immersiveStateChanged(isImmersive);
@@ -248,6 +253,10 @@ void HomeView::setupUi()
 
     m_contentLayout->addWidget(m_contentSwitcher, 1);
     mainLayout->addLayout(m_contentLayout);
+    m_miniMusicPlayer = new MiniMusicPlayer(m_core, this);
+    mainLayout->addWidget(m_miniMusicPlayer);
+    connect(MusicPlaybackManager::instance(), &MusicPlaybackManager::errorOccurred,
+            this, [](const QString& message) { ModernToast::showMessage(message, 2500); });
 
     
     m_navStack.clear();
@@ -516,6 +525,7 @@ QWidget *HomeView::createPlayerView(const QString &mediaId, const QString &title
                                     long long startPositionTicks, const QVariant &extraData)
 {
     auto *view = new PlayerView(m_core, this);
+    PlaybackManager::instance()->registerVideoOwner(view);
     view->setProperty("isDynamic", true);
     view->setProperty("routeType", "PlayerView");
     view->setProperty("routeId", mediaId);
@@ -542,9 +552,10 @@ QWidget *HomeView::createPlayerView(const QString &mediaId, const QString &title
     
     
     QPointer<PlayerView> safeView(view);
-    auto launchPlay = [safeView, mediaId, title, streamUrl, startPositionTicks, extraData]()
+    const quint64 intent = PlaybackManager::instance()->videoIntent();
+    auto launchPlay = [safeView, mediaId, title, streamUrl, startPositionTicks, extraData, intent]()
     {
-        if (safeView)
+        if (safeView && PlaybackManager::instance()->isCurrentVideoIntent(intent))
         {
             safeView->playMedia(mediaId, title, streamUrl, startPositionTicks, extraData);
         }
@@ -1137,6 +1148,7 @@ void HomeView::pushView(QWidget *view)
         info.routeTitle = current->property("routeTitle").toString();
         
         info.routeExtraId = current->property("routeExtraId").toString();
+        info.owningLibraryId = current->property("owningLibraryId").toString();
         m_navStack.push(info);
     }
 
@@ -1201,7 +1213,10 @@ void HomeView::navigateBack()
         {
             if (prevInfo.routeType == "DetailView")
             {
-                targetView = createDetailView(prevInfo.routeId, prevInfo.routeTitle);
+                MediaItem seed;
+                seed.id = prevInfo.routeId;
+                seed.owningLibraryId = prevInfo.owningLibraryId;
+                targetView = createDetailView(prevInfo.routeId, prevInfo.routeTitle, seed);
             }
             else if (prevInfo.routeType == "LibraryView")
             {
@@ -1392,23 +1407,8 @@ QCoro::Task<void> HomeView::refreshProfile()
                currentProfile.userId == activeProfile.userId;
     };
 
-    if (activeProfile.type == ServerProfile::Jellyfin)
-    {
-        m_serverIconLabel->setPixmap(QPixmap(":/svg/jellyfin.svg"));
-    }
-    else
-    {
-        if (!activeProfile.iconBase64.isEmpty())
-        {
-            QPixmap pix;
-            pix.loadFromData(QByteArray::fromBase64(activeProfile.iconBase64.toUtf8()));
-            m_serverIconLabel->setPixmap(pix);
-        }
-        else
-        {
-            m_serverIconLabel->setPixmap(QPixmap(":/svg/emby.svg"));
-        }
-    }
+    m_serverIconLabel->setPixmap(ServerIconUtils::loadIcon(
+        activeProfile, m_serverIconLabel->size(), m_serverIconLabel->devicePixelRatioF()));
 
     QString displayName = activeProfile.name.isEmpty() ? tr("My Server") : activeProfile.name;
     m_serverNameLabel->setFullText(displayName);

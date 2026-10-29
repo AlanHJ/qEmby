@@ -2,6 +2,7 @@
 #include "../utils/danmakuheatmaputils.h"
 
 #include <QDebug>
+#include <QCursor>
 #include <QPainter>
 #include <QPalette>
 #include <algorithm>
@@ -10,15 +11,62 @@
 DanmakuProgressSlider::DanmakuProgressSlider(QWidget *parent)
     : ModernSlider(Qt::Horizontal, parent) {}
 
-void DanmakuProgressSlider::seekAt(qreal x)
+int DanmakuProgressSlider::positionAt(qreal x) const
 {
     const int padding = std::max(normalHandleRadius(), activeHandleRadius());
     const qreal trackWidth = width() - 2.0 * padding;
-    if (trackWidth <= 0.0 || maximum() <= minimum()) return;
+    if (trackWidth <= 0.0 || maximum() <= minimum()) return sliderPosition();
     const qreal ratio = std::clamp((x - padding) / trackWidth, 0.0, 1.0);
+    return qRound(minimum() + ratio * (static_cast<double>(maximum()) - minimum()));
+}
+
+void DanmakuProgressSlider::seekAt(qreal x)
+{
     
     
-    setSliderPosition(qRound(minimum() + ratio * (static_cast<double>(maximum()) - minimum())));
+    setSliderPosition(positionAt(x));
+}
+
+void DanmakuProgressSlider::updateHoverPosition(const QPoint &globalPosition)
+{
+    const QPoint localPosition = mapFromGlobal(globalPosition);
+    const int padding = std::max(normalHandleRadius(), activeHandleRadius());
+    if (!isVisible() || !isEnabled() || m_durationSeconds <= 0.0 ||
+        maximum() <= minimum() || width() <= 2 * padding || !rect().contains(localPosition)) {
+        clearHoverPosition();
+        return;
+    }
+    m_hovering = true;
+    const QPoint trackPosition(qBound(padding, localPosition.x(), width() - padding),
+                               qRound(horizontalTrackCenter()));
+    emit hoverPositionChanged(positionAt(localPosition.x()), mapToGlobal(trackPosition));
+}
+
+void DanmakuProgressSlider::clearHoverPosition()
+{
+    if (!m_hovering) return;
+    m_hovering = false;
+    emit hoverEnded();
+}
+
+void DanmakuProgressSlider::refreshHoverPosition()
+{
+    if (m_hovering) updateHoverPosition(QCursor::pos());
+}
+
+bool DanmakuProgressSlider::event(QEvent *event)
+{
+    if (event->type() == QEvent::Enter || event->type() == QEvent::ToolTip) {
+        updateHoverPosition(QCursor::pos());
+        if (event->type() == QEvent::ToolTip) {
+            event->accept();
+            return true;
+        }
+    } else if (event->type() == QEvent::Leave || event->type() == QEvent::Hide ||
+               (event->type() == QEvent::EnabledChange && !isEnabled())) {
+        clearHoverPosition();
+    }
+    return ModernSlider::event(event);
 }
 
 void DanmakuProgressSlider::mousePressEvent(QMouseEvent *event)
@@ -37,6 +85,7 @@ void DanmakuProgressSlider::mousePressEvent(QMouseEvent *event)
 
 void DanmakuProgressSlider::mouseMoveEvent(QMouseEvent *event)
 {
+    updateHoverPosition(event->globalPosition().toPoint());
     if (isSliderDown()) {
         seekAt(event->position().x());
         event->accept();
@@ -71,6 +120,7 @@ void DanmakuProgressSlider::setMediaDuration(double seconds)
     if (!std::isfinite(seconds) || seconds < 0.0) seconds = 0.0;
     if (m_durationSeconds == seconds) return;
     m_durationSeconds = seconds;
+    if (m_durationSeconds <= 0.0) clearHoverPosition();
     rebuildHeatmap();
 }
 

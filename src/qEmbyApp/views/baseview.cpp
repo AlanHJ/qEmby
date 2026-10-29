@@ -1,4 +1,5 @@
 #include "baseview.h"
+#include "../managers/musicplaybackmanager.h"
 #include <qembycore.h>
 #include <services/admin/adminservice.h>
 #include <services/media/mediaservice.h>
@@ -30,6 +31,7 @@
 #include <QJsonObject>
 #include <QPointer> 
 #include <QTimer>
+#include <QScopeGuard>
 #include <utility>
 
 namespace {
@@ -77,6 +79,7 @@ QCoro::Task<MediaItem> BaseView::resolvePlaybackItem(MediaItem item)
     }
 
     QPointer<BaseView> safeThis(this);
+    QPointer<MediaService> service(m_core->mediaService());
     MediaItem detail = item;
 
     if (detail.type == "Series") {
@@ -126,13 +129,14 @@ QCoro::Task<MediaItem> BaseView::resolvePlaybackItem(MediaItem item)
     
     
     
-    if (detail.mediaSources.size() > 1) {
+    if (detail.mediaSources.size() > 1 || detail.type == QLatin1String("TvChannel")) {
         PlaybackInfo playbackInfo =
-            co_await m_core->mediaService()->getPlaybackInfo(detail.id);
+            co_await service->getPlaybackInfo(detail.id, detail.type == QLatin1String("TvChannel"));
         if (!safeThis) {
+            if (service) co_await service->discardPlaybackSources(playbackInfo.mediaSources);
             co_return {};
         }
-        if (!playbackInfo.mediaSources.isEmpty()) {
+        if (!playbackInfo.mediaSources.isEmpty() || detail.type == QLatin1String("TvChannel")) {
             detail.mediaSources = playbackInfo.mediaSources;
         }
     }
@@ -142,26 +146,54 @@ QCoro::Task<MediaItem> BaseView::resolvePlaybackItem(MediaItem item)
 
 QCoro::Task<void> BaseView::executeToggleFavorite(MediaItem item)
 {
-    if (!m_core || !m_core->mediaService()) {
+    if (!m_core || !m_core->mediaService() || item.id.isEmpty() ||
+        m_pendingFavoriteIds.contains(item.id)) {
         co_return;
     }
 
     QPointer<BaseView> safeThis(this);
+    QPointer<MediaService> service(m_core->mediaService());
+    QPointer<ServerManager> manager(m_core->serverManager());
+    if (!manager)
+        co_return;
+    const ServerProfile profile = manager->activeProfile();
+    m_pendingFavoriteIds.insert(item.id);
+    const auto cleanup = qScopeGuard([safeThis, itemId = item.id]() {
+        if (safeThis)
+            safeThis->m_pendingFavoriteIds.remove(itemId);
+    });
 
     try {
+        
+        if (item.type == "Person") {
+            const MediaItem latest = co_await service->getItemDetail(item.id);
+            if (!safeThis || !service || !manager || latest.id != item.id ||
+                manager->activeProfile().id != profile.id ||
+                manager->activeProfile().userId != profile.userId)
+                co_return;
+            item = latest;
+        }
         const bool targetState = !item.isFavorite();
+        qDebug() << "[BaseView] Updating favorite"
+                 << "| itemId=" << item.id << "| itemType=" << item.type
+                 << "| targetState=" << targetState;
         const bool actualState =
-            co_await m_core->mediaService()->toggleFavorite(item.id, targetState);
+            co_await service->toggleFavorite(item.id, targetState);
 
-        if (!safeThis) {
+        if (!safeThis || !manager || manager->activeProfile().id != profile.id ||
+            manager->activeProfile().userId != profile.userId) {
             co_return;
         }
 
         item.userData.isFavorite = actualState;
+        qDebug() << "[BaseView] Favorite updated"
+                 << "| itemId=" << item.id << "| isFavorite=" << actualState;
         safeThis->onMediaItemUpdated(item);
         ModernToast::showMessage(actualState ? tr("Added to Favorites")
                                              : tr("Removed from Favorites"));
     } catch (const std::exception& e) {
+        if (!safeThis)
+            co_return;
         qDebug() << "BaseView toggle favorite failed:" << e.what();
         ModernToast::showMessage(tr("Failed to update favorite status"));
     }
@@ -174,13 +206,38 @@ QCoro::Task<void> BaseView::executePlay(MediaItem item)
     }
 
     QPointer<BaseView> safeThis(this);
+    QPointer<MediaService> service(m_core->mediaService());
+    if (item.type == QLatin1String("MusicAlbum")) {
+        const quint64 musicIntent = MusicPlaybackManager::instance()->beginQueueRequest();
+        if (!musicIntent) co_return;
+        try {
+            auto tracks = co_await m_core->mediaService()->getAlbumTracks(item.id, MusicPlaybackManager::instance()->queueRequestContext());
+            if (safeThis && MusicPlaybackManager::instance()->isCurrentQueueRequest(musicIntent))
+                MusicPlaybackManager::instance()->playQueue(tracks);
+        } catch (...) {
+            if (safeThis && MusicPlaybackManager::instance()->isCurrentQueueRequest(musicIntent))
+                ModernToast::showMessage(tr("Unable to load tracks."), 2500);
+        }
+        co_return;
+    }
+    if (item.mediaType == QLatin1String("Audio") || item.type == QLatin1String("Audio")) {
+        MusicPlaybackManager::instance()->playQueue({item});
+        co_return;
+    }
 
+    const quint64 intent = PlaybackManager::instance()->beginVideoIntent();
+    const auto cancelIntent = qScopeGuard([intent]() { PlaybackManager::instance()->cancelVideoIntent(intent); });
     try {
         MediaItem detail = co_await resolvePlaybackItem(item);
-        if (!safeThis || detail.id.isEmpty()) {
+        if (!safeThis || detail.id.isEmpty() || !PlaybackManager::instance()->isCurrentVideoIntent(intent)) {
+            if (service) co_await service->discardPlaybackSources(detail.mediaSources);
             co_return;
         }
 
+        if (detail.type == QLatin1String("TvChannel") && detail.mediaSources.isEmpty()) {
+            ModernToast::showMessage(tr("Unable to start playback."), 2500);
+            co_return;
+        }
         const QString playTitle = MediaItemUtils::playbackTitle(detail);
         QString mediaSourceId = detail.id;
         QVariant sourceInfoVar;
@@ -213,7 +270,7 @@ QCoro::Task<void> BaseView::executePlay(MediaItem item)
                 m_core->mediaService()->getStreamUrl(detail.id, mediaSourceId);
         }
 
-        const long long ticks = detail.userData.playbackPositionTicks;
+        const long long ticks = detail.type == QLatin1String("TvChannel") ? 0 : detail.userData.playbackPositionTicks;
         Q_EMIT navigateToPlayer(detail.id, playTitle, streamUrl, ticks,
                                 sourceInfoVar);
     } catch (const std::exception& e) {
@@ -228,11 +285,19 @@ QCoro::Task<void> BaseView::executeExternalPlay(MediaItem item,
         co_return;
     }
 
+    if (item.type == QLatin1String("MusicAlbum") || item.type == QLatin1String("Audio")) {
+        co_await executePlay(item);
+        co_return;
+    }
     QPointer<BaseView> safeThis(this);
+    QPointer<MediaService> service(m_core->mediaService());
+    const quint64 intent = PlaybackManager::instance()->beginVideoIntent();
+    const auto cancelIntent = qScopeGuard([intent]() { PlaybackManager::instance()->cancelVideoIntent(intent); });
 
     try {
         MediaItem detail = co_await resolvePlaybackItem(item);
-        if (!safeThis || detail.id.isEmpty() || detail.mediaSources.isEmpty()) {
+        if (!safeThis || !PlaybackManager::instance()->isCurrentVideoIntent(intent) || detail.id.isEmpty() || detail.mediaSources.isEmpty()) {
+            if (service) co_await service->discardPlaybackSources(detail.mediaSources);
             co_return;
         }
 
@@ -250,7 +315,7 @@ QCoro::Task<void> BaseView::executeExternalPlay(MediaItem item,
                 ConfigKeys::PlayerSubLang, "auto"));
         const QString streamUrl =
             m_core->mediaService()->getStreamUrl(detail.id, selectedSource);
-        const long long ticks = detail.userData.playbackPositionTicks;
+        const long long ticks = detail.type == QLatin1String("TvChannel") ? 0 : detail.userData.playbackPositionTicks;
 
         PlaybackManager::instance()->startExternalPlayback(
             playerPath, detail.id, MediaItemUtils::playbackTitle(detail), streamUrl, ticks,
@@ -646,7 +711,7 @@ QCoro::Task<void> BaseView::executeEditMetadata(MediaItem item)
     }
 
     const QString itemId = item.id.trimmed();
-    if (itemId.isEmpty() || item.type == "Playlist" || item.type == "Person") {
+    if (itemId.isEmpty() || item.type == "Playlist") {
         qDebug() << "[BaseView] Skip edit-metadata for unsupported item"
                  << "| itemId=" << item.id
                  << "| itemType=" << item.type;
@@ -705,6 +770,61 @@ QCoro::Task<void> BaseView::executeEditMetadata(MediaItem item)
         co_return;
     }
 
+    co_await safeThis->refreshAndBroadcastItem(itemId);
+}
+
+QCoro::Task<void> BaseView::executeRemoveIdentification(MediaItem item)
+{
+    const QString itemId = item.id.trimmed();
+    if (!m_core || !m_core->adminService() || !m_core->serverManager() ||
+        item.type != QLatin1String("Person") || itemId.isEmpty() ||
+        m_pendingIdentificationIds.contains(itemId)) {
+        co_return;
+    }
+    QPointer<BaseView> safeThis(this);
+    QPointer<AdminService> adminService(m_core->adminService());
+    QPointer<ServerManager> manager(m_core->serverManager());
+    const ServerProfile profile = manager->activeProfile();
+    if (!profile.isValid() || !profile.isAdmin) {
+        ModernToast::showMessage(tr("This action requires administrator privileges"));
+        co_return;
+    }
+
+    m_pendingIdentificationIds.insert(itemId);
+    const auto pendingGuard = qScopeGuard([safeThis, itemId]() {
+        if (safeThis)
+            safeThis->m_pendingIdentificationIds.remove(itemId);
+    });
+    const QString message = profile.type == ServerProfile::Jellyfin
+        ? tr("Remove external identification IDs for actor \"%1\"? Existing details and images will be kept.").arg(item.name)
+        : tr("Remove identification for actor \"%1\"? Emby will reset this actor's metadata. You can identify the actor again afterwards.").arg(item.name);
+    const bool confirmed = ModernMessageBox::question(
+        safeThis.data(), tr("Remove Identification"), message,
+        tr("Remove Identification"), tr("Cancel"), ModernMessageBox::Danger,
+        ModernMessageBox::Warning);
+    if (!confirmed || !safeThis || !adminService || !manager ||
+        manager->activeProfile().id != profile.id ||
+        manager->activeProfile().userId != profile.userId) {
+        co_return;
+    }
+
+    try {
+        co_await adminService->removePersonIdentification(itemId);
+    } catch (const std::exception& e) {
+        qWarning() << "[BaseView] Remove identification failed"
+                   << "| itemId=" << itemId << "| error=" << e.what();
+        if (safeThis) {
+            ModernToast::showMessage(
+                tr("Failed to remove identification: %1").arg(QString::fromUtf8(e.what())), 4000);
+        }
+        co_return;
+    }
+    if (!safeThis || !manager || manager->activeProfile().id != profile.id ||
+        manager->activeProfile().userId != profile.userId) {
+        co_return;
+    }
+    ModernToast::showMessage(tr("Identification removed"), 2000);
+    
     co_await safeThis->refreshAndBroadcastItem(itemId);
 }
 
@@ -905,7 +1025,7 @@ void BaseView::handleEditImagesRequested(const MediaItem& item)
     }
 
     const QString itemId = item.id.trimmed();
-    if (itemId.isEmpty() || item.type == "Playlist" || item.type == "Person") {
+    if (itemId.isEmpty() || item.type == "Playlist") {
         qDebug() << "[BaseView] Skip edit-images for unsupported item"
                  << "| itemId=" << item.id
                  << "| itemType=" << item.type;
@@ -1061,8 +1181,42 @@ void BaseView::handleRemoveFromResumeRequested(const MediaItem& item)
 
 void BaseView::handleMoreMenuRequested(const MediaItem& item, const QPoint& globalPos)
 {
+    if (item.type == "Person") {
+        launchTask(executePersonMenu(item, globalPos));
+        return;
+    }
     const CardContextMenuRequest request = showCardContextMenu(item, globalPos);
     dispatchCardContextMenuRequest(item, request);
+}
+
+QCoro::Task<void> BaseView::executePersonMenu(MediaItem item, QPoint globalPos)
+{
+    if (!m_core || !m_core->mediaService() || item.id.isEmpty())
+        co_return;
+    QPointer<BaseView> safeThis(this);
+    QPointer<ServerManager> manager(m_core->serverManager());
+    if (!manager)
+        co_return;
+    const ServerProfile profile = manager->activeProfile();
+    try {
+        const MediaItem latest = co_await m_core->mediaService()->getItemDetail(item.id);
+        if (!safeThis || !manager || !safeThis->isVisible() || latest.id != item.id ||
+            manager->activeProfile().id != profile.id ||
+            manager->activeProfile().userId != profile.userId)
+            co_return;
+        item = latest;
+        safeThis->onMediaItemUpdated(item);
+    } catch (const std::exception &) {
+        
+        qWarning() << "[BaseView] Person menu data refresh failed" << "| itemId=" << item.id;
+    }
+    if (!safeThis || !manager || !safeThis->isVisible() ||
+        manager->activeProfile().id != profile.id ||
+        manager->activeProfile().userId != profile.userId)
+        co_return;
+    const CardContextMenuRequest request = safeThis->showCardContextMenu(item, globalPos);
+    if (safeThis)
+        safeThis->dispatchCardContextMenuRequest(item, request);
 }
 
 CardContextMenuRequest BaseView::showCardContextMenu(const MediaItem& item,
@@ -1095,7 +1249,10 @@ void BaseView::dispatchCardContextMenuRequest(
         launchTask(executeExternalPlay(item, request.stringValue));
         return;
     case CardContextMenuAction::ViewDetails:
-        Q_EMIT navigateToDetail(item.id, item.name, item);
+        if (item.type == "Person")
+            Q_EMIT navigateToPerson(item.id, item.name);
+        else
+            Q_EMIT navigateToDetail(item.id, item.name, item);
         return;
     case CardContextMenuAction::Download:
         handleDownloadRequested(item);
@@ -1108,6 +1265,9 @@ void BaseView::dispatchCardContextMenuRequest(
         return;
     case CardContextMenuAction::Identify:
         handleIdentifyRequested(item);
+        return;
+    case CardContextMenuAction::RemoveIdentification:
+        launchTask(executeRemoveIdentification(item));
         return;
     case CardContextMenuAction::RefreshMetadata:
         handleRefreshMetadataRequested(item);
@@ -1145,7 +1305,7 @@ void BaseView::dispatchCardContextMenuRequest(
 
 
 QCoro::Task<void> BaseView::refreshAndBroadcastItem(
-    const QString& itemId,
+    QString itemId,
     std::optional<MediaUserDataInfo> playbackStateOverride)
 {
     if (itemId.isEmpty() || !m_core || !m_core->mediaService()) {

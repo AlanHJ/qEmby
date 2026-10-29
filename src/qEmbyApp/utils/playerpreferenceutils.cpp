@@ -318,6 +318,25 @@ bool containsStreamIndex(const MediaSourceInfo &source, const QString &type,
 
 namespace PlayerPreferenceUtils {
 
+const QList<double> &playbackSpeedOptions() {
+    static const QList<double> speeds = {
+        0.5, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0};
+    return speeds;
+}
+
+double defaultPlaybackSpeed() {
+    const double speed = ConfigStore::instance()->get<double>(
+        ConfigKeys::PlayerDefaultSpeed, 1.0);
+    for (double option : playbackSpeedOptions()) {
+        if (qFuzzyCompare(speed, option)) {
+            return option;
+        }
+    }
+    qWarning() << "[PlayerPreferenceUtils] Invalid default playback speed; using 1X"
+               << "| configuredSpeed:" << speed;
+    return 1.0;
+}
+
 QStringList splitLanguageRules(const QString &rawRules) {
     QString normalizedRules = rawRules;
     normalizedRules.replace(QChar(0xFF0C), QChar(','));

@@ -69,6 +69,7 @@ target_compile_definitions(qEmbyApp PRIVATE
 
 target_link_libraries(qEmbyApp PRIVATE
     Qt${QT_VERSION_MAJOR}::Gui
+    Qt${QT_VERSION_MAJOR}::Svg
     Qt${QT_VERSION_MAJOR}::Widgets
     Qt${QT_VERSION_MAJOR}::Network
     Qt${QT_VERSION_MAJOR}::OpenGLWidgets
@@ -151,6 +152,25 @@ install(TARGETS qEmbyApp
 if(QT_VERSION_MAJOR EQUAL 6)
     # 注意：目标从 qEmby 改为 qEmbyApp
     qt_finalize_executable(qEmbyApp)
+endif()
+
+# CI-only executable, never installed or included in release packages.
+option(QEMBY_BUILD_PLAYBACK_PROBE "Build the offline playback regression driver" OFF)
+if(QEMBY_BUILD_PLAYBACK_PROBE AND UNIX AND NOT APPLE)
+    if(NOT EXISTS "${CMAKE_SOURCE_DIR}/scripts/release/playback-probe.cpp")
+        message(FATAL_ERROR "QEMBY_BUILD_PLAYBACK_PROBE requires the local release test tools")
+    endif()
+    set(_probe_sources ${APP_SOURCES})
+    list(FILTER _probe_sources EXCLUDE REGEX "/main\\.cpp$")
+    qt_add_executable(qEmbyPlaybackProbe EXCLUDE_FROM_ALL
+        ${APP_HEADERS} ${_probe_sources} ${APP_QRC_FILES}
+        "${CMAKE_SOURCE_DIR}/scripts/release/playback-probe.cpp")
+    get_target_property(_probe_links qEmbyApp LINK_LIBRARIES)
+    get_target_property(_probe_defines qEmbyApp COMPILE_DEFINITIONS)
+    target_link_libraries(qEmbyPlaybackProbe PRIVATE ${_probe_links})
+    target_compile_definitions(qEmbyPlaybackProbe PRIVATE ${_probe_defines})
+    target_include_directories(qEmbyPlaybackProbe PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_compile_options(qEmbyPlaybackProbe PRIVATE -g1)
 endif()
 
 # ==========================================

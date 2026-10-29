@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QPointer>
 #include <QVariant>
+#include <QSet>
 #include <qcorotask.h>
 #include "externalplayeripc.h"
 
@@ -11,6 +12,7 @@ class QEmbyCore;
 class QProcess;
 class PlayerWindow;
 class QTimer;
+class MpvHttpStreamRelay;
 struct MediaSourceInfo;
 
 
@@ -24,6 +26,15 @@ public:
 
     
     void init(QEmbyCore* core);
+    
+    void shutdown(QEmbyCore* core);
+    quint64 beginVideoIntent();
+    void cancelVideoIntent(quint64 generation);
+    bool isCurrentVideoIntent(quint64 generation) const { return generation == m_playIntent; }
+    quint64 videoIntent() const { return m_playIntent; }
+    void registerVideoOwner(QObject* owner);
+    bool hasUnconfirmedExternalPlayback() const { return m_externalUnconfirmed; }
+    void acknowledgeExternalStop();
 
     
     void startPlayback(const QString& mediaId, const QString& title,
@@ -45,6 +56,7 @@ public:
     void stopExternalPlayer();
 
 signals:
+    void externalCompletionUnconfirmed(bool unconfirmed);
     
     void requestEmbeddedPlay(const QString& mediaId, const QString& title,
                              const QString& streamUrl, long long startPositionTicks,
@@ -99,6 +111,10 @@ private:
 
     
     QEmbyCore* m_core = nullptr;
+    quint64 m_playIntent = 0;
+    QSet<QObject*> m_videoOwners;
+    bool m_videoPending = false;
+    bool m_externalUnconfirmed = false;
     QPointer<QProcess> m_extProcess;             
     QPointer<PlayerWindow> m_independentWindow;  
 
@@ -108,6 +124,8 @@ private:
     QString m_currentMediaId;                    
     QString m_currentMediaSourceId;              
     QString m_currentPlaySessionId;              
+    QString m_externalLiveStreamId;
+    MpvHttpStreamRelay* m_externalRelay = nullptr;
 };
 
 #endif 

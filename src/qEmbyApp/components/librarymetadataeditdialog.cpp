@@ -164,7 +164,7 @@ QDateTime parseServerDateTime(QString rawValue)
         parsed = QDateTime::fromString(
             rawValue, QStringLiteral("yyyy-MM-ddTHH:mm:ss.zzzzzzzZ"));
         if (parsed.isValid()) {
-            parsed.setTimeZone(QTimeZone::UTC);
+            parsed.setTimeZone(QTimeZone(0));
         }
     }
 
@@ -373,12 +373,16 @@ LibraryMetadataEditDialog::LibraryMetadataEditDialog(QJsonObject itemData,
                m_productionYearEdit);
 
     m_premiereDateEdit = createLineEdit(tr("yyyy-MM-dd"));
-    addFormRow(datesForm, datesRow++, tr("Premiere Date"), m_premiereDateEdit);
+    addFormRow(datesForm, datesRow++, shouldShowPersonMetadata() ? tr("Birth Date") : tr("Premiere Date"),
+               m_premiereDateEdit);
+
+    if (shouldShowSeriesMetadata() || shouldShowPersonMetadata()) {
+        m_endDateEdit = createLineEdit(tr("yyyy-MM-dd"));
+        addFormRow(datesForm, datesRow++, shouldShowPersonMetadata() ? tr("Death Date") : tr("End Date"),
+                   m_endDateEdit);
+    }
 
     if (shouldShowSeriesMetadata()) {
-        m_endDateEdit = createLineEdit(tr("yyyy-MM-dd"));
-        addFormRow(datesForm, datesRow++, tr("End Date"), m_endDateEdit);
-
         m_statusEdit = createLineEdit(tr("Continuing / Ended"));
         addFormRow(datesForm, datesRow++, tr("Status"), m_statusEdit);
     }
@@ -525,7 +529,7 @@ LibraryMetadataEditDialog::LibraryMetadataEditDialog(QJsonObject itemData,
     addLockedFieldOption(lockedFieldsLayout, QStringLiteral("Studios"),
                          tr("Studios"));
     addLockedFieldOption(lockedFieldsLayout, QStringLiteral("PremiereDate"),
-                         tr("Premiere Date"));
+                         shouldShowPersonMetadata() ? tr("Birth Date") : tr("Premiere Date"));
     addLockedFieldOption(lockedFieldsLayout, QStringLiteral("ProductionYear"),
                          tr("Production Year"));
     addLockedFieldOption(lockedFieldsLayout, QStringLiteral("OfficialRating"),
@@ -543,7 +547,7 @@ LibraryMetadataEditDialog::LibraryMetadataEditDialog(QJsonObject itemData,
     }
     if (m_endDateEdit) {
         addLockedFieldOption(lockedFieldsLayout, QStringLiteral("EndDate"),
-                             tr("End Date"));
+                             shouldShowPersonMetadata() ? tr("Death Date") : tr("End Date"));
     }
     if (m_runtimeMinutesEdit) {
         addLockedFieldOption(lockedFieldsLayout, QStringLiteral("RunTimeTicks"),
@@ -572,7 +576,8 @@ LibraryMetadataEditDialog::LibraryMetadataEditDialog(QJsonObject itemData,
     }
     if (m_placeOfBirthEdit) {
         addLockedFieldOption(lockedFieldsLayout,
-                             QStringLiteral("PlaceOfBirth"),
+                             shouldShowPersonMetadata() ? QStringLiteral("ProductionLocations")
+                                                        : QStringLiteral("PlaceOfBirth"),
                              tr("Place of Birth"));
     }
     if (m_parentIndexNumberEdit) {
@@ -858,7 +863,14 @@ QJsonObject LibraryMetadataEditDialog::updatedItemData() const
 
     if (m_placeOfBirthEdit) {
         const QString placeOfBirth = m_placeOfBirthEdit->text().trimmed();
-        if (placeOfBirth.isEmpty()) {
+        if (shouldShowPersonMetadata()) {
+            
+            QStringList locations = placeOfBirth.split(';', Qt::SkipEmptyParts);
+            for (QString &location : locations)
+                location = location.trimmed();
+            locations.removeAll(QString());
+            itemData.insert(QStringLiteral("ProductionLocations"), stringArray(locations));
+        } else if (placeOfBirth.isEmpty()) {
             itemData.remove(QStringLiteral("PlaceOfBirth"));
         } else {
             itemData.insert(QStringLiteral("PlaceOfBirth"), placeOfBirth);
@@ -1231,7 +1243,9 @@ void LibraryMetadataEditDialog::populateForm()
 
     if (m_placeOfBirthEdit) {
         m_placeOfBirthEdit->setText(
-            m_itemData.value(QStringLiteral("PlaceOfBirth")).toString());
+            shouldShowPersonMetadata()
+                ? valuesFromJson(m_itemData.value(QStringLiteral("ProductionLocations"))).join(QStringLiteral("; "))
+                : m_itemData.value(QStringLiteral("PlaceOfBirth")).toString());
     }
 
     if (m_parentIndexNumberEdit &&

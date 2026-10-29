@@ -37,6 +37,7 @@ public:
     QList<ServerProfile> servers() const { return m_servers; }
     ServerProfile activeProfile() const { return m_activeProfile; }
     ApiClient* activeClient() const { return m_activeClient.data(); }
+    QSharedPointer<ApiClient> activeClientHandle() const { return m_activeClient; }
 
     
     void connectWebSocket();

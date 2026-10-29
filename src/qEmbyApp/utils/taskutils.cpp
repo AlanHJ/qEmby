@@ -79,7 +79,7 @@ QString formatIsoDateTime(QString isoDate) {
         return isoDate;
     }
 
-    dt.setTimeZone(QTimeZone::UTC);
+    dt.setTimeZone(QTimeZone(0));
     return dt.toLocalTime().toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
 }
 

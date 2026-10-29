@@ -1,6 +1,9 @@
 #include "medialistmodel.h"
+#include "../../managers/artworkmanager.h"
+#include "../../managers/libraryartworkmanager.h"
 #include <qembycore.h>
 #include <services/media/mediaservice.h>
+#include <services/admin/adminservice.h>
 #include <config/configstore.h>
 #include <config/config_keys.h>
 #include <QSet>
@@ -17,6 +20,7 @@ namespace {
 
 
 constexpr int kMaxConcurrentImageFetches = 4;
+constexpr int kMaxConcurrentRatingFetches = 2;
 
 QString buildImageIdentity(const MediaItem& item)
 {
@@ -90,6 +94,35 @@ MediaListModel::MediaListModel(int imageMaxWidth, QEmbyCore* core, QObject *pare
     : QAbstractListModel(parent), m_imageMaxWidth(imageMaxWidth), m_core(core)
 {
     m_imageRequestContext = new QObject(this);
+    setProperty("artworkPolicyEligible", true);
+    connect(ConfigStore::instance(), &ConfigStore::valueChanged, this, [this](const QString& key) {
+        if (!key.endsWith(QLatin1String(ConfigKeys::AutoArtworkLayout)) &&
+            !key.endsWith(QLatin1String(ConfigKeys::ArtworkLayoutMode)) &&
+            key != ConfigKeys::DefaultLibraryView &&
+            !key.endsWith(QLatin1String(ConfigKeys::LibraryViewMode))) return;
+        QList<int> rows;
+        for (int row = 0; row < m_items.size(); ++row)
+            if (m_priorityImageIds.contains(m_items[row].id)) rows.append(row);
+        clearImageCache();
+        setPriorityRows(rows);
+        if (!m_items.isEmpty()) Q_EMIT dataChanged(index(0, 0), index(m_items.size() - 1, 0), {PosterPixmapRole, ArtworkLayoutRole});
+    });
+    connect(LibraryArtworkManager::instance(), &LibraryArtworkManager::policyChanged, this, [this]() {
+        reportVisibleArtworkEvidence();
+        if (!m_items.isEmpty()) Q_EMIT dataChanged(index(0, 0), index(m_items.size() - 1, 0), {ArtworkLayoutRole});
+    }, Qt::QueuedConnection);
+    connect(ArtworkManager::instance(), &ArtworkManager::frameChanged, this, [this](const QString& key) {
+        if (m_imageRequestsSuspended) return;
+        for (auto it = m_animationKeys.cbegin(); it != m_animationKeys.cend(); ++it) {
+            if (it.value() == key && m_priorityImageIds.contains(it.key())) {
+                const auto frame = ArtworkManager::instance()->currentFrame(key);
+                if (!frame.isNull()) {
+                    m_imageCache.insert(it.key(), QPixmap::fromImage(frame));
+                    queueImageDataChanged(it.key());
+                }
+            }
+        }
+    });
     m_imageNotifyTimer = new QTimer(this);
     m_imageNotifyTimer->setSingleShot(true);
     m_imageNotifyTimer->setTimerType(Qt::PreciseTimer);
@@ -99,7 +132,11 @@ MediaListModel::MediaListModel(int imageMaxWidth, QEmbyCore* core, QObject *pare
 
 MediaListModel::~MediaListModel()
 {
+    ArtworkManager::instance()->unsubscribe(this);
     ++m_imageRequestGeneration;
+    ++m_ratingRequestGeneration;
+    m_loadingRatings.clear();
+    m_pendingRatingIds.clear();
     m_loadingImages.clear();
     m_pendingImageRequests.clear();
     m_pendingImageOrder.clear();
@@ -112,10 +149,15 @@ MediaListModel::~MediaListModel()
 
 void MediaListModel::suspendImageRequests()
 {
+    ArtworkManager::instance()->unsubscribe(this);
     const int activeCount = m_activeImageFetches;
     const int pendingCount = m_pendingImageRequests.size();
     m_imageRequestsSuspended = true;
     ++m_imageRequestGeneration;
+    ++m_ratingRequestGeneration;
+    m_loadingRatings.clear();
+    m_pendingRatingIds.clear();
+    m_activeRatingFetches = 0;
 
     
     
@@ -165,6 +207,8 @@ void MediaListModel::clearImageCache()
         m_imageRequestsSuspended = wasSuspended;
     }
     m_imageCache.clear();
+    ArtworkManager::instance()->unsubscribe(this);
+    m_animationKeys.clear();
     m_failedImageItems.clear();
 }
 
@@ -199,7 +243,22 @@ QVariant MediaListModel::data(const QModelIndex &index, int role) const {
     
     const MediaItem& item = m_items.at(index.row());
 
+    if (role == ArtworkLayoutRole) {
+        if (item.type == QLatin1String("MusicAlbum")) return int(ArtworkPolicyUtils::Layout::Square);
+        auto* manager = LibraryArtworkManager::instance();
+        return int(manager->layout(manager->libraryForItem(item)));
+    }
     if (role == ItemDataRole) {
+        if (item.communityRating > 0.0) {
+            return QVariant::fromValue(item);
+        }
+        const double cachedRating = m_ratingCache.value(item.id, 0.0);
+        if (cachedRating > 0.0) {
+            MediaItem ratedItem = item;
+            ratedItem.communityRating = cachedRating;
+            return QVariant::fromValue(ratedItem);
+        }
+        const_cast<MediaListModel*>(this)->ensureRatingRequested(item);
         return QVariant::fromValue(item);
     }
     else if (role == Qt::ToolTipRole) {
@@ -219,6 +278,89 @@ QVariant MediaListModel::data(const QModelIndex &index, int role) const {
         return QVariant(); 
     }
     return QVariant();
+}
+
+void MediaListModel::ensureRatingRequested(const MediaItem& item)
+{
+    if (m_imageRequestsSuspended || item.id.isEmpty() ||
+        m_ratingCache.contains(item.id) || m_loadingRatings.contains(item.id) ||
+        !m_core || !m_core->mediaService() ||
+        !ConfigStore::instance()->get<bool>(ConfigKeys::ShowCoverRating, true)) {
+        return;
+    }
+
+    if (item.type != QLatin1String("Movie") &&
+        item.type != QLatin1String("Series") &&
+        item.type != QLatin1String("Season") &&
+        item.type != QLatin1String("Episode") &&
+        item.type != QLatin1String("Video") &&
+        item.type != QLatin1String("MusicVideo")) {
+        return;
+    }
+
+    m_loadingRatings.insert(item.id);
+    m_pendingRatingIds.append(item.id);
+    scheduleRatingFetches();
+}
+
+void MediaListModel::scheduleRatingFetches()
+{
+    if (!ConfigStore::instance()->get<bool>(ConfigKeys::ShowCoverRating, true)) {
+        for (const QString& itemId : std::as_const(m_pendingRatingIds)) {
+            m_loadingRatings.remove(itemId);
+        }
+        m_pendingRatingIds.clear();
+        return;
+    }
+    while (!m_imageRequestsSuspended &&
+           m_activeRatingFetches < kMaxConcurrentRatingFetches &&
+           !m_pendingRatingIds.isEmpty()) {
+        const QString itemId = m_pendingRatingIds.takeFirst();
+        const bool stillPresent = std::any_of(
+            m_items.cbegin(), m_items.cend(),
+            [&itemId](const MediaItem& item) { return item.id == itemId; });
+        if (!stillPresent) {
+            m_loadingRatings.remove(itemId);
+            continue;
+        }
+        ++m_activeRatingFetches;
+        QCoro::connect(fetchRating(itemId, m_ratingRequestGeneration),
+                       this, []() {});
+    }
+}
+
+QCoro::Task<void> MediaListModel::fetchRating(QString itemId, int generation)
+{
+    QPointer<MediaListModel> safeThis(this);
+    QPointer<MediaService> service(m_core ? m_core->mediaService() : nullptr);
+    double rating = 0.0;
+    try {
+        if (service) {
+            rating = co_await service->getItemCommunityRating(itemId);
+        }
+    } catch (const std::exception& error) {
+        qWarning() << "[MediaListModel] rating request failed"
+                   << "| itemId=" << itemId << "| error=" << error.what();
+    }
+
+    if (!safeThis || generation != safeThis->m_ratingRequestGeneration) {
+        co_return;
+    }
+    safeThis->m_loadingRatings.remove(itemId);
+    safeThis->m_activeRatingFetches =
+        qMax(0, safeThis->m_activeRatingFetches - 1);
+    safeThis->m_ratingCache.insert(itemId, rating);
+    if (rating > 0.0) {
+        for (int row = 0; row < safeThis->m_items.size(); ++row) {
+            if (safeThis->m_items.at(row).id == itemId) {
+                const QModelIndex itemIndex = safeThis->index(row, 0);
+                Q_EMIT safeThis->dataChanged(itemIndex, itemIndex,
+                                             {ItemDataRole});
+                break;
+            }
+        }
+    }
+    safeThis->scheduleRatingFetches();
 }
 
 void MediaListModel::setImageMaxWidth(int maxWidth)
@@ -306,11 +448,18 @@ QString MediaListModel::buildTooltipText(const MediaItem &item) const {
 
 
 void MediaListModel::setItems(const QList<MediaItem>& newItems) {
+    LibraryArtworkManager::instance()->observeItems(newItems);
     if (m_items.isEmpty() || newItems.isEmpty()) {
         beginResetModel();
         m_items = newItems;
         if (newItems.isEmpty()) {
+            m_artworkSizes.clear();
             clearImageCache();
+            ++m_ratingRequestGeneration;
+            m_ratingCache.clear();
+            m_loadingRatings.clear();
+            m_pendingRatingIds.clear();
+            m_activeRatingFetches = 0;
         }
         endResetModel();
         return;
@@ -326,9 +475,11 @@ void MediaListModel::setItems(const QList<MediaItem>& newItems) {
     
     for (int i = m_items.size() - 1; i >= 0; --i) {
         if (!newIds.contains(m_items[i].id)) {
+            const QString removedItemId = m_items[i].id;
             beginRemoveRows(QModelIndex(), i, i);
             m_items.removeAt(i);
             endRemoveRows();
+            invalidateItemImageRequest(removedItemId);
         }
     }
 
@@ -395,12 +546,44 @@ void MediaListModel::setItems(const QList<MediaItem>& newItems) {
             it.remove();
         }
     }
+    for (auto size = m_artworkSizes.begin(); size != m_artworkSizes.end();) {
+        if (!newIds.contains(size.key())) size = m_artworkSizes.erase(size);
+        else ++size;
+    }
     QMutableSetIterator<QString> failedIt(m_failedImageItems);
     while (failedIt.hasNext()) {
         if (!newIds.contains(failedIt.next())) {
             failedIt.remove();
         }
     }
+    QMutableHashIterator<QString, double> ratingIt(m_ratingCache);
+    while (ratingIt.hasNext()) {
+        ratingIt.next();
+        if (!newIds.contains(ratingIt.key())) {
+            ratingIt.remove();
+        }
+    }
+}
+
+ArtworkPolicyUtils::State MediaListModel::loadedArtworkState() const
+{
+    QHash<QString, ArtworkPolicyUtils::Evidence> evidence;
+    for (const auto& item : m_items) {
+        if (item.type == QLatin1String("Person") || item.type == QLatin1String("Episode") ||
+            item.type == QLatin1String("Season") || item.type == QLatin1String("TvChannel")) continue;
+        const auto cover = item.images.bestPoster();
+        ArtworkPolicyUtils::Evidence entry;
+        entry.identity = buildImageIdentity(item);
+        entry.hasImage = !cover.first.isEmpty();
+        entry.requested = m_priorityImageIds.contains(item.id);
+        const auto observed = m_artworkSizes.constFind(item.id);
+        if (observed != m_artworkSizes.cend() && observed->first == entry.identity) {
+            entry.size = observed->second;
+            entry.resolved = entry.size.isValid();
+        }
+        evidence.insert(item.id, entry);
+    }
+    return ArtworkPolicyUtils::classify(evidence, false);
 }
 
 MediaItem MediaListModel::getItem(const QModelIndex& index) const {
@@ -462,8 +645,7 @@ void MediaListModel::prependOrUpdateItem(const MediaItem& item, int maxItems)
             beginRemoveRows(QModelIndex(), removeIndex, removeIndex);
             m_items.removeAt(removeIndex);
             endRemoveRows();
-            m_imageCache.remove(cachedItemId);
-            m_loadingImages.remove(cachedItemId);
+            invalidateItemImageRequest(cachedItemId);
         }
     }
 }
@@ -485,15 +667,27 @@ void MediaListModel::removeItem(const QString& itemId) {
             endRemoveRows();
 
             
-            m_imageCache.remove(cachedItemId);
-            m_loadingImages.remove(cachedItemId);
-            m_failedImageItems.remove(cachedItemId);
-            m_imageCache.remove(itemId);
-            m_loadingImages.remove(itemId);
-            m_failedImageItems.remove(itemId);
+            invalidateItemImageRequest(cachedItemId);
+            if (itemId != cachedItemId) invalidateItemImageRequest(itemId);
             
             break; 
         }
+    }
+}
+
+void MediaListModel::reportVisibleArtworkEvidence()
+{
+    auto* manager = LibraryArtworkManager::instance();
+    if (!manager->enabled() || !property("artworkPolicyEligible").toBool()) return;
+    QList<MediaItem> visible;
+    for (const auto& item : m_items)
+        if (m_priorityImageIds.contains(item.id)) visible.append(item);
+    manager->requestEvidence(visible);
+    for (const auto& item : visible) {
+        const auto identity = m_imageEvidence.constFind(item.id);
+        const auto pix = m_imageCache.constFind(item.id);
+        if (identity != m_imageEvidence.cend() && pix != m_imageCache.cend())
+            manager->observeImage(item, identity->first, identity->second, pix->size());
     }
 }
 
@@ -516,6 +710,10 @@ void MediaListModel::setPriorityRows(const QList<int>& rows)
     }
 
     m_priorityImageIds = priorityIds;
+    reportVisibleArtworkEvidence();
+    ArtworkManager::instance()->unsubscribe(this);
+    for (const auto& id : priorityIds)
+        ArtworkManager::instance()->subscribe(m_animationKeys.value(id), this, !m_imageRequestsSuspended);
 
     for (auto it = m_pendingImageRequests.begin();
          it != m_pendingImageRequests.end(); ++it) {
@@ -590,7 +788,20 @@ void MediaListModel::ensureImageRequested(const MediaItem& item,
     const bool adaptiveImages =
         ConfigStore::instance()->get<bool>(ConfigKeys::AdaptiveImages, true);
 
-    if (m_preferThumb) {
+    auto* artwork = LibraryArtworkManager::instance();
+    const QString library = artwork->libraryForItem(item);
+    const bool policyEligible = property("artworkPolicyEligible").toBool() && !library.isEmpty() &&
+        (item.type == "Movie" || item.type == "Series" || item.type == "Video" || item.type == "BoxSet");
+    const auto layout = policyEligible ? artwork->layout(library) : ArtworkPolicyUtils::Layout::Default;
+    if (property("automaticPageArtwork").toBool()) {
+        const auto cover = item.images.bestPoster();
+        appendCandidate(cover.first, cover.second);
+    }
+    if (policyEligible && artwork->enabled() && !artwork->hasManualOverride(library))
+        appendCandidate(item.images.primaryTag, QStringLiteral("Primary"));
+    const bool preferThumb = layout == ArtworkPolicyUtils::Layout::Portrait ? false :
+        layout == ArtworkPolicyUtils::Layout::Landscape ? true : m_preferThumb;
+    if (preferThumb) {
         if (adaptiveImages) {
             appendCandidate(item.images.thumbTag, QStringLiteral("Thumb"));
             appendCandidate(item.images.backdropTag, QStringLiteral("Backdrop"));
@@ -745,12 +956,13 @@ QCoro::Task<void> MediaListModel::executeImageFetch(
                 : ImageFetchPolicy::CachePreferred;
 
         
-        QPixmap pix = co_await core->mediaService()->fetchImage(
+        const auto asset = co_await ArtworkManager::instance()->fetch(core->mediaService(), core->adminService(),
             candidate.targetImageId, candidate.imageType, candidate.imageTag,
-            candidate.maxWidth, -1,
+            candidate.maxWidth,
             request.highPriority ? ImageRequestPriority::High
                                  : ImageRequestPriority::Normal,
             requestContext.data(), fetchPolicy);
+        QPixmap pix = QPixmap::fromImage(asset.preview);
         
         
         if (!safeThis) {
@@ -821,6 +1033,12 @@ QCoro::Task<void> MediaListModel::executeImageFetch(
 
         
         safeThis->m_imageCache.insert(itemId, pix);
+        safeThis->m_imageEvidence.insert(itemId, {candidate.imageType, candidate.imageTag});
+        if (asset.animated) {
+            safeThis->m_animationKeys.insert(itemId, asset.key);
+            ArtworkManager::instance()->subscribe(asset.key, safeThis.data(),
+                safeThis->m_priorityImageIds.contains(itemId) && !safeThis->m_imageRequestsSuspended);
+        }
         safeThis->m_loadingImages.remove(itemId);
 
         
@@ -835,6 +1053,16 @@ QCoro::Task<void> MediaListModel::executeImageFetch(
         
         
         if (currentRow >= 0) {
+            const auto cover = safeThis->m_items.at(currentRow).images.bestPoster();
+            if (candidate.imageType == cover.second && candidate.imageTag == cover.first) {
+                const QPair<QString, QSize> observed{request.imageIdentity, asset.size};
+                if (safeThis->m_artworkSizes.value(itemId) != observed) {
+                    safeThis->m_artworkSizes.insert(itemId, observed);
+                    Q_EMIT safeThis->artworkEvidenceChanged();
+                }
+            }
+            LibraryArtworkManager::instance()->observeImage(safeThis->m_items.at(currentRow),
+                candidate.imageType, candidate.imageTag, asset.size);
             safeThis->queueImageDataChanged(itemId);
         }
         finishFetch();
@@ -921,6 +1149,11 @@ bool MediaListModel::isImageRequestCurrent(
 
 void MediaListModel::invalidateItemImageRequest(const QString& itemId)
 {
+    if (m_artworkSizes.remove(itemId)) Q_EMIT artworkEvidenceChanged();
+    m_imageEvidence.remove(itemId);
+    const QString animation = m_animationKeys.take(itemId);
+    if (!m_animationKeys.values().contains(animation))
+        ArtworkManager::instance()->subscribe(animation, this, false);
     m_imageCache.remove(itemId);
     m_loadingImages.remove(itemId);
     m_failedImageItems.remove(itemId);

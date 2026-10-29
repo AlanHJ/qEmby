@@ -1,12 +1,16 @@
 #include "dashboardview.h"
 
 #include "../../components/horizontallistviewgallery.h"
+#include "../../components/mediacarouselwidget.h"
+#include "../../components/detailcontentwidget.h"
 #include "../../components/libraryactionmenu.h"
 #include "../../components/mediaimageeditdialog.h"
 #include "../../components/moderntoast.h"
 #include "../../components/mediasectionwidget.h"
+#include "../../managers/libraryartworkmanager.h"
 #include "../../utils/dashboardrequestlimitutils.h"
 #include "../../utils/dashboardsectionorderutils.h"
+#include "../../utils/featuredmediautils.h"
 #include "../../utils/mediaitemutils.h"
 #include "../../utils/resumeitemresolver.h"
 #include "../../utils/smoothscrollcontroller.h"
@@ -47,15 +51,14 @@ bool isLibraryNavigationItem(const MediaItem& item)
 MediaCardDelegate::CardStyle dashboardGalleryStyle()
 {
     const bool isTile =
-        ConfigStore::instance()->get<QString>(ConfigKeys::DefaultLibraryView,
-                                              "poster") == "tile";
+        LibraryArtworkManager::instance()->fallbackViewMode() == QLatin1String("tile");
     return isTile ? MediaCardDelegate::LibraryTile
                   : MediaCardDelegate::Poster;
 }
 
-int dashboardGalleryHeight()
+int dashboardGalleryHeight(MediaCardDelegate::CardStyle style)
 {
-    return dashboardGalleryStyle() == MediaCardDelegate::LibraryTile ? 230 : 300;
+    return style == MediaCardDelegate::LibraryTile ? 230 : 300;
 }
 
 } 
@@ -78,6 +81,23 @@ DashboardView::DashboardView(QEmbyCore* core, QWidget* parent)
 
     setupUi();
 
+    if (m_core && m_core->mediaService()) {
+        connect(m_core->mediaService(), &MediaService::itemDetailFetched, this,
+                [this](const MediaItem& item, const QString& serverId,
+                       const QString& userId) {
+                    if (currentDashboardContextKey() !=
+                        serverId + QLatin1Char('|') + userId) {
+                        return;
+                    }
+                    if (m_recommendGallery) {
+                        m_recommendGallery->updateItem(item);
+                    }
+                    if (m_featuredCarousel) {
+                        m_featuredCarousel->updateItem(item);
+                    }
+                });
+    }
+
     connect(m_libraryListView, &QListView::clicked, this,
             [this](const QModelIndex& index) {
                 const MediaItem item = m_libraryModel->getItem(index);
@@ -85,8 +105,31 @@ DashboardView::DashboardView(QEmbyCore* core, QWidget* parent)
             });
 
     connect(ConfigStore::instance(), &ConfigStore::valueChanged, this,
-            [this](const QString& key, const QVariant&) {
+            [this](const QString& key, const QVariant& value) {
                 const QString sid = currentServerId();
+                if (key == ConfigKeys::forServer(sid, ConfigKeys::ShowMediaCarousel)) {
+                    applyCarouselPreference(isVisible());
+                    return;
+                }
+                if (key == ConfigKeys::forServer(sid, ConfigKeys::MediaCarouselHeightPercent)) {
+                    qDebug() << "[DashboardView] Carousel height preference changed"
+                             << "| heightPercent=" << value.toInt();
+                    updateCarouselHeight();
+                    return;
+                }
+                if (key == ConfigKeys::forServer(sid, ConfigKeys::MediaCarouselCount)) {
+                    
+                    
+                    ++m_featuredLoadGeneration;
+                    m_featuredLoading = false;
+                    m_featuredNeedsRefresh = true;
+                    m_featuredCarousel->setSelectionLoading(false);
+                    qDebug() << "[DashboardView] Carousel count changed; reusing daily selection"
+                             << "| configuredCount=" << value.toInt()
+                             << "| carouselGeneration=" << m_featuredLoadGeneration;
+                    applyCarouselPreference(isVisible());
+                    return;
+                }
                 if (key == ConfigKeys::forServer(sid, ConfigKeys::HiddenHomeLibraries)) {
                     applyLibraryVisibility();
                     return;
@@ -99,12 +142,15 @@ DashboardView::DashboardView(QEmbyCore* core, QWidget* parent)
                 if (key == customOrderEnabledKey || key == homeSectionOrderKey) {
                     applyDashboardSectionOrder();
                     if (isVisible()) {
-                        launchDashboardTask(loadDashboardData());
+                        launchDashboardTask(loadDashboardData(CarouselRefreshPolicy::Reuse));
                     }
                     return;
                 }
 
                 if (key == ConfigKeys::DefaultLibraryView ||
+                    key == ConfigKeys::forServer(sid, ConfigKeys::ArtworkLayoutMode) ||
+                    key == ConfigKeys::forServer(sid, ConfigKeys::ShowLiveTv) ||
+                    key == ConfigKeys::forServer(sid, ConfigKeys::ShowMusic) ||
                     key == ConfigKeys::forServer(
                                sid, ConfigKeys::ShowContinueWatching) ||
                     key ==
@@ -126,7 +172,7 @@ DashboardView::DashboardView(QEmbyCore* core, QWidget* parent)
                     key ==
                         ConfigKeys::forServer(sid, ConfigKeys::ShowEachLibrary)) {
                     if (isVisible()) {
-                        launchDashboardTask(loadDashboardData());
+                        launchDashboardTask(loadDashboardData(CarouselRefreshPolicy::Reuse));
                     }
                 }
             });
@@ -176,23 +222,47 @@ void DashboardView::setupUi()
     m_mainScrollArea->setFrameShape(QFrame::NoFrame);
     m_mainScrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 
-    auto* container = new QWidget(m_mainScrollArea);
+    auto* container = new DetailContentWidget(m_mainScrollArea);
     container->setObjectName("dashboard-container");
 
     m_containerLayout = new QVBoxLayout(container);
     m_containerLayout->setContentsMargins(20, 20, 20, 20);
     m_containerLayout->setSpacing(0);
 
+    m_featuredCarousel = new MediaCarouselWidget(
+        m_core ? m_core->mediaService() : nullptr, container);
+    container->setBackdropFadeAnchor(m_featuredCarousel);
+    m_featuredCarousel->setBackdropSource(container);
+    connect(m_featuredCarousel, &MediaCarouselWidget::backdropChanged,
+            container, &DetailContentWidget::setBackdropWithTransition);
+    connect(m_featuredCarousel, &MediaCarouselWidget::itemClicked, this,
+            [this](const MediaItem& item) {
+                Q_EMIT navigateToDetail(item.id, item.name, item);
+            });
+    connect(m_featuredCarousel, &MediaCarouselWidget::changeSelectionRequested, this,
+            [this]() { applyCarouselPreference(true, CarouselRefreshPolicy::NewSelection); });
+
     const MediaCardDelegate::CardStyle galleryStyle = dashboardGalleryStyle();
-    const int galleryHeight = dashboardGalleryHeight();
 
     auto connectGallerySignals = [this](HorizontalListViewGallery* gallery) {
         gallery->listView()->setProperty("isHorizontalListView", true);
         gallery->listView()->viewport()->installEventFilter(this);
 
         connect(gallery, &HorizontalListViewGallery::itemClicked, this,
-                [this](const MediaItem& item) {
-                    if (isLibraryNavigationItem(item)) {
+                [this, gallery](const MediaItem& item) {
+                    qDebug() << "[DashboardView] Gallery card clicked"
+                             << "| section="
+                             << (gallery == m_recommendGallery ? "recommended"
+                                 : gallery == m_latestGallery ? "latest"
+                                 : gallery == m_resumeGallery ? "resume"
+                                                              : "completed")
+                             << "| itemId=" << item.id
+                             << "| title=" << item.name
+                             << "| hasPrimaryImage="
+                             << !item.images.primaryTag.isEmpty();
+                    if (item.type == QLatin1String("TvChannel")) {
+                        handlePlayRequested(item);
+                    } else if (isLibraryNavigationItem(item)) {
                         Q_EMIT navigateToLibrary(item.id, item.name);
                     } else {
                         Q_EMIT navigateToDetail(item.id, item.name, item);
@@ -207,7 +277,7 @@ void DashboardView::setupUi()
     };
 
     auto createGallerySection =
-        [this, container, galleryHeight, &connectGallerySignals](
+        [this, container, &connectGallerySignals](
             QWidget* header, HorizontalListViewGallery** outGallery,
             MediaCardDelegate::CardStyle style) {
             auto* section = new QWidget(container);
@@ -217,7 +287,7 @@ void DashboardView::setupUi()
             layout->addWidget(header);
 
             *outGallery = new HorizontalListViewGallery(m_core, section);
-            (*outGallery)->setFixedHeight(galleryHeight);
+            (*outGallery)->setFixedHeight(dashboardGalleryHeight(style));
             (*outGallery)->setCardStyle(style);
             connectGallerySignals(*outGallery);
 
@@ -226,8 +296,11 @@ void DashboardView::setupUi()
         };
 
     m_resumeHeader = createSectionHeader(tr("Continue Watching"), "resume");
+    
     m_resumeSection =
-        createGallerySection(m_resumeHeader, &m_resumeGallery, galleryStyle);
+        createGallerySection(m_resumeHeader, &m_resumeGallery,
+                             MediaCardDelegate::LibraryTile);
+    m_resumeGallery->setLibraryArtworkPolicyEnabled(false);
 
     m_latestHeader = createSectionHeader(tr("Latest Media"), "latest");
     m_latestSection =
@@ -241,6 +314,28 @@ void DashboardView::setupUi()
         createSectionHeader(tr("Completed Watching"), "played");
     m_completedSection = createGallerySection(m_completedHeader,
                                               &m_completedGallery, galleryStyle);
+
+    auto resourceHeader = [this, container](QString title, bool music) {
+        auto* header = new QWidget(container);
+        auto* layout = new QHBoxLayout(header);
+        layout->setContentsMargins(0, 0, 20, 0);
+        auto* label = new QLabel(title, header);
+        label->setObjectName("dashboard-section-title");
+        layout->addWidget(label, 1);
+        auto* refresh = new QPushButton(tr("Refresh"), header);
+        layout->addWidget(refresh);
+        connect(refresh, &QPushButton::clicked, this, [this, music]() {
+            launchDashboardTask(loadResourceSection(music, m_loadGeneration));
+        });
+        return header;
+    };
+    auto* liveTitle = resourceHeader(tr("Live TV"), false);
+    m_liveTvSection = createGallerySection(liveTitle, &m_liveTvGallery,
+                                          MediaCardDelegate::LibraryTile);
+    m_liveTvGallery->setLibraryArtworkPolicyEnabled(false);
+    auto* musicTitle = resourceHeader(tr("Music"), true);
+    m_musicSection = createGallerySection(musicTitle, &m_musicGallery, MediaCardDelegate::AlbumCover);
+    m_musicGallery->setFixedHeight(240);
 
     m_libraryGridSection = new QWidget(container);
     auto* libraryGridLayout = new QVBoxLayout(m_libraryGridSection);
@@ -259,10 +354,13 @@ void DashboardView::setupUi()
     m_librarySectionsLayout->setContentsMargins(0, 0, 0, 0);
     m_librarySectionsLayout->setSpacing(0);
 
+    m_containerLayout->addWidget(m_featuredCarousel);
     m_containerLayout->addWidget(m_resumeSection);
     m_containerLayout->addWidget(m_latestSection);
     m_containerLayout->addWidget(m_recommendSection);
     m_containerLayout->addWidget(m_completedSection);
+    m_containerLayout->addWidget(m_liveTvSection);
+    m_containerLayout->addWidget(m_musicSection);
     m_containerLayout->addWidget(m_libraryGridSection);
     m_containerLayout->addWidget(m_librarySectionsContainer);
     m_containerLayout->addStretch();
@@ -271,6 +369,8 @@ void DashboardView::setupUi()
     m_latestSection->hide();
     m_recommendSection->hide();
     m_completedSection->hide();
+    m_liveTvSection->hide();
+    m_musicSection->hide();
     m_libraryGridSection->hide();
     m_librarySectionsContainer->hide();
 
@@ -282,6 +382,25 @@ void DashboardView::setupUi()
     m_vScrollController->setDuration(160);
 
     m_mainScrollArea->viewport()->installEventFilter(this);
+    updateCarouselHeight();
+}
+
+void DashboardView::updateCarouselHeight()
+{
+    if (!m_mainScrollArea || !m_featuredCarousel) return;
+    
+    
+    const int viewportHeight = m_mainScrollArea->viewport()->height();
+    if (viewportHeight <= 0) return;
+    const int configuredPercent = ConfigStore::instance()->get<int>(
+        ConfigKeys::forServer(currentServerId(), ConfigKeys::MediaCarouselHeightPercent), 50);
+    
+    
+    const int heightPercent = configuredPercent == 35 || configuredPercent == 65
+        ? configuredPercent : 50;
+    
+    
+    m_featuredCarousel->setPreferredHeight(qRound(viewportHeight * (heightPercent / 100.0)));
 }
 
 void DashboardView::applyDashboardSectionOrder()
@@ -311,7 +430,8 @@ void DashboardView::applyDashboardSectionOrder()
         }
     }
 
-    int insertIndex = 0;
+    
+    int insertIndex = m_featuredCarousel ? 1 : 0;
     for (const QString& sectionId : dashboardSectionOrder()) {
         QWidget* widget = sectionWidgetForId(sectionId);
         if (widget) {
@@ -367,6 +487,10 @@ QString DashboardView::currentDashboardContextKey() const
 
 QWidget* DashboardView::sectionWidgetForId(const QString& sectionId) const
 {
+    if (sectionId == QLatin1String(DashboardSectionOrderUtils::LiveTvSectionId))
+        return m_liveTvSection;
+    if (sectionId == QLatin1String(DashboardSectionOrderUtils::MusicSectionId))
+        return m_musicSection;
     if (sectionId == QLatin1String(
                          DashboardSectionOrderUtils::ContinueWatchingSectionId)) {
         return m_resumeSection;
@@ -417,11 +541,26 @@ void DashboardView::clearLibraryGallerySections()
 
 void DashboardView::clearDashboardState(bool resetScrollPositions)
 {
+    ++m_featuredLoadGeneration;
+    m_featuredLoaded = false;
+    m_featuredLoading = false;
+    m_featuredNeedsRefresh = false;
+    m_featuredSelection = {};
+    m_featuredRequestDate = {};
+    m_featuredUnavailableIds.clear();
     m_homeLibraries.clear();
+    if (m_featuredCarousel) {
+        m_featuredCarousel->setSelectionLoading(false);
+        m_featuredCarousel->setItems({});
+    }
     clearDashboardGallery(m_resumeGallery);
     clearDashboardGallery(m_latestGallery);
     clearDashboardGallery(m_recommendGallery);
     clearDashboardGallery(m_completedGallery);
+    clearDashboardGallery(m_liveTvGallery);
+    clearDashboardGallery(m_musicGallery);
+    m_liveTvSection->hide();
+    m_musicSection->hide();
 
     if (m_resumeSection) {
         m_resumeSection->setVisible(false);
@@ -572,6 +711,11 @@ QListView* DashboardView::createGridListView(MediaListModel** outModel)
 
 bool DashboardView::eventFilter(QObject* obj, QEvent* event)
 {
+    if (m_mainScrollArea && obj == m_mainScrollArea->viewport() &&
+        (event->type() == QEvent::Resize || event->type() == QEvent::Show)) {
+        updateCarouselHeight();
+    }
+
     if (m_libraryListView && obj == m_libraryListView->viewport() &&
         event->type() == QEvent::ToolTip) {
         return TextWrapUtils::showWrappedMediaItemToolTip(m_libraryListView,
@@ -658,7 +802,10 @@ void DashboardView::resizeEvent(QResizeEvent* event)
 void DashboardView::showEvent(QShowEvent* event)
 {
     QWidget::showEvent(event);
-    launchDashboardTask(loadDashboardData());
+    updateCarouselHeight();
+    
+    
+    launchDashboardTask(loadDashboardData(CarouselRefreshPolicy::Reuse));
 }
 
 bool DashboardView::isManageableDashboardLibraryCard(const MediaItem& item) const
@@ -808,7 +955,7 @@ void DashboardView::openDashboardLibraryImageEditor(const MediaItem& item)
     launchDashboardTask(loadDashboardData());
 }
 
-QCoro::Task<void> DashboardView::loadDashboardData()
+QCoro::Task<void> DashboardView::loadDashboardData(CarouselRefreshPolicy carouselPolicy)
 {
     const int generation = ++m_loadGeneration;
     const QString contextKey = currentDashboardContextKey();
@@ -855,11 +1002,12 @@ QCoro::Task<void> DashboardView::loadDashboardData()
     applyDashboardSectionOrder();
 
     const MediaCardDelegate::CardStyle style = dashboardGalleryStyle();
-    const int galleryHeight = dashboardGalleryHeight();
+    const int galleryHeight = dashboardGalleryHeight(style);
 
     if (m_resumeGallery) {
-        m_resumeGallery->setCardStyle(style);
-        m_resumeGallery->setFixedHeight(galleryHeight);
+        m_resumeGallery->setCardStyle(MediaCardDelegate::LibraryTile);
+        m_resumeGallery->setFixedHeight(
+            dashboardGalleryHeight(MediaCardDelegate::LibraryTile));
     }
     if (m_latestGallery) {
         m_latestGallery->setCardStyle(style);
@@ -914,13 +1062,193 @@ QCoro::Task<void> DashboardView::loadDashboardData()
         m_librarySectionsContainer->setVisible(showEachLibrary);
     }
 
+    applyCarouselPreference(true, carouselPolicy);
     launchDashboardTask(loadResumeSection(showResume, generation));
     launchDashboardTask(loadLatestSection(showLatest, generation));
     launchDashboardTask(loadRecommendedSection(showRecommended, generation));
     launchDashboardTask(loadCompletedSection(showCompleted, generation));
+    launchDashboardTask(loadResourceSection(false, generation));
+    launchDashboardTask(loadResourceSection(true, generation));
     launchDashboardTask(
         loadLibrarySections(showLibraries, showEachLibrary, generation));
     co_return;
+}
+
+void DashboardView::applyCarouselPreference(bool loadIfEnabled, CarouselRefreshPolicy policy)
+{
+    updateCarouselHeight();
+    const bool enabled = ConfigStore::instance()->get<bool>(
+        ConfigKeys::forServer(currentServerId(), ConfigKeys::ShowMediaCarousel), true);
+    const bool hasSession = !currentDashboardContextKey().isEmpty();
+    qDebug() << "[DashboardView] Carousel preference applied"
+             << "| enabled=" << enabled << "| hasSession=" << hasSession
+             << "| loadIfEnabled=" << loadIfEnabled
+             << "| refresh=" << (policy == CarouselRefreshPolicy::Refresh)
+             << "| newSelection=" << (policy == CarouselRefreshPolicy::NewSelection)
+             << "| loaded=" << m_featuredLoaded << "| loading=" << m_featuredLoading
+             << "| carouselGeneration=" << m_featuredLoadGeneration;
+
+    if (!enabled || !hasSession) {
+        ++m_featuredLoadGeneration;
+        m_featuredLoaded = false;
+        m_featuredLoading = false;
+        m_featuredCarousel->setSelectionLoading(false);
+        m_featuredCarousel->setItems({});
+        return;
+    }
+    if (!loadIfEnabled) return;
+    const QDate today = QDate::currentDate();
+    if (m_featuredLoading && m_featuredRequestDate == today &&
+        policy != CarouselRefreshPolicy::NewSelection) return;
+    if (policy == CarouselRefreshPolicy::Reuse && m_featuredLoaded &&
+        m_featuredSelection.date == today && !m_featuredNeedsRefresh) {
+        qDebug() << "[DashboardView] Preserving carousel on page return/section refresh"
+                 << "| loaded=" << m_featuredLoaded << "| loading=" << m_featuredLoading
+                 << "| carouselGeneration=" << m_featuredLoadGeneration;
+        return;
+    }
+    const int carouselGeneration = ++m_featuredLoadGeneration;
+    m_featuredLoading = true;
+    m_featuredRequestDate = today;
+    m_featuredCarousel->setSelectionLoading(true);
+    launchDashboardTask(loadFeaturedSection(
+        carouselGeneration, policy == CarouselRefreshPolicy::NewSelection));
+}
+
+QCoro::Task<void> DashboardView::loadFeaturedSection(int carouselGeneration, bool newSelection)
+{
+    QPointer<DashboardView> guard(this);
+    QPointer<MediaService> service(m_core->mediaService());
+    const QString contextKey = currentDashboardContextKey();
+    if (!service) {
+        m_featuredLoading = false;
+        m_featuredCarousel->setSelectionLoading(false);
+        co_return;
+    }
+    const ServerProfile profile = m_core->serverManager()->activeProfile();
+    const QDate requestDate = m_featuredRequestDate;
+    const int slideLimit = qBound(FeaturedMediaUtils::MinimumSlides,
+        ConfigStore::instance()->get<int>(
+            ConfigKeys::forServer(profile.id, ConfigKeys::MediaCarouselCount),
+            FeaturedMediaUtils::DefaultSlides), FeaturedMediaUtils::MaximumSlides);
+    const FeaturedMediaUtils::DailySelection saved = m_featuredSelection.date.isValid()
+        ? m_featuredSelection : FeaturedMediaUtils::loadSelection(profile.id, profile.userId);
+    const QStringList requestedIds = saved.itemIds.mid(0, slideLimit);
+    const bool reuseSelection = !newSelection && saved.date == requestDate;
+    qDebug() << "[DashboardView] Loading daily featured selection"
+             << "| savedDate=" << saved.date << "| requestDate=" << requestDate
+             << "| cachedItems=" << saved.itemIds.size() << "| reuse=" << reuseSelection
+             << "| manualReselection=" << newSelection << "| targetCount=" << slideLimit;
+    
+    const auto isCurrent = [guard, service, carouselGeneration, contextKey]() {
+        return guard && service && carouselGeneration == guard->m_featuredLoadGeneration &&
+            contextKey == guard->currentDashboardContextKey();
+    };
+    try {
+        QList<MediaItem> items;
+        bool refillFailed = false;
+        if (reuseSelection && !requestedIds.isEmpty()) {
+            
+            
+            const QList<MediaItem> available = co_await service->getFeaturedItemsByIds(requestedIds);
+            if (!isCurrent()) co_return;
+            items = FeaturedMediaUtils::orderedItems(requestedIds, available);
+            for (int i = int(items.size()) - 1; i >= 0; --i) {
+                if (guard->m_featuredUnavailableIds.contains(items.at(i).id)) items.removeAt(i);
+            }
+            qDebug() << "[DashboardView] Validated daily featured selection"
+                     << "| cachedItems=" << saved.itemIds.size()
+                     << "| resolved=" << available.size() << "| retained=" << items.size();
+        }
+        const qsizetype retainedCount = items.size();
+        if (!reuseSelection || items.size() < slideLimit) {
+            QList<MediaItem> candidates;
+            try {
+                candidates = co_await service->getFeaturedCandidates();
+            } catch (const std::exception&) {
+                if (!isCurrent()) co_return;
+                if (!reuseSelection) throw;
+                
+                
+                refillFailed = true;
+                qWarning() << "[DashboardView] Featured refill failed; retaining validated items"
+                           << "| retained=" << items.size();
+            }
+            if (!isCurrent()) co_return;
+            for (int i = int(candidates.size()) - 1; i >= 0; --i) {
+                
+                
+                if (guard->m_featuredUnavailableIds.contains(candidates.at(i).id) ||
+                    (reuseSelection && requestedIds.contains(candidates.at(i).id)))
+                    candidates.removeAt(i);
+            }
+            items = reuseSelection
+                ? FeaturedMediaUtils::fillVacancies(requestedIds, items, candidates, slideLimit)
+                : FeaturedMediaUtils::selectItems(candidates, slideLimit,
+                                                 {}, saved.itemIds);
+        }
+        if (!isCurrent()) co_return;
+        if (requestDate != QDate::currentDate()) {
+            
+            guard->m_featuredLoading = false;
+            guard->applyCarouselPreference(true, CarouselRefreshPolicy::Refresh);
+            co_return;
+        }
+        const FeaturedMediaUtils::DailySelection selection = refillFailed ? saved
+            : FeaturedMediaUtils::DailySelection{requestDate, FeaturedMediaUtils::itemIds(items)};
+        if (!refillFailed)
+            FeaturedMediaUtils::saveSelection(profile.id, profile.userId, selection);
+        guard->m_featuredSelection = selection;
+        guard->m_featuredLoading = false;
+        guard->m_featuredLoaded = true;
+        guard->m_featuredNeedsRefresh = refillFailed;
+        guard->m_featuredCarousel->setSelectionLoading(false);
+        guard->m_featuredCarousel->setItems(items);
+        qDebug() << "[DashboardView] Featured media loaded"
+                 << "| carouselGeneration=" << carouselGeneration << "| items=" << items.size()
+                 << "| date=" << requestDate << "| reusedSelection=" << reuseSelection
+                 << "| manualReselection=" << newSelection << "| retained=" << retainedCount
+                 << "| targetCount=" << slideLimit
+                 << "| selectionChanged=" << (selection.itemIds != saved.itemIds);
+        
+        
+        for (const MediaItem& item : items) {
+            guard->launchDashboardTask(
+                guard->loadFeaturedItemMetadata(item, carouselGeneration));
+        }
+    } catch (const std::exception&) {
+        if (!guard || carouselGeneration != guard->m_featuredLoadGeneration ||
+            contextKey != guard->currentDashboardContextKey()) co_return;
+        guard->m_featuredLoading = false;
+        guard->m_featuredNeedsRefresh = true;
+        guard->m_featuredCarousel->setSelectionLoading(false);
+        
+        
+        qWarning() << "[DashboardView] Featured media request failed"
+                   << "| carouselGeneration=" << carouselGeneration
+                   << "| retainedExisting=" << guard->m_featuredLoaded;
+    }
+}
+
+QCoro::Task<void> DashboardView::loadFeaturedItemMetadata(
+    MediaItem item, int carouselGeneration)
+{
+    QPointer<DashboardView> guard(this);
+    QPointer<MediaService> service(m_core->mediaService());
+    const QString contextKey = currentDashboardContextKey();
+    if (!service) co_return;
+    try {
+        const MediaItem detail = co_await service->getFeaturedItemMetadata(item);
+        if (!guard || !service || carouselGeneration != guard->m_featuredLoadGeneration ||
+            contextKey != guard->currentDashboardContextKey()) co_return;
+        if (!detail.id.isEmpty()) guard->m_featuredCarousel->updateItemMetadata(detail);
+    } catch (const std::exception&) {
+        if (!guard || !service || carouselGeneration != guard->m_featuredLoadGeneration ||
+            contextKey != guard->currentDashboardContextKey()) co_return;
+        
+        qWarning() << "[DashboardView] Featured metadata fallback failed; keeping list metadata"
+                   << "| itemId=" << item.id << "| generation=" << carouselGeneration;
+    }
 }
 
 QCoro::Task<void> DashboardView::executeDashboardLibraryRefresh(
@@ -1238,6 +1566,53 @@ QCoro::Task<void> DashboardView::loadCompletedSection(bool show,
     }
 }
 
+QCoro::Task<void> DashboardView::loadResourceSection(bool music, int generation)
+{
+    const int resourceGeneration = music ? ++m_musicGeneration : ++m_liveTvGeneration;
+    if (!ConfigStore::instance()->get<bool>(ConfigKeys::forServer(currentServerId(),
+            music ? ConfigKeys::ShowMusic : ConfigKeys::ShowLiveTv), true)) {
+        (music ? m_musicSection : m_liveTvSection)->hide();
+        co_return;
+    }
+    QPointer<DashboardView> guard(this);
+    const QString context = currentDashboardContextKey();
+    try {
+        MediaResourceItems response;
+        if (music)
+            response = co_await m_core->mediaService()->getMusicAlbums();
+        else
+            response = co_await m_core->mediaService()->getLiveTvChannels();
+        if (!guard || guard->m_loadGeneration != generation ||
+            resourceGeneration != (music ? guard->m_musicGeneration : guard->m_liveTvGeneration) ||
+            guard->currentDashboardContextKey() != context)
+            co_return;
+        auto* gallery = music ? guard->m_musicGallery : guard->m_liveTvGallery;
+        auto* section = music ? guard->m_musicSection : guard->m_liveTvSection;
+        const auto items = response.items;
+        if (!response.available) gallery->setItems({});
+        
+        
+        if (!items.isEmpty())
+            gallery->setItems(items);
+        section->setVisible(gallery->itemCount() > 0);
+        qDebug() << "[DashboardView] Resource section refreshed"
+                 << "| music=" << music << "| returned=" << items.size()
+                 << "| retained=" << gallery->itemCount();
+    } catch (const std::exception&) {
+        if (!guard || guard->m_loadGeneration != generation ||
+            resourceGeneration != (music ? guard->m_musicGeneration : guard->m_liveTvGeneration) ||
+            guard->currentDashboardContextKey() != context)
+            co_return;
+        auto* gallery = music ? guard->m_musicGallery : guard->m_liveTvGallery;
+        auto* section = music ? guard->m_musicSection : guard->m_liveTvSection;
+        section->setVisible(gallery->itemCount() > 0);
+        if (guard->isVisible()) ModernToast::showMessage(
+            tr("Unable to refresh %1. Try again later.").arg(music ? tr("Music") : tr("Live TV")), 2500);
+        qWarning() << "[DashboardView] Resource refresh failed; retaining session snapshot"
+                   << "| music=" << music << "| retained=" << gallery->itemCount();
+    }
+}
+
 QCoro::Task<void> DashboardView::loadLibrarySections(bool showLibraries,
                                                      bool showEachLibrary,
                                                      int generation)
@@ -1305,7 +1680,7 @@ void DashboardView::applyLibraryVisibility(bool refreshItems)
     QPointer<MediaService> mediaService(m_core->mediaService());
     const MediaCardDelegate::CardStyle libGalleryStyle =
         dashboardGalleryStyle();
-    const int libGalleryHeight = dashboardGalleryHeight();
+    const int libGalleryHeight = dashboardGalleryHeight(libGalleryStyle);
 
     bool canReuse = (m_libraryGalleries.size() == userViews.size());
     if (canReuse) {
@@ -1394,17 +1769,22 @@ void DashboardView::applyLibraryVisibility(bool refreshItems)
         section->setGalleryHeight(libGalleryHeight);
 
         const QString libraryId = view.id;
+        const bool musicLibrary = view.collectionType == QLatin1String("music");
+        if (musicLibrary) {
+            section->setCardStyle(MediaCardDelegate::AlbumCover);
+            section->setGalleryHeight(240);
+        }
         if (!refreshItems && canReuse) {
             continue;
         }
         launchDashboardTask(section->loadAsync(
-            [mediaService, libraryId]() -> QCoro::Task<QList<MediaItem>> {
+            [mediaService, libraryId, musicLibrary]() -> QCoro::Task<QList<MediaItem>> {
                 if (!mediaService) {
                     co_return QList<MediaItem>{};
                 }
                 co_return co_await mediaService->getLibraryItems(
                     libraryId, "DateCreated", "Descending", "",
-                    "Movie,Series", 0, 20, true);
+                    musicLibrary ? "MusicAlbum" : "Movie,Series", 0, 20, true);
             }));
     }
 
@@ -1415,6 +1795,7 @@ void DashboardView::applyLibraryVisibility(bool refreshItems)
 
 void DashboardView::onMediaItemUpdated(const MediaItem& item)
 {
+    if (m_featuredCarousel) m_featuredCarousel->updateItem(item);
     for (MediaItem &library : m_homeLibraries) {
         if (library.id == item.id) {
             library = item;
@@ -1469,6 +1850,17 @@ void DashboardView::onMediaItemUpdated(const MediaItem& item)
 
 void DashboardView::onMediaItemRemoved(const QString& itemId)
 {
+    if (m_featuredCarousel) m_featuredCarousel->removeItem(itemId);
+    if (m_featuredSelection.itemIds.contains(itemId) || m_featuredLoading) {
+        
+        
+        m_featuredUnavailableIds.insert(itemId);
+        ++m_featuredLoadGeneration;
+        m_featuredLoading = false;
+        m_featuredNeedsRefresh = true;
+        m_featuredCarousel->setSelectionLoading(false);
+        applyCarouselPreference(isVisible(), CarouselRefreshPolicy::Refresh);
+    }
     for (auto it = m_homeLibraries.begin(); it != m_homeLibraries.end();) {
         if (it->id == itemId) it = m_homeLibraries.erase(it);
         else ++it;

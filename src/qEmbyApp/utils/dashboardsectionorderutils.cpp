@@ -8,6 +8,8 @@ bool isKnownSectionId(const QString& sectionId)
            sectionId == QLatin1String(DashboardSectionOrderUtils::LatestMediaSectionId) ||
            sectionId == QLatin1String(DashboardSectionOrderUtils::RecommendedSectionId) ||
            sectionId == QLatin1String(DashboardSectionOrderUtils::CompletedWatchingSectionId) ||
+           sectionId == QLatin1String(DashboardSectionOrderUtils::LiveTvSectionId) ||
+           sectionId == QLatin1String(DashboardSectionOrderUtils::MusicSectionId) ||
            sectionId == QLatin1String(DashboardSectionOrderUtils::AllLibrariesSectionId) ||
            sectionId == QLatin1String(
                DashboardSectionOrderUtils::EachLibrarySectionsSectionId);
@@ -24,6 +26,8 @@ QStringList defaultSectionOrder()
         QString::fromLatin1(LatestMediaSectionId),
         QString::fromLatin1(RecommendedSectionId),
         QString::fromLatin1(CompletedWatchingSectionId),
+        QString::fromLatin1(LiveTvSectionId),
+        QString::fromLatin1(MusicSectionId),
         QString::fromLatin1(AllLibrariesSectionId),
         QString::fromLatin1(EachLibrarySectionsSectionId)
     };

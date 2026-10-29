@@ -99,18 +99,18 @@ void MediaActionMenu::setupMenu()
     const auto activeProfile =
         m_core && m_core->serverManager() ? m_core->serverManager()->activeProfile() : ServerProfile{};
     const bool canIdentifyMedia =
-        activeProfile.isValid() && activeProfile.isAdmin && MediaIdentifyUtils::canIdentify(m_item);
+        activeProfile.isValid() && activeProfile.isAdmin &&
+        MediaIdentifyUtils::canIdentify(m_item);
     const bool canEditMetadata = activeProfile.isValid() && activeProfile.isAdmin && !m_item.id.trimmed().isEmpty() &&
-                                 m_item.type != "Playlist" && m_item.type != "Person";
+                                 m_item.type != "Playlist";
     const bool canEditImages = activeProfile.isValid() && activeProfile.isAdmin && !m_item.id.trimmed().isEmpty() &&
-                               m_item.type != "Playlist" && m_item.type != "Person";
+                               m_item.type != "Playlist";
     const bool canRefreshMetadata = activeProfile.isValid() && activeProfile.isAdmin &&
-                                    !m_item.id.trimmed().isEmpty() && m_item.type != "Playlist" &&
-                                    m_item.type != "Person";
+                                    !m_item.id.trimmed().isEmpty() && m_item.type != "Playlist";
     const bool canRemoveMedia = activeProfile.isValid() && activeProfile.isAdmin && !m_item.id.trimmed().isEmpty() &&
                                 m_item.type != "Playlist" && m_item.type != "Person";
     const bool canDownloadMedia = activeProfile.isValid() && activeProfile.canDownloadMedia &&
-                                  !m_item.id.trimmed().isEmpty() && m_item.canDownload;
+                                  !m_item.id.trimmed().isEmpty() && m_item.type != "Person" && m_item.canDownload;
 
     if (m_item.type == "Playlist")
     {
@@ -119,7 +119,8 @@ void MediaActionMenu::setupMenu()
     }
 
     
-    bool isPlayable = (m_item.mediaType == "Video" || m_item.type == "Movie" || m_item.type == "Episode" ||
+    bool isPlayable = m_item.type != "Person" &&
+                      (m_item.mediaType == "Video" || m_item.type == "Movie" || m_item.type == "Episode" ||
                        m_item.type == "MusicVideo");
 
     if (isPlayable)
@@ -205,8 +206,11 @@ void MediaActionMenu::setupMenu()
     QString playedText = m_item.userData.played ? tr("Mark as Unplayed") : tr("Mark as Played");
     QString playedIconName = m_item.userData.played ? "played.svg" : "unplayed.svg";
 
-    maybeAdd(m_item.userData.played ? CardContextMenuAction::MarkUnplayed : CardContextMenuAction::MarkPlayed,
-             adaptiveIcon(playedIconName), playedText);
+    if (m_item.type != "Person")
+    {
+        maybeAdd(m_item.userData.played ? CardContextMenuAction::MarkUnplayed : CardContextMenuAction::MarkPlayed,
+                 adaptiveIcon(playedIconName), playedText);
+    }
 
     
     
@@ -237,13 +241,18 @@ void MediaActionMenu::setupMenu()
         {
             maybeAdd(CardContextMenuAction::EditImages, adaptiveIcon("edit-images.svg"), tr("Edit Images"));
         }
-        if (canRefreshMetadata)
-        {
-            maybeAdd(CardContextMenuAction::RefreshMetadata, adaptiveIcon("refresh.svg"), tr("Refresh Metadata"));
-        }
         if (canIdentifyMedia)
         {
             maybeAdd(CardContextMenuAction::Identify, adaptiveIcon("search.svg"), tr("Identify"));
+            if (m_item.type == "Person")
+            {
+                maybeAdd(CardContextMenuAction::RemoveIdentification, adaptiveIcon("remove.svg"),
+                         tr("Remove Identification"));
+            }
+        }
+        if (canRefreshMetadata)
+        {
+            maybeAdd(CardContextMenuAction::RefreshMetadata, adaptiveIcon("refresh.svg"), tr("Refresh Metadata"));
         }
     }
 

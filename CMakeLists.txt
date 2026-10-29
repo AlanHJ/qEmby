@@ -1,12 +1,13 @@
 cmake_minimum_required(VERSION 3.19)
 
-project(qEmby VERSION 0.0.8 LANGUAGES CXX)
+project(qEmby VERSION 0.0.9 LANGUAGES CXX)
 
-if(APPLE)
+if(APPLE AND NOT DEFINED CMAKE_OSX_DEPLOYMENT_TARGET)
     set(CMAKE_OSX_DEPLOYMENT_TARGET 13.0)
 endif()
 
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(GNUInstallDirs)
 include(QEmbyPlatformDeps)
 
@@ -25,34 +26,28 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Static dependencies such as QCoro are linked into the shared qEmbyCore.
+# Set PIC before FetchContent creates those dependency targets.
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 if(MSVC)
     add_compile_options(/MP)
 endif()
 
-# ==========================================
-# 允许通过缓存变量或环境变量提供 Qt 安装路径
-# Windows 未显式指定时仍会尝试兼容现有本地默认路径
-# ==========================================
 set(QEMBY_QT_ROOT "" CACHE PATH
     "Optional Qt installation root or CMake prefix path")
 qemby_append_default_qt_prefixes()
 
 # 寻找 Qt6 (不再允许降级)
-find_package(Qt6 REQUIRED COMPONENTS Widgets Core Network Concurrent OpenGLWidgets LinguistTools WebSockets)
+find_package(Qt6 6.2 REQUIRED COMPONENTS Widgets Core Network Concurrent OpenGLWidgets LinguistTools WebSockets Svg)
 if(UNIX AND NOT APPLE)
     find_package(Qt6 QUIET COMPONENTS DBus)
 endif()
 
-# ==========================================
-# 为第三方子模块 (qwindowkit/qmsetup) 注入所需的 Qt 版本环境变量
-# ==========================================
 set(QT_VERSION_MAJOR ${Qt6_VERSION_MAJOR})
 set(QT_VERSION_MINOR ${Qt6_VERSION_MINOR})
 set(QT_VERSION ${Qt6_VERSION})
 
-# ==========================================
-# 引入 QCoro (C++20 Coroutines for Qt)
-# ==========================================
 include(FetchContent)
 
 function(qemby_ensure_noop_install_script build_dir)
@@ -73,7 +68,6 @@ FetchContent_Declare(
     GIT_TAG v0.10.0
 )
 
-# 强制 QCoro 使用 Qt6 进行编译，并关闭不必要的测试与示例构建以加快编译速度
 set(QCORO_QT_MAJOR_VERSION 6 CACHE STRING "Use Qt6 for QCoro" FORCE)
 set(QCORO_BUILD_EXAMPLES OFF CACHE BOOL "Disable QCoro examples" FORCE)
 set(QCORO_WITH_QML OFF CACHE BOOL "Disable QCoro QML module" FORCE)
@@ -84,9 +78,6 @@ FetchContent_MakeAvailable(QCoro)
 FetchContent_GetProperties(QCoro)
 qemby_ensure_noop_install_script("${qcoro_BINARY_DIR}")
 
-# ==========================================
-# 引入 spdlog (高性能线程安全日志库, MIT License)
-# ==========================================
 FetchContent_Declare(
     spdlog
     GIT_REPOSITORY https://github.com/gabime/spdlog.git
@@ -105,9 +96,20 @@ unset(_qemby_saved_skip_install_rules)
 set(QWINDOWKIT_INSTALL OFF CACHE BOOL
     "Disable QWindowKit development install rules inside qEmby" FORCE)
 
+if(WIN32)
+    # Let Qt paint the entire client area, including the resize edges. Keeping
+    # native side/bottom borders can expose a light frame during login expansion
+    # even when the application uses the dark theme. QWindowKit retains DWM
+    # shadows and handles resizing inside the client edges in this mode.
+    set(QWINDOWKIT_ENABLE_WINDOWS_SYSTEM_BORDERS OFF CACHE BOOL
+        "Use application-painted window edges on Windows" FORCE)
+endif()
+
 add_subdirectory(libs/qwindowkit)
 add_subdirectory(libs/qwindowkit/examples/shared)
 add_subdirectory(src/qEmbyCore)
 add_subdirectory(src/qEmbyApp)
 
-include(QEmbyPackaging)
+# Release packaging helpers are maintained locally and are optional for a
+# source checkout. Building the application must not require those files.
+include(QEmbyPackaging OPTIONAL)

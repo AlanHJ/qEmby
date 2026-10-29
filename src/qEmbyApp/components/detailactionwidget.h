@@ -2,6 +2,7 @@
 #define DETAILACTIONWIDGET_H
 
 #include <QWidget>
+#include <QPoint>
 #include "models/media/mediaitem.h"
 #include <optional>
 
@@ -40,6 +41,7 @@ signals:
     void resumeRequested();
     void favoriteRequested();
     void playedToggleRequested();
+    void moreMenuRequested(const QPoint &globalPos);
     void sourceVersionChanged(int index);
     void audioStreamChanged(int streamIndex);
     void subtitleStreamChanged(int streamIndex);
@@ -52,6 +54,7 @@ private:
     QPushButton* m_playBtn;
     QPushButton* m_favBtn;
     QPushButton* m_playedBtn;
+    QPushButton* m_moreBtn;
 
     QWidget* m_progressWidget;
     QProgressBar* m_progressBar;

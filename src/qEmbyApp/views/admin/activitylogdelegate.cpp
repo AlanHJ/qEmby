@@ -147,7 +147,7 @@ QString ActivityLogDelegate::formatExactTime(const QString& isoDate) const
     }
     if (!dt.isValid()) return isoDate;
 
-    dt.setTimeZone(QTimeZone::UTC);
+    dt.setTimeZone(QTimeZone(0));
     return dt.toLocalTime().toString("yyyy-MM-dd HH:mm:ss");
 }
 

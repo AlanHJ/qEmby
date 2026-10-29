@@ -1,4 +1,6 @@
 #include "playbackmanager.h"
+#include "musicplaybackmanager.h"
+#include "libraryartworkmanager.h"
 #include <qembycore.h>
 #include <services/media/mediaservice.h>
 #include <services/manager/servermanager.h>
@@ -6,7 +8,10 @@
 #include <config/configstore.h>
 #include <config/config_keys.h>
 #include <models/media/playbackinfo.h>
+#include <models/media/playerlaunchcontext.h>
 #include "../components/playerwindow.h"
+#include "../components/mpvhttpstreamrelay.h"
+#include <api/proxymanager.h>
 #include "../components/moderntoast.h"
 #include "../utils/logredactionutils.h"
 #include "../utils/playerpreferenceutils.h"
@@ -17,6 +22,8 @@
 #include <QCoreApplication>
 #include <QTimer>
 #include <QDebug>
+#include <utility>
+#include <QDateTime>
 
 
 static constexpr long long TICKS_PER_SECOND = 10000000LL;
@@ -32,11 +39,80 @@ PlaybackManager* PlaybackManager::instance()
 PlaybackManager::PlaybackManager(QObject *parent)
     : QObject(parent)
 {
+    m_externalRelay = new MpvHttpStreamRelay(this);
+    connect(this, &PlaybackManager::playbackFinished, MusicPlaybackManager::instance(),
+            [this]() {
+        if (m_videoOwners.isEmpty() && !m_videoPending && !m_externalUnconfirmed &&
+            (!m_extProcess || m_extProcess->state() == QProcess::NotRunning))
+            MusicPlaybackManager::instance()->setVideoActive(false);
+    });
 }
 
 void PlaybackManager::init(QEmbyCore* core)
 {
+    if (m_core == core) return;
     m_core = core;
+    MusicPlaybackManager::instance()->init(core);
+    LibraryArtworkManager::instance()->init(core);
+    if (core) connect(core->serverManager(), &ServerManager::activeServerChanged, this, [this]() {
+        ++m_playIntent;
+        m_videoPending = false;
+        stopExternalPlayer();
+        closeIndependentWindow();
+        MusicPlaybackManager::instance()->setVideoActive(!m_videoOwners.isEmpty() || m_externalUnconfirmed);
+    });
+}
+
+void PlaybackManager::shutdown(QEmbyCore* core)
+{
+    if (m_core != core)
+        return;
+    ++m_playIntent;
+    m_videoPending = false;
+    stopExternalPlayer();
+    
+    
+    auto *window = m_independentWindow.data();
+    m_independentWindow.clear();
+    delete window;
+    m_core = nullptr;
+    qInfo() << "[PlaybackManager] Players released before Core teardown";
+}
+
+quint64 PlaybackManager::beginVideoIntent()
+{
+    m_videoPending = true;
+    MusicPlaybackManager::instance()->setVideoActive(true);
+    return ++m_playIntent;
+}
+
+void PlaybackManager::registerVideoOwner(QObject* owner)
+{
+    m_videoPending = false;
+    MusicPlaybackManager::instance()->setVideoActive(true);
+    if (m_videoOwners.contains(owner)) return;
+    m_videoOwners.insert(owner);
+    connect(owner, &QObject::destroyed, this, [this, owner]() {
+        m_videoOwners.remove(owner);
+        if (m_videoOwners.isEmpty() && !m_videoPending && !m_externalUnconfirmed &&
+            (!m_extProcess || m_extProcess->state() == QProcess::NotRunning))
+            MusicPlaybackManager::instance()->setVideoActive(false);
+    });
+}
+
+void PlaybackManager::cancelVideoIntent(quint64 generation)
+{
+    if (generation != m_playIntent) return;
+    m_videoPending = false;
+    if (m_videoOwners.isEmpty() && !m_externalUnconfirmed) MusicPlaybackManager::instance()->setVideoActive(false);
+}
+
+void PlaybackManager::acknowledgeExternalStop()
+{
+    if (!m_externalUnconfirmed) return;
+    stopExternalPlayer();
+    m_videoPending = false;
+    if (m_videoOwners.isEmpty()) MusicPlaybackManager::instance()->setVideoActive(false);
 }
 
 void PlaybackManager::startPlayback(const QString& mediaId, const QString& title,
@@ -46,6 +122,12 @@ void PlaybackManager::startPlayback(const QString& mediaId, const QString& title
     if (!m_core) return;
 
     qDebug() << "[PlaybackManager] ===== startPlayback =====";
+    const quint64 intent = beginVideoIntent();
+    if (streamUrl.trimmed().isEmpty()) {
+        cancelVideoIntent(intent);
+        ModernToast::showMessage(tr("Unable to start playback."), 2500);
+        return;
+    }
     qDebug() << "[PlaybackManager] mediaId:" << mediaId;
     qDebug() << "[PlaybackManager] title:" << title;
     qDebug() << "[PlaybackManager] streamUrl:" << LogRedactionUtils::url(streamUrl);
@@ -80,6 +162,12 @@ void PlaybackManager::startInternalPlayback(const QString& mediaId, const QStrin
     if (!m_core) return;
 
     qDebug() << "[PlaybackManager] ===== startInternalPlayback =====";
+    const quint64 intent = beginVideoIntent();
+    if (streamUrl.trimmed().isEmpty()) {
+        cancelVideoIntent(intent);
+        ModernToast::showMessage(tr("Unable to start playback."), 2500);
+        return;
+    }
     qDebug() << "[PlaybackManager] mediaId:" << mediaId << "title:" << title;
     qDebug() << "[PlaybackManager] streamUrl:" << LogRedactionUtils::url(streamUrl);
 
@@ -112,11 +200,27 @@ void PlaybackManager::stopExternalPlayer()
         m_extProcess->kill();
         m_extProcess->waitForFinished(3000);
     }
+    if (m_core && !m_currentPlaySessionId.isEmpty()) {
+        QCoro::connect(m_core->mediaService()->reportPlaybackStopped(m_currentMediaId,
+            m_currentMediaSourceId, m_ipc ? m_ipc->currentPositionTicks() : 0, m_currentPlaySessionId),
+            m_core, []() {});
+    }
     cleanupExternalPlayerState();
 }
 
 void PlaybackManager::cleanupExternalPlayerState()
 {
+    m_externalUnconfirmed = false;
+    Q_EMIT externalCompletionUnconfirmed(false);
+    m_externalRelay->stop();
+    if (!m_externalLiveStreamId.isEmpty() && m_core) {
+        const QString id = std::exchange(m_externalLiveStreamId, {});
+        auto closeLive = [](QPointer<MediaService> service, QString live) -> QCoro::Task<void> {
+            try { if (service) co_await service->closeLiveStream(live); }
+            catch (...) { qWarning() << "[PlaybackManager] External live stream cleanup failed"; }
+        };
+        QCoro::connect(closeLive(m_core->mediaService(), id), m_core, []() {});
+    }
     if (m_progressTimer) {
         m_progressTimer->stop();
         m_progressTimer->deleteLater();
@@ -310,7 +414,14 @@ void PlaybackManager::startExternalPlayback(const QString& playerPath,
                                               const QVariant& extraData)
 {
     if (!m_core) return;
+    const quint64 intent = beginVideoIntent();
+    if (streamUrl.trimmed().isEmpty()) {
+        cancelVideoIntent(intent);
+        ModernToast::showMessage(tr("Unable to start playback."), 2500);
+        return;
+    }
     if (playerPath.isEmpty() || !QFile::exists(playerPath)) {
+        cancelVideoIntent(intent);
         ModernToast::showMessage(tr("External player not found"), 2000);
         return;
     }
@@ -346,8 +457,11 @@ void PlaybackManager::launchExternalPlayer(const QString& mediaId, const QString
     MediaSourceInfo sourceInfo;
     bool hasSourceInfo = false;
 
-    if (extraData.canConvert<MediaSourceInfo>()) {
-        sourceInfo = extraData.value<MediaSourceInfo>();
+    QVariant sourceData = extraData;
+    if (extraData.canConvert<PlayerLaunchContext>())
+        sourceData = QVariant::fromValue(extraData.value<PlayerLaunchContext>().selectedSource);
+    if (sourceData.canConvert<MediaSourceInfo>()) {
+        sourceInfo = sourceData.value<MediaSourceInfo>();
         hasSourceInfo = true;
         mediaSourceId = sourceInfo.id;
 
@@ -454,14 +568,14 @@ void PlaybackManager::launchExternalPlayer(const QString& mediaId, const QString
     QString actualStreamUrl = streamUrl;
     qDebug() << "[PlaybackManager] Original streamUrl:"
              << LogRedactionUtils::url(streamUrl);
-    if (ConfigStore::instance()->get<bool>(ConfigKeys::ExtPlayerDirectStream, false) && hasSourceInfo) {
-        qDebug() << "[PlaybackManager] DirectStream enabled, sourceInfo.path:" << sourceInfo.path;
+    if (ConfigStore::instance()->get<bool>(ConfigKeys::ExtPlayerDirectStream, false) && hasSourceInfo && !sourceInfo.isInfiniteStream && sourceInfo.playbackKind == PlaybackKind::VideoOnDemand) {
+        qDebug() << "[PlaybackManager] DirectStream enabled, sourceInfo.path:" << LogRedactionUtils::url(sourceInfo.path);
         qDebug() << "[PlaybackManager] sourceInfo.directStreamUrl:"
                  << LogRedactionUtils::url(sourceInfo.directStreamUrl);
         
         if (!sourceInfo.path.isEmpty()) {
             actualStreamUrl = sourceInfo.path;
-            qDebug() << "[PlaybackManager] Using sourceInfo.path as preferred direct source:" << actualStreamUrl;
+            qDebug() << "[PlaybackManager] Using sourceInfo.path as preferred direct source:" << LogRedactionUtils::url(actualStreamUrl);
         } else if (!sourceInfo.directStreamUrl.isEmpty()) {
             
             if (sourceInfo.directStreamUrl.startsWith("http://", Qt::CaseInsensitive) ||
@@ -538,6 +652,17 @@ void PlaybackManager::launchExternalPlayer(const QString& mediaId, const QString
         }
     }
 
+    const auto profile = m_core->serverManager()->activeProfile();
+    const QUrl remote(actualStreamUrl);
+    const auto proxy = ProxyManager::instance()->resolveForServer(profile);
+    if ((remote.scheme() == "http" || remote.scheme() == "https") &&
+        (sourceInfo.isInfiniteStream || !sourceInfo.requiredHttpHeaders.isEmpty() || proxy.type() != QNetworkProxy::NoProxy)) {
+        const auto relay = m_externalRelay->prepare(remote, profile.id, proxy, sourceInfo.requiredHttpHeaders,
+                                                   QUrl(profile.url), profile.ignoreSslVerification);
+        if (!relay.isEmpty()) actualStreamUrl = relay.toString(QUrl::FullyEncoded);
+    }
+    if (sourceInfo.requiresClosing) m_externalLiveStreamId = sourceInfo.liveStreamId;
+
     
     
     bool isLocalPath = !actualStreamUrl.startsWith("http://", Qt::CaseInsensitive) &&
@@ -595,14 +720,24 @@ void PlaybackManager::launchExternalPlayer(const QString& mediaId, const QString
 
     
     auto *process = new QProcess(this);
+    process->setProperty("externalStartedAt", QDateTime::currentMSecsSinceEpoch());
     process->setProgram(playerPath);
     process->setArguments(args);
 
     
     
-    QCoro::connect(m_core->mediaService()->reportPlaybackStart(mediaId, mediaSourceId, startPositionTicks),
-                   this, [this](const QString &sessionId) {
-        m_currentPlaySessionId = sessionId;
+    QCoro::connect(m_core->mediaService()->reportPlaybackStart(mediaId, mediaSourceId, startPositionTicks,
+                        sourceInfo.playSessionId, false, !sourceInfo.isInfiniteStream, sourceInfo.liveStreamId),
+                   this, [this, intent = m_playIntent, mediaId, mediaSourceId, startPositionTicks,
+                          service = QPointer<MediaService>(m_core->mediaService()),
+                          processGuard = QPointer<QProcess>(process)](const QString &sessionId) {
+        if (intent == m_playIntent && mediaId == m_currentMediaId &&
+            ((processGuard && m_extProcess == processGuard) || m_externalUnconfirmed)) {
+            m_currentPlaySessionId = sessionId;
+        } else if (service) {
+            QCoro::connect(service->reportPlaybackStopped(mediaId, mediaSourceId,
+                              startPositionTicks, sessionId), service.data(), []() {});
+        }
     });
 
     
@@ -616,9 +751,23 @@ void PlaybackManager::launchExternalPlayer(const QString& mediaId, const QString
 
     
     connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            this, [this, process](int exitCode, QProcess::ExitStatus status) {
+            this, [this, process, playerType](int exitCode, QProcess::ExitStatus status) {
         qDebug() << "[PlaybackManager] External player exited, code:" << exitCode
                  << "status:" << (status == QProcess::NormalExit ? "NormalExit" : "CrashExit");
+        const qint64 lifetime = QDateTime::currentMSecsSinceEpoch() - process->property("externalStartedAt").toLongLong();
+        if (status == QProcess::NormalExit && exitCode == 0 && lifetime < 2000 &&
+            (playerType == PlayerType::Unknown || playerType == PlayerType::IINA || playerType == PlayerType::PotPlayer)) {
+            
+            
+            
+            m_videoPending = true;
+            m_externalUnconfirmed = true;
+            Q_EMIT externalCompletionUnconfirmed(true);
+            if (m_extProcess == process) m_extProcess = nullptr;
+            process->deleteLater();
+            qInfo() << "[PlaybackManager] External handoff retained; completion is unconfirmed";
+            return;
+        }
 
         
         long long finalTicks = 0;
@@ -660,6 +809,7 @@ void PlaybackManager::launchExternalPlayer(const QString& mediaId, const QString
     });
 
     m_extProcess = process;
+    registerVideoOwner(process);
     process->start();
     m_progressTimer->start(PROGRESS_REPORT_INTERVAL_MS);
 

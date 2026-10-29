@@ -5,6 +5,7 @@
 #include <QWidget>
 #include <QColor>
 #include <QFlags>
+#include <QRect>
 #include <QSet>
 
 
@@ -19,6 +20,12 @@ class MediaCardThemeHelper : public QWidget {
     Q_PROPERTY(QColor subTitleColor READ subTitleColor WRITE setSubTitleColor)
     Q_PROPERTY(QColor placeholderBg READ placeholderBg WRITE setPlaceholderBg)
     Q_PROPERTY(QColor placeholderTextColor READ placeholderTextColor WRITE setPlaceholderTextColor)
+    Q_PROPERTY(QColor progressTrackColor READ progressTrackColor WRITE setProgressTrackColor)
+    Q_PROPERTY(QColor progressFillColor READ progressFillColor WRITE setProgressFillColor)
+    Q_PROPERTY(qreal progressOpacity READ progressOpacity WRITE setProgressOpacity)
+    Q_PROPERTY(QColor ratingBackgroundColor READ ratingBackgroundColor WRITE setRatingBackgroundColor)
+    Q_PROPERTY(QColor ratingTextColor READ ratingTextColor WRITE setRatingTextColor)
+    Q_PROPERTY(QColor hoverButtonBackgroundColor READ hoverButtonBackgroundColor WRITE setHoverButtonBackgroundColor)
 
 public:
     explicit MediaCardThemeHelper(QWidget *parent = nullptr);
@@ -41,6 +48,24 @@ public:
     QColor placeholderTextColor() const { return m_placeholderTextColor; }
     void setPlaceholderTextColor(const QColor &c) { m_placeholderTextColor = c; }
 
+    QColor progressTrackColor() const { return m_progressTrackColor; }
+    void setProgressTrackColor(const QColor &c) { m_progressTrackColor = c; }
+
+    QColor progressFillColor() const { return m_progressFillColor; }
+    void setProgressFillColor(const QColor &c) { m_progressFillColor = c; }
+
+    qreal progressOpacity() const { return m_progressOpacity; }
+    void setProgressOpacity(qreal opacity) { m_progressOpacity = opacity; }
+
+    QColor ratingBackgroundColor() const { return m_ratingBackgroundColor; }
+    void setRatingBackgroundColor(const QColor &color) { m_ratingBackgroundColor = color; }
+
+    QColor ratingTextColor() const { return m_ratingTextColor; }
+    void setRatingTextColor(const QColor &color) { m_ratingTextColor = color; }
+
+    QColor hoverButtonBackgroundColor() const { return m_hoverButtonBackgroundColor; }
+    void setHoverButtonBackgroundColor(const QColor &color) { m_hoverButtonBackgroundColor = color; }
+
 private:
     QColor m_hoverBg;
     QColor m_selectedBg;
@@ -48,6 +73,12 @@ private:
     QColor m_subTitleColor;
     QColor m_placeholderBg;
     QColor m_placeholderTextColor;
+    QColor m_progressTrackColor;
+    QColor m_progressFillColor;
+    qreal m_progressOpacity = 0.65;
+    QColor m_ratingBackgroundColor;
+    QColor m_ratingTextColor;
+    QColor m_hoverButtonBackgroundColor;
 };
 
 class MediaCardDelegate : public QStyledItemDelegate {
@@ -57,7 +88,8 @@ public:
         Poster,      
         LibraryTile, 
         Cast,        
-        EpisodeList  
+        EpisodeList, 
+        AlbumCover
     };
 
     enum HoverControl {
@@ -88,6 +120,8 @@ public:
         m_contentPadding = padding < 0 ? 0 : padding;
     }
     int contentPadding() const { return m_contentPadding; }
+    
+    int contentBottomInset() const;
     void setShowMoreButtonForNonPlayableTiles(bool enabled)
     {
         m_showMoreButtonForNonPlayableTiles = enabled;
@@ -109,6 +143,15 @@ protected:
     bool eventFilter(QObject *object, QEvent *event) override;
 
 private:
+    struct CardGeometry {
+        QRect image;
+        QRect title;
+        QRect subtitle;
+    };
+    CardGeometry cardGeometry(const QRect &rect) const;
+    CardGeometry cardGeometry(const QRect &rect, CardStyle style) const;
+    CardStyle effectiveStyle(const QModelIndex& index) const;
+
     CardStyle m_style;
     QSize m_tileSize;
     QString m_highlightedItemId; 
@@ -119,6 +162,8 @@ private:
     int m_titleFontPixelSize = 13;
     int m_subTitleFontPixelSize = 12;
     int m_contentPadding = 8;
+    bool m_showPlaybackProgress = true;
+    bool m_showCoverRating = true;
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(MediaCardDelegate::HoverControls)

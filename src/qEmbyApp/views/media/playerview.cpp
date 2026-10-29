@@ -1,4 +1,5 @@
 #include "playerview.h"
+#include "../../managers/playbackmanager.h"
 #include "../../components/danmakuprogressslider.h"
 #include "../../components/modernscrollpanel.h"
 #include "../../components/nativedanmakuoverlay.h"
@@ -7,9 +8,12 @@
 #include "../../components/playerlongpresshandler.h"
 #include "../../components/playermediaswitcherpanel.h"
 #include "../../components/playerosdlayer.h"
+#include "../../components/playerseekindicator.h"
+#include "../../components/playerpreviewcontroller.h"
 #include "../../components/playerstatisticsoverlay.h"
 #include "../../components/playersubtitlesettingsdialog.h"
 #include "../../utils/mediaitemutils.h"
+#include "../../utils/mediapartutils.h"
 #include "../../utils/mediasourcepreferenceutils.h"
 #include "../../utils/playerpreferenceutils.h"
 #include "../../utils/powerinhibitutils.h"
@@ -35,6 +39,9 @@
 #include <QMouseEvent>
 #include <QPalette>
 #include <QPointer> 
+#include <QPromise>
+#include <QScopeGuard>
+#include <QSharedPointer>
 #include <QSettings>
 #include <QSignalBlocker>
 #include <QStyle>
@@ -51,16 +58,19 @@
 #include <config/config_keys.h>
 #include <config/configstore.h>
 #include <initializer_list>
+#include <stdexcept>
 #include <models/media/playbackinfo.h>
 #include <models/media/playerlaunchcontext.h>
 #include <models/profile/serverprofile.h>
 #include <services/danmaku/danmakuservice.h>
 #include <services/manager/servermanager.h>
 #include <services/media/mediaservice.h>
+#include <qcorofuture.h>
 
 namespace
 {
 constexpr int kHudAutoHideDelayMs = 1800;
+constexpr int kMediaSwitcherTimeoutMs = 30000;
 
 bool isDanmakuEnabledConfigKey(const QString &key)
 {
@@ -364,6 +374,7 @@ PlayerView::PlayerView(QEmbyCore *core, QWidget *parent)
     : BaseView(core, parent), m_isPlaying(false), m_currentPosition(0.0), m_totalDuration(0.0), m_activePopup(nullptr)
 {
 
+    PlaybackManager::instance()->registerVideoOwner(this);
     setProperty("isImmersive", true);
     setMouseTracking(true);
     setAutoFillBackground(true);
@@ -472,6 +483,7 @@ PlayerView::PlayerView(QEmbyCore *core, QWidget *parent)
     applyMediaSwitcherMode();
     applySubtitleStyleSettings();
     this->installEventFilter(this);
+    syncWindowControlIcons();
 }
 
 
@@ -499,11 +511,45 @@ void PlayerView::prepareForStackLeave()
 
 void PlayerView::clearMediaSwitcherCache()
 {
+    ++m_switcherLoadGeneration;
     m_switcherCacheMediaId.clear();
     m_switcherCacheReady = false;
+    m_switcherLoadError.clear();
+    const auto promise = m_switcherLoadPromise;
+    m_switcherLoadPromise.reset();
+    m_switcherLoadFuture = {};
     m_switcherResumeItems.clear();
     m_switcherSeriesSeasons.clear();
     m_switcherSeasonEpisodes.clear();
+    if (promise && !promise->future().isFinished()) promise->finish();
+}
+
+void PlayerView::setMediaSwitcherError(const QString &message)
+{
+    m_switcherCacheReady = false;
+    m_switcherLoadError = message;
+    if (m_mediaSwitchDrawer && !m_mediaSwitchDrawer->isHidden()) {
+        m_mediaSwitchDrawer->setErrorState(message);
+        updateOverlayLayout();
+    }
+    if (m_isRightSidebarVisible && m_resumeList) {
+        m_resumeList->clear();
+        auto *errorItem = new QListWidgetItem(message);
+        errorItem->setFlags(Qt::NoItemFlags);
+        m_resumeList->addItem(errorItem);
+        auto *retryItem = new QListWidgetItem(tr("Retry"));
+        retryItem->setData(Qt::UserRole + 3, true);
+        m_resumeList->addItem(retryItem);
+    }
+}
+
+void PlayerView::retryMediaSwitcherLoad()
+{
+    if (m_isViewTearingDown || m_hasReportedStop || m_switcherLoadError.isEmpty()) return;
+    qInfo() << "[PlayerView] Retrying media switcher load" << "| mediaId=" << m_currentMediaId;
+    clearMediaSwitcherCache();
+    if (useHudMediaSwitcher()) showHudMediaSwitcher();
+    else showRightSidebar();
 }
 
 bool PlayerView::useHudMediaSwitcher() const
@@ -549,18 +595,40 @@ void PlayerView::updateMediaSwitcherButton()
     m_mediaSwitchBtn->style()->polish(m_mediaSwitchBtn);
     m_mediaSwitchBtn->update();
 
-    const QString tooltip = m_isSeriesMode ? tr("Switch season and episode") : tr("Switch media");
+    const QString tooltip = m_playbackParts.size() > 1 ? tr("Switch chapter")
+                            : m_isSeriesMode ? tr("Switch season and episode") : tr("Switch media");
     m_mediaSwitchBtn->setToolTip(tooltip);
 }
 
 QString PlayerView::formatMediaSwitcherPlaybackTitle(const MediaItem &item) const
 {
-    return MediaItemUtils::playbackTitle(item, m_seriesName);
+    const int partIndex = MediaPartUtils::indexOf(m_playbackParts, item.id);
+    if (partIndex >= 0) return MediaPartUtils::displayTitle(m_playbackParts, partIndex);
+    return MediaItemUtils::playbackTitle(item, item.seriesId == m_seriesId ? m_seriesName : QString());
+}
+
+QString PlayerView::mediaSequenceAnchorId() const
+{
+    return m_playbackParts.isEmpty() || m_partsOwnerId.isEmpty() ? m_currentMediaId : m_partsOwnerId;
+}
+
+bool PlayerView::findAdjacentPart(int direction, QString &mediaId, QString &title,
+                                  long long &startPositionTicks) const
+{
+    const int currentIndex = MediaPartUtils::indexOf(m_playbackParts, m_currentMediaId);
+    const int targetIndex = currentIndex + (direction < 0 ? -1 : 1);
+    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= m_playbackParts.size()) return false;
+    const MediaItem part = m_playbackParts.at(targetIndex);
+    mediaId = part.id;
+    title = MediaPartUtils::displayTitle(m_playbackParts, targetIndex);
+    startPositionTicks = MediaPartUtils::resumeTicks(part);
+    return true;
 }
 
 void PlayerView::showHudMediaSwitcher()
 {
-    if (m_isViewTearingDown || !useHudMediaSwitcher() || !m_mediaSwitchDrawer)
+    if (m_isViewTearingDown || m_hasReportedStop || m_currentMediaId.isEmpty() ||
+        !useHudMediaSwitcher() || !m_mediaSwitchDrawer)
     {
         return;
     }
@@ -582,9 +650,11 @@ void PlayerView::showHudMediaSwitcher()
         return;
     }
 
-    m_mediaSwitchDrawer->setLoadingState(m_isSeriesMode ? (m_seriesName.isEmpty() ? tr("Episodes") : m_seriesName)
-                                                        : tr("Continue Watching"),
-                                         tr("Loading..."), m_isSeriesMode);
+    if (!m_switcherLoadError.isEmpty()) {
+        m_mediaSwitchDrawer->setErrorState(m_switcherLoadError);
+    } else {
+        m_mediaSwitchDrawer->setLoadingState(tr("Media Switcher"), tr("Loading..."), m_isSeriesMode);
+    }
     m_mediaSwitchDrawer->show();
     updateMediaSwitcherButton();
     updateOverlayLayout();
@@ -623,12 +693,13 @@ void PlayerView::syncHudMediaSwitcherContent()
     if (m_isSeriesMode && !m_seriesId.isEmpty())
     {
         m_mediaSwitchDrawer->setSeriesData(m_seriesName, m_switcherSeriesSeasons, m_switcherSeasonEpisodes,
-                                           m_currentMediaId);
+                                           mediaSequenceAnchorId());
     }
     else
     {
         m_mediaSwitchDrawer->setMovieItems(m_switcherResumeItems, m_currentMediaId);
     }
+    m_mediaSwitchDrawer->setVideoParts(m_playbackParts, m_currentMediaId);
 
     updateMediaSwitcherButton();
     updateOverlayLayout();
@@ -641,6 +712,10 @@ bool PlayerView::findAdjacentMediaFromCache(int direction, QString &mediaId, QSt
     title.clear();
     startPositionTicks = 0;
 
+    
+    
+    if (findAdjacentPart(direction, mediaId, title, startPositionTicks)) return true;
+
     if (!m_switcherCacheReady || m_switcherCacheMediaId != m_currentMediaId)
     {
         return false;
@@ -648,7 +723,7 @@ bool PlayerView::findAdjacentMediaFromCache(int direction, QString &mediaId, QSt
 
     if (m_isSeriesMode && !m_seriesId.isEmpty())
     {
-        const QString currentId = m_currentMediaId;
+        const QString currentId = mediaSequenceAnchorId();
         MediaItem previousItem;
         MediaItem nextItem;
         bool foundCurrent = false;
@@ -679,7 +754,7 @@ bool PlayerView::findAdjacentMediaFromCache(int direction, QString &mediaId, QSt
         }
 
         const MediaItem targetItem = direction < 0 ? previousItem : nextItem;
-        if (targetItem.id.isEmpty())
+        if (!foundCurrent || targetItem.id.isEmpty())
         {
             return false;
         }
@@ -698,11 +773,14 @@ bool PlayerView::findAdjacentMediaFromCache(int direction, QString &mediaId, QSt
     QVector<int> filteredIndexes;
     filteredIndexes.reserve(m_switcherResumeItems.size());
     int currentFilteredIndex = -1;
-    const QString currentType = m_currentMediaItem.type;
+    const QString anchorId = mediaSequenceAnchorId();
+    const int ownerIndex = MediaPartUtils::indexOf(m_playbackParts, anchorId);
+    const QString currentType = ownerIndex >= 0 ? m_playbackParts.at(ownerIndex).type : m_currentMediaItem.type;
 
     for (int i = 0; i < m_switcherResumeItems.size(); ++i)
     {
         const MediaItem &item = m_switcherResumeItems.at(i);
+        if (item.id != anchorId && MediaPartUtils::indexOf(m_playbackParts, item.id) >= 0) continue;
         if (!currentType.isEmpty() && item.type != currentType)
         {
             continue;
@@ -710,7 +788,7 @@ bool PlayerView::findAdjacentMediaFromCache(int direction, QString &mediaId, QSt
 
         const int filteredIndex = filteredIndexes.size();
         filteredIndexes.append(i);
-        if (item.id == m_currentMediaId)
+        if (item.id == anchorId)
         {
             currentFilteredIndex = filteredIndex;
         }
@@ -756,7 +834,8 @@ bool PlayerView::findNextResumeMediaFromCache(QString &mediaId,
 
     const auto isEligible = [this, skipCurrentSeries](const MediaItem &item)
     {
-        if (item.id.isEmpty() || item.id == m_currentMediaId)
+        if (item.id.isEmpty() || item.id == m_currentMediaId ||
+            MediaPartUtils::indexOf(m_playbackParts, item.id) >= 0)
         {
             return false;
         }
@@ -773,7 +852,7 @@ bool PlayerView::findNextResumeMediaFromCache(QString &mediaId,
     int currentIndex = -1;
     for (int i = 0; i < m_switcherResumeItems.size(); ++i)
     {
-        if (m_switcherResumeItems.at(i).id == m_currentMediaId)
+        if (m_switcherResumeItems.at(i).id == mediaSequenceAnchorId())
         {
             currentIndex = i;
             break;
@@ -835,13 +914,6 @@ QCoro::Task<void> PlayerView::autoPlayNextMediaIfEnabled()
         co_return;
     }
 
-    if (!ConfigStore::instance()->get<bool>(ConfigKeys::PlayerContinuousPlay, true))
-    {
-        qInfo().noquote() << "[PlayerView] Continuous playback disabled"
-                          << "| mediaId:" << m_currentMediaId;
-        co_return;
-    }
-
     if (m_autoPlayAdvanceInProgress)
     {
         qDebug().noquote() << "[PlayerView] Continuous playback already advancing"
@@ -853,17 +925,19 @@ QCoro::Task<void> PlayerView::autoPlayNextMediaIfEnabled()
 
     QPointer<PlayerView> guard(this);
     const QString finishedMediaId = m_currentMediaId;
-    const bool finishedSeriesMode = m_isSeriesMode && !m_seriesId.isEmpty();
+    const quint64 generation = m_playbackGeneration;
+    const quint64 switchRequest = m_switcherRequestGeneration;
 
     qInfo().noquote() << "[PlayerView] Continuous playback resolving next item"
                       << "| mediaId:" << finishedMediaId
-                      << "| seriesMode:" << finishedSeriesMode
+                      << "| seriesMode:" << m_isSeriesMode
                       << "| seriesId:" << m_seriesId;
 
     if (!m_switcherCacheReady || m_switcherCacheMediaId != finishedMediaId)
     {
         co_await ensureMediaSwitcherDataLoaded();
-        if (!guard || guard->m_currentMediaId != finishedMediaId)
+        if (!guard || guard->m_playbackGeneration != generation || guard->m_isViewTearingDown ||
+            guard->m_hasReportedStop)
         {
             co_return;
         }
@@ -872,10 +946,22 @@ QCoro::Task<void> PlayerView::autoPlayNextMediaIfEnabled()
     QString targetId;
     QString targetTitle;
     long long startTicks = 0;
-    bool hasTarget = guard->findAdjacentMediaFromCache(1, targetId, targetTitle, startTicks);
-    if (!hasTarget)
+    if (guard->m_switcherRequestGeneration != switchRequest || !guard->m_switcherPendingItemId.isEmpty() ||
+        !guard->m_isPlaybackFinished) {
+        guard->m_autoPlayAdvanceInProgress = false;
+        co_return;
+    }
+    const bool finishedSeriesMode = guard->m_isSeriesMode && !guard->m_seriesId.isEmpty();
+    const bool nextPart = guard->findAdjacentPart(1, targetId, targetTitle, startTicks);
+    bool hasTarget = nextPart;
+    if (nextPart) {
+        
+        startTicks = 0;
+    } else if (ConfigStore::instance()->get<bool>(ConfigKeys::PlayerContinuousPlay, true))
     {
-        hasTarget = guard->findNextResumeMediaFromCache(targetId, targetTitle, startTicks, finishedSeriesMode);
+        hasTarget = guard->findAdjacentMediaFromCache(1, targetId, targetTitle, startTicks);
+        if (!hasTarget)
+            hasTarget = guard->findNextResumeMediaFromCache(targetId, targetTitle, startTicks, finishedSeriesMode);
     }
 
     if (!hasTarget)
@@ -890,14 +976,35 @@ QCoro::Task<void> PlayerView::autoPlayNextMediaIfEnabled()
     qInfo().noquote() << "[PlayerView] Continuous playback switching item"
                       << "| from:" << finishedMediaId
                       << "| to:" << targetId
+                      << "| nextPart:" << nextPart
                       << "| title:" << targetTitle
                       << "| startTicks:" << startTicks;
 
-    co_await guard->switchFromMediaSwitcher(targetId, targetTitle, startTicks);
-    if (guard && !guard->m_hasReportedStop && guard->m_currentMediaId == finishedMediaId)
+    co_await guard->switchFromMediaSwitcher(targetId, targetTitle, startTicks, true);
+    if (guard && !guard->m_hasReportedStop && guard->m_playbackGeneration == generation)
     {
         guard->m_autoPlayAdvanceInProgress = false;
     }
+}
+
+QCoro::Task<void> PlayerView::switchAdjacentMedia(int direction)
+{
+    QPointer<PlayerView> guard(this);
+    const quint64 generation = m_playbackGeneration;
+    co_await ensureMediaSwitcherDataLoaded();
+    if (!guard || guard->m_playbackGeneration != generation || guard->m_hasReportedStop ||
+        guard->m_isViewTearingDown) co_return;
+
+    QString targetId;
+    QString targetTitle;
+    long long startTicks = 0;
+    if (!guard->findAdjacentMediaFromCache(direction, targetId, targetTitle, startTicks)) {
+        guard->showToast(direction < 0
+            ? (guard->m_isSeriesMode ? tr("No previous episode") : tr("No previous media"))
+            : (guard->m_isSeriesMode ? tr("No next episode") : tr("No next media")));
+        co_return;
+    }
+    co_await guard->switchFromMediaSwitcher(targetId, targetTitle, startTicks);
 }
 
 QCoro::Task<void> PlayerView::requestIntroDBSegments()
@@ -1006,7 +1113,7 @@ void PlayerView::checkAndSkipSegment(double position)
     const auto skipIfInRange =
         [this, position](const IntroDBService::SegmentInfo &seg, const char *label, bool enabled, bool &flag)
     {
-        if (!enabled || flag || !m_mpvWidget || !std::isfinite(seg.startSec) || !std::isfinite(seg.endSec) ||
+        if (m_isLiveTv || !enabled || flag || !m_mpvWidget || !std::isfinite(seg.startSec) || !std::isfinite(seg.endSec) ||
             seg.startSec < 0 || seg.endSec <= seg.startSec)
             return;
         if (position >= seg.startSec && position < seg.endSec)
@@ -1136,7 +1243,7 @@ void PlayerView::setupUi()
                     const double restorePosition = m_pendingSeekSeconds;
                     m_windowRestorePending = false;
                     m_pendingSeekSeconds = 0.0;
-                    if (restorePosition > 0.0)
+                    if (!m_isLiveTv && restorePosition > 0.0)
                         m_mpvWidget->seek(restorePosition);
                     if (m_windowRestoreShouldPlay)
                         m_mpvWidget->play();
@@ -1155,6 +1262,17 @@ void PlayerView::setupUi()
 
     
     m_osdLayer = new PlayerOsdLayer(this);
+    m_seekHoverIndicator = new PlayerSeekIndicator(this);
+    m_previewController = new PlayerPreviewController(this);
+    connect(m_mpvWidget, &MpvWidget::previewSourceChanged,
+            m_previewController, &PlayerPreviewController::setSource);
+    connect(m_previewController, &PlayerPreviewController::frameChanged, this,
+            [this](const QImage &image) {
+                if (image.isNull() || (!m_isViewTearingDown && m_playerChromeVisible &&
+                                      m_seekHoverIndicator->isVisible())) {
+                    m_seekHoverIndicator->setPreviewImage(image);
+                }
+            });
 
     
 
@@ -1317,6 +1435,10 @@ void PlayerView::setupUi()
 
     m_mediaSwitchDrawer = new PlayerMediaSwitcherPanel(m_core, m_bottomHUD);
     m_mediaSwitchDrawer->hide();
+    connect(m_mediaSwitchDrawer, &PlayerMediaSwitcherPanel::retryRequested,
+            this, &PlayerView::retryMediaSwitcherLoad);
+    connect(m_mediaSwitchDrawer, &PlayerMediaSwitcherPanel::preferredHeightChanged,
+            this, &PlayerView::updateOverlayLayout, Qt::QueuedConnection);
     connect(m_mediaSwitchDrawer, &PlayerMediaSwitcherPanel::playRequested, this,
             [this](QString mediaId, QString title, long long startPositionTicks) -> QCoro::Task<void>
             { co_await switchFromMediaSwitcher(mediaId, title, startPositionTicks); });
@@ -1336,6 +1458,28 @@ void PlayerView::setupUi()
     m_progressSlider->setSingleStep(1); 
     m_progressSlider->setPageStep(10);
     m_progressSlider->setRange(0, 1000);
+    connect(m_progressSlider, &DanmakuProgressSlider::hoverPositionChanged, this,
+            [this](int position, const QPoint &globalTrackPosition)
+            {
+                if (m_isViewTearingDown || m_hasReportedStop || !m_playerChromeVisible ||
+                    (m_activePopup && m_activePopup->isVisible()) ||
+                    (m_activePlayerDialog && m_activePlayerDialog->isVisible())) {
+                    m_seekHoverIndicator->hide();
+                    m_previewController->cancel();
+                    return;
+                }
+                m_seekHoverIndicator->setTimeText(formatTime(position, m_totalDuration));
+                m_seekHoverIndicator->setAnchor(mapFromGlobal(globalTrackPosition));
+                m_seekHoverIndicator->show();
+                m_seekHoverIndicator->raise();
+                if (!m_isLiveTv) m_previewController->requestFrame(position, m_totalDuration);
+            });
+    connect(m_progressSlider, &DanmakuProgressSlider::hoverEnded,
+            m_seekHoverIndicator, &QWidget::hide);
+    connect(m_progressSlider, &DanmakuProgressSlider::hoverEnded,
+            m_previewController, &PlayerPreviewController::cancel);
+    connect(m_previewController, &PlayerPreviewController::modeChanged,
+            m_progressSlider, &DanmakuProgressSlider::refreshHoverPosition);
     connect(m_progressSlider, &DanmakuProgressSlider::heatmapChanged,
             m_osdLayer, &PlayerOsdLayer::setSeekHeatmap);
     m_osdLayer->setSeekHeatmap(m_progressSlider->heatmapPath());
@@ -1355,13 +1499,13 @@ void PlayerView::setupUi()
 
     
     auto *controlLayout = new QHBoxLayout();
-    controlLayout->setSpacing(12);
+    controlLayout->setSpacing(8);
 
     m_prevMediaBtn = createHudButton(":/svg/player/prev.svg");
     m_prevMediaBtn->setToolTip(tr("Previous"));
     m_rewindBtn = createHudButton(":/svg/player/fast-rewind.svg");
     m_rewindBtn->setToolTip(tr("Rewind"));
-    m_playPauseBtn = createHudButton(":/svg/player/pause.svg", QSize(36, 36));
+    m_playPauseBtn = createHudButton(":/svg/player/pause.svg", QSize(28, 28));
     m_playPauseBtn->setToolTip(tr("Play/Pause"));
     m_forwardBtn = createHudButton(":/svg/player/fast-forward.svg");
     m_forwardBtn->setToolTip(tr("Forward"));
@@ -1384,9 +1528,10 @@ void PlayerView::setupUi()
 
     m_speedBtn = new QPushButton("1.0X", m_bottomHUD);
     m_speedBtn->setObjectName("playerSpeedBtn");
+    m_speedBtn->setProperty("class", "player-hud-btn");
     m_speedBtn->setCursor(Qt::PointingHandCursor);
     m_speedBtn->setFocusPolicy(Qt::NoFocus);
-    m_speedBtn->setFixedHeight(40);
+    m_speedBtn->setFixedSize(48, 40);
     m_speedBtn->setToolTip(tr("Playback Speed"));
 
     m_mediaSwitchBtn = createHudButton(":/svg/player/media-switcher.svg");
@@ -1534,36 +1679,9 @@ void PlayerView::setupUi()
             });
 
     connect(m_prevMediaBtn, &QPushButton::clicked, this,
-            [this]() -> QCoro::Task<void>
-            {
-                QString targetId;
-                QString targetTitle;
-                long long startTicks = 0;
-                if (!findAdjacentMediaFromCache(-1, targetId, targetTitle, startTicks))
-                {
-                    showToast(m_isSeriesMode ? tr("No previous episode") : tr("No previous media"));
-                    ensureMediaSwitcherDataLoaded();
-                    co_return;
-                }
-
-                co_await switchFromMediaSwitcher(targetId, targetTitle, startTicks);
-            });
-
+            [this]() { switchAdjacentMedia(-1); });
     connect(m_nextMediaBtn, &QPushButton::clicked, this,
-            [this]() -> QCoro::Task<void>
-            {
-                QString targetId;
-                QString targetTitle;
-                long long startTicks = 0;
-                if (!findAdjacentMediaFromCache(1, targetId, targetTitle, startTicks))
-                {
-                    showToast(m_isSeriesMode ? tr("No next episode") : tr("No next media"));
-                    ensureMediaSwitcherDataLoaded();
-                    co_return;
-                }
-
-                co_await switchFromMediaSwitcher(targetId, targetTitle, startTicks);
-            });
+            [this]() { switchAdjacentMedia(1); });
 
     
     connect(m_volumeBtn, &QPushButton::clicked, this, &PlayerView::toggleMute);
@@ -1947,11 +2065,35 @@ void PlayerView::populateRightSidebarFromCache()
 
     m_resumeList->clear();
 
+    QListWidgetItem *partScrollTarget = nullptr;
+    if (m_playbackParts.size() > 1) {
+        auto *header = new QListWidgetItem(tr("Chapters"));
+        header->setFlags(Qt::NoItemFlags);
+        QFont headerFont = m_resumeList->font();
+        headerFont.setBold(true);
+        header->setFont(headerFont);
+        m_resumeList->addItem(header);
+        for (int i = 0; i < m_playbackParts.size(); ++i) {
+            const MediaItem part = m_playbackParts.at(i);
+            const QString title = MediaPartUtils::displayTitle(m_playbackParts, i);
+            auto *entry = new QListWidgetItem(title);
+            entry->setData(Qt::UserRole, part.id);
+            entry->setData(Qt::UserRole + 1, MediaPartUtils::resumeTicks(part));
+            entry->setData(Qt::UserRole + 2, title);
+            entry->setToolTip(title);
+            if (part.id == m_currentMediaId) {
+                entry->setFont(headerFont);
+                partScrollTarget = entry;
+            }
+            m_resumeList->addItem(entry);
+        }
+    }
+
     if (m_isSeriesMode && !m_seriesId.isEmpty())
     {
         m_sidebarTitleLabel->setText(m_seriesName.isEmpty() ? tr("Episodes") : m_seriesName);
 
-        QListWidgetItem *scrollTarget = nullptr;
+        QListWidgetItem *scrollTarget = partScrollTarget;
         for (const MediaItem &season : m_switcherSeriesSeasons)
         {
             auto *seasonHeader = new QListWidgetItem(season.name);
@@ -1982,7 +2124,7 @@ void PlayerView::populateRightSidebarFromCache()
                     boldFont.setBold(true);
                     epItem->setFont(boldFont);
                     epItem->setForeground(QColor(100, 180, 255));
-                    scrollTarget = epItem;
+                    if (!scrollTarget) scrollTarget = epItem;
                 }
 
                 m_resumeList->addItem(epItem);
@@ -2006,6 +2148,12 @@ void PlayerView::populateRightSidebarFromCache()
     }
 
     m_sidebarTitleLabel->setText(tr("Continue Watching"));
+    if (partScrollTarget) {
+        m_sidebarTitleLabel->setText(tr("Media Switcher"));
+        auto *header = new QListWidgetItem(tr("Continue Watching"));
+        header->setFlags(Qt::NoItemFlags);
+        m_resumeList->addItem(header);
+    }
     for (const MediaItem &item : m_switcherResumeItems)
     {
         const QString displayTitle = formatMediaSwitcherPlaybackTitle(item);
@@ -2023,137 +2171,216 @@ void PlayerView::populateRightSidebarFromCache()
         empty->setFlags(Qt::NoItemFlags);
         m_resumeList->addItem(empty);
     }
+    if (partScrollTarget) {
+        m_resumeList->setCurrentItem(partScrollTarget);
+        m_resumeList->scrollToItem(partScrollTarget, QAbstractItemView::PositionAtCenter);
+    }
 }
 
 QCoro::Task<void> PlayerView::ensureMediaSwitcherDataLoaded()
 {
-    if (m_currentMediaId.isEmpty())
-    {
-        co_return;
-    }
+    if (m_isViewTearingDown || m_hasReportedStop || m_currentMediaId.isEmpty() ||
+        !m_core || !m_core->mediaService()) co_return;
 
-    if (m_switcherCacheReady && m_switcherCacheMediaId == m_currentMediaId)
-    {
-        qDebug().noquote() << "[PlayerView] Reuse cached media switcher data"
-                           << "| mediaId:" << m_currentMediaId << "| seriesMode:" << m_isSeriesMode;
-        if (useHudMediaSwitcher() && m_mediaSwitchDrawer && m_mediaSwitchDrawer->isVisible())
-        {
-            syncHudMediaSwitcherContent();
-        }
-        if (!useHudMediaSwitcher() && m_isRightSidebarVisible)
-        {
-            populateRightSidebarFromCache();
-        }
-        co_return;
-    }
+    if ((m_switcherCacheReady && m_switcherCacheMediaId == m_currentMediaId) ||
+        !m_switcherLoadError.isEmpty()) co_return;
 
+    auto future = m_switcherLoadFuture;
+    if (!future.isStarted() || future.isFinished()) {
+        auto promise = QSharedPointer<QPromise<void>>::create();
+        promise->start();
+        m_switcherLoadPromise = promise;
+        m_switcherLoadFuture = future = promise->future();
+        loadMediaSwitcherData(++m_switcherLoadGeneration, promise);
+    }
+    
+    
+    co_await future;
+}
+
+QCoro::Task<void> PlayerView::loadMediaSwitcherData(
+    quint64 loadGeneration, QSharedPointer<QPromise<void>> promise)
+{
     QPointer<PlayerView> guard(this);
+    QPointer<MediaService> service(m_core->mediaService());
+    const ServerProfile profile = m_core->serverManager()->activeProfile();
+    const quint64 generation = m_playbackGeneration;
     const QString currentMediaId = m_currentMediaId;
-    const bool seriesMode = m_isSeriesMode && !m_seriesId.isEmpty();
-    const QString seriesId = m_seriesId;
-
-    clearMediaSwitcherCache();
-
-    qDebug().noquote() << "[PlayerView] Loading media switcher data"
-                       << "| mediaId:" << currentMediaId << "| seriesMode:" << seriesMode << "| seriesId:" << seriesId;
-
-    try
-    {
-        if (seriesMode)
-        {
-            const QList<MediaItem> seasons = co_await m_core->mediaService()->getSeasons(seriesId);
-            if (!guard || guard->m_currentMediaId != currentMediaId)
-            {
-                co_return;
-            }
-
-            guard->m_switcherSeriesSeasons = seasons;
-            for (const MediaItem &season : seasons)
-            {
-                const QList<MediaItem> episodes = co_await m_core->mediaService()->getEpisodes(seriesId, season.id);
-                if (!guard || guard->m_currentMediaId != currentMediaId)
-                {
-                    co_return;
+    const auto isCurrent = [guard, service, profile, generation, loadGeneration]() {
+        return guard && service && !guard->m_isViewTearingDown && !guard->m_hasReportedStop &&
+               guard->m_playbackGeneration == generation &&
+               guard->m_switcherLoadGeneration == loadGeneration &&
+               guard->m_core->serverManager()->activeProfile().id == profile.id &&
+               guard->m_core->serverManager()->activeProfile().userId == profile.userId;
+    };
+    QPointer<QTimer> timeoutTimer(new QTimer(this));
+    timeoutTimer->setSingleShot(true);
+    connect(timeoutTimer.data(), &QTimer::timeout, this,
+            [guard, isCurrent, promise, currentMediaId, loadGeneration]() {
+                if (isCurrent()) {
+                    ++guard->m_switcherLoadGeneration;
+                    qWarning() << "[PlayerView] Media switcher load timed out"
+                               << "| mediaId=" << currentMediaId
+                               << "| request=" << loadGeneration
+                               << "| timeoutMs=" << kMediaSwitcherTimeoutMs;
+                    guard->setMediaSwitcherError(tr("Loading timed out. Please try again."));
                 }
+                if (!promise->future().isFinished()) promise->finish();
+            });
+    connect(timeoutTimer.data(), &QTimer::timeout, timeoutTimer.data(), &QObject::deleteLater);
+    timeoutTimer->start(kMediaSwitcherTimeoutMs);
+    const auto finishLoading = qScopeGuard([promise, timeoutTimer]() {
+        if (timeoutTimer) {
+            timeoutTimer->stop();
+            timeoutTimer->deleteLater();
+        }
+        if (!promise->future().isFinished()) promise->finish();
+    });
 
-                guard->m_switcherSeasonEpisodes.insert(season.id, episodes);
-            }
+    qDebug() << "[PlayerView] Loading media switcher data"
+             << "| mediaId=" << currentMediaId << "| generation=" << generation
+             << "| request=" << loadGeneration;
+    QString loadStage = QStringLiteral("detail");
+    try {
+        MediaItem currentItem = m_currentMediaItem;
+        if (currentItem.id != currentMediaId || currentItem.type.isEmpty()) {
+            currentItem = co_await service->getItemDetail(currentMediaId);
+            if (!isCurrent()) co_return;
+        }
+        if (currentItem.id != currentMediaId)
+            throw std::runtime_error("Invalid current media detail");
+        guard->m_currentMediaItem = currentItem;
 
-            try
-            {
-                const QList<MediaItem> items = co_await m_core->mediaService()->getResumeItems(30);
-                if (!guard || guard->m_currentMediaId != currentMediaId)
-                {
-                    co_return;
+        QList<MediaItem> parts = guard->m_playbackParts;
+        MediaItem primary = currentItem;
+        if (MediaPartUtils::indexOf(parts, currentMediaId) >= 0) {
+            parts[MediaPartUtils::indexOf(parts, currentMediaId)] = currentItem;
+            const int ownerIndex = MediaPartUtils::indexOf(parts, guard->m_partsOwnerId);
+            if (ownerIndex >= 0) primary = parts.at(ownerIndex);
+        } else {
+            parts.clear();
+            loadStage = QStringLiteral("chapters");
+            const QString ownerId = service->additionalPartsOwnerId(currentMediaId);
+            try {
+                if (ownerId != currentMediaId) {
+                    primary = co_await service->getItemDetail(ownerId);
+                    if (!isCurrent()) co_return;
+                    if (primary.id != ownerId)
+                        throw std::runtime_error("Invalid primary video detail");
                 }
-
-                guard->m_switcherResumeItems = items;
-            }
-            catch (const std::exception &e)
-            {
-                qDebug() << "[PlayerView] Resume media fallback fetch failed:" << e.what();
+                const QList<MediaItem> additionalParts = co_await service->getAdditionalParts(primary.id);
+                if (!isCurrent()) co_return;
+                parts = MediaPartUtils::sequence(primary, additionalParts);
+                if (MediaPartUtils::indexOf(parts, currentMediaId) < 0) {
+                    parts.clear();
+                    if (primary.partCount > 1 || ownerId != currentMediaId)
+                        throw std::runtime_error("Video parts do not contain the current media");
+                }
+            } catch (const std::exception &) {
+                if (!isCurrent()) co_return;
+                qWarning() << "[PlayerView] Video parts lookup failed"
+                           << "| mediaId=" << currentMediaId << "| expectedParts=" << primary.partCount;
+                
+                if (primary.partCount > 1 || ownerId != currentMediaId) throw;
             }
         }
-        else
-        {
-            const QList<MediaItem> items = co_await m_core->mediaService()->getResumeItems(30);
-            if (!guard || guard->m_currentMediaId != currentMediaId)
-            {
-                co_return;
+        if (!isCurrent()) co_return;
+
+        guard->m_playbackParts = parts;
+        guard->m_partsOwnerId = parts.isEmpty() ? QString() : primary.id;
+        guard->m_partsServerId = profile.id;
+        guard->m_partsUserId = profile.userId;
+        guard->m_isSeriesMode = primary.type == QStringLiteral("Episode") && !primary.seriesId.isEmpty();
+        guard->m_seriesId = guard->m_isSeriesMode ? primary.seriesId : QString();
+        guard->m_seriesName = guard->m_isSeriesMode ? primary.seriesName : QString();
+        if (!parts.isEmpty()) {
+            guard->m_fullTitle = MediaPartUtils::displayTitle(parts, MediaPartUtils::indexOf(parts, currentMediaId));
+            Q_EMIT guard->playbackTitleChanged(guard->m_fullTitle);
+            guard->updateTitleElision();
+        }
+        guard->updateMediaSwitcherButton();
+        if (guard->m_isSeriesMode) guard->requestIntroDBSegments();
+
+        QList<MediaItem> seasons;
+        QHash<QString, QList<MediaItem>> episodesBySeason;
+        if (guard->m_isSeriesMode) {
+            try {
+                loadStage = QStringLiteral("episodes");
+                const QString seriesId = guard->m_seriesId;
+                seasons = co_await service->getSeasons(seriesId);
+                if (!isCurrent()) co_return;
+                for (MediaItem season : seasons) {
+                    const QList<MediaItem> episodes = co_await service->getEpisodes(seriesId, season.id);
+                    if (!isCurrent()) co_return;
+                    episodesBySeason.insert(season.id, episodes);
+                }
+            } catch (const std::exception &) {
+                if (!isCurrent()) co_return;
+                qWarning() << "[PlayerView] Episode list lookup failed"
+                           << "| mediaId=" << currentMediaId;
+                throw;
             }
-
-            guard->m_switcherResumeItems = items;
         }
 
-        if (!guard || guard->m_currentMediaId != currentMediaId)
-        {
-            co_return;
+        QList<MediaItem> resumeItems;
+        try {
+            loadStage = QStringLiteral("resume");
+            resumeItems = co_await service->getResumeItems(30);
+            if (!isCurrent()) co_return;
+        } catch (const std::exception &) {
+            if (!isCurrent()) co_return;
+            qWarning() << "[PlayerView] Continue watching lookup failed"
+                       << "| mediaId=" << currentMediaId;
+            throw;
         }
 
+        guard->m_switcherSeriesSeasons = seasons;
+        guard->m_switcherSeasonEpisodes = episodesBySeason;
+        guard->m_switcherResumeItems = resumeItems;
         guard->m_switcherCacheMediaId = currentMediaId;
         guard->m_switcherCacheReady = true;
-        qDebug().noquote() << "[PlayerView] Media switcher data ready"
-                           << "| mediaId:" << currentMediaId << "| resumeItems:" << guard->m_switcherResumeItems.size()
-                           << "| seasons:" << guard->m_switcherSeriesSeasons.size();
-        if (guard->useHudMediaSwitcher() && guard->m_mediaSwitchDrawer && guard->m_mediaSwitchDrawer->isVisible())
-        {
+        qInfo() << "[PlayerView] Media switcher data ready"
+                << "| mediaId=" << currentMediaId << "| parts=" << parts.size()
+                << "| currentPart=" << MediaPartUtils::indexOf(parts, currentMediaId) + 1
+                << "| seasons=" << seasons.size() << "| resumeItems=" << resumeItems.size();
+        if (guard->m_mediaSwitchDrawer && !guard->m_mediaSwitchDrawer->isHidden())
             guard->syncHudMediaSwitcherContent();
-        }
-        if (!guard->useHudMediaSwitcher() && guard->m_isRightSidebarVisible)
-        {
-            guard->populateRightSidebarFromCache();
-        }
-    }
-    catch (const std::exception &e)
-    {
-        if (!guard || guard->m_currentMediaId != currentMediaId)
-        {
-            co_return;
-        }
-
-        guard->clearMediaSwitcherCache();
-        qDebug() << "[PlayerView] Media switcher data fetch failed:" << e.what();
-        if (guard->useHudMediaSwitcher() && guard->m_mediaSwitchDrawer && guard->m_mediaSwitchDrawer->isVisible())
-        {
-            guard->syncHudMediaSwitcherContent();
-        }
-        if (!guard->useHudMediaSwitcher() && guard->m_isRightSidebarVisible)
-        {
-            guard->populateRightSidebarFromCache();
-        }
+        if (guard->m_isRightSidebarVisible) guard->populateRightSidebarFromCache();
+    } catch (const std::exception &) {
+        if (!isCurrent()) co_return;
+        qWarning() << "[PlayerView] Media switcher lookup failed" << "| mediaId=" << currentMediaId
+                   << "| request=" << loadGeneration << "| stage=" << loadStage;
+        guard->setMediaSwitcherError(tr("Unable to load media. Please check your connection and try again."));
     }
 }
 
-QCoro::Task<void> PlayerView::switchFromMediaSwitcher(QString mediaId, QString title, long long startPositionTicks)
+QCoro::Task<void> PlayerView::switchFromMediaSwitcher(QString mediaId, QString title,
+                                                     long long startPositionTicks, bool automatic)
 {
     QPointer<PlayerView> guard(this);
-    if (mediaId.isEmpty())
+    if (mediaId.isEmpty() || m_isViewTearingDown || m_hasReportedStop)
     {
         co_return;
     }
 
+    const quint64 request = ++m_switcherRequestGeneration;
+    const quint64 generation = m_playbackGeneration;
+    QPointer<MediaService> service(m_core->mediaService());
+    const ServerProfile profile = m_core->serverManager()->activeProfile();
+    const auto clearPending = qScopeGuard([guard, request]() {
+        if (guard && guard->m_switcherRequestGeneration == request)
+            guard->m_switcherPendingItemId.clear();
+    });
+    const auto isCurrent = [guard, service, request, generation, profile, automatic]() {
+        return guard && service && !guard->m_isViewTearingDown && !guard->m_hasReportedStop &&
+               guard->m_playbackGeneration == generation && guard->m_switcherRequestGeneration == request &&
+               (!automatic || guard->m_isPlaybackFinished) &&
+               guard->m_core->serverManager()->activeProfile().id == profile.id &&
+               guard->m_core->serverManager()->activeProfile().userId == profile.userId;
+    };
     if (mediaId == m_currentMediaId)
     {
+        m_switcherPendingItemId.clear();
         hideRightSidebar();
         hideHudMediaSwitcher();
         if (m_activePopup)
@@ -2165,27 +2392,26 @@ QCoro::Task<void> PlayerView::switchFromMediaSwitcher(QString mediaId, QString t
     }
 
     m_switcherPendingItemId = mediaId;
-    m_switcherPendingTitle = title;
-    m_switcherPendingTicks = startPositionTicks;
 
     try
     {
-        MediaItem detail = co_await m_core->mediaService()->getItemDetail(mediaId);
+        MediaItem detail = co_await service->getItemDetail(mediaId);
 
-        if (!guard)
+        if (!isCurrent())
         {
             co_return;
         }
-        if (m_switcherPendingItemId.isEmpty() || detail.id != m_switcherPendingItemId)
+        if (detail.id != mediaId)
         {
+            m_switcherPendingItemId.clear();
             co_return;
         }
 
         if (detail.mediaSources.isEmpty())
         {
-            PlaybackInfo playbackInfo = co_await m_core->mediaService()->getPlaybackInfo(detail.id);
+            PlaybackInfo playbackInfo = co_await service->getPlaybackInfo(detail.id);
 
-            if (!guard)
+            if (!isCurrent())
             {
                 co_return;
             }
@@ -2225,16 +2451,15 @@ QCoro::Task<void> PlayerView::switchFromMediaSwitcher(QString mediaId, QString t
         QString streamUrl = selectedSource.id.isEmpty()
                                 ? m_core->mediaService()->getStreamUrl(detail.id, mediaSourceId)
                                 : m_core->mediaService()->getStreamUrl(detail.id, selectedSource);
-        const QString titleFallback = detail.seriesId == m_seriesId ? m_seriesName : QString();
-        QString resolvedTitle = MediaItemUtils::playbackTitle(detail, titleFallback);
+        QString resolvedTitle = formatMediaSwitcherPlaybackTitle(detail);
         if (resolvedTitle.isEmpty())
         {
-            resolvedTitle = m_switcherPendingTitle.trimmed();
+            resolvedTitle = title.trimmed();
         }
 
         qDebug().noquote() << "[PlayerView] Switching playback item"
                            << "| mediaId:" << detail.id << "| sourceId:" << mediaSourceId << "| title:" << resolvedTitle
-                           << "| startTicks:" << m_switcherPendingTicks;
+                           << "| startTicks:" << startPositionTicks;
 
         hideRightSidebar();
         hideHudMediaSwitcher();
@@ -2252,24 +2477,27 @@ QCoro::Task<void> PlayerView::switchFromMediaSwitcher(QString mediaId, QString t
         launchContext.selectedSource = selectedSource;
         const QVariant sourceInfoVar = QVariant::fromValue(launchContext);
 
+        const quint64 stoppedGeneration = m_playbackGeneration;
         QTimer::singleShot(250, this,
-                           [this, id = detail.id, resolvedTitle, streamUrl, startTicks = m_switcherPendingTicks,
-                            sourceInfoVar]() { playMedia(id, resolvedTitle, streamUrl, startTicks, sourceInfoVar); });
+                           [this, id = detail.id, resolvedTitle, streamUrl, startTicks = startPositionTicks,
+                            sourceInfoVar, stoppedGeneration, profile]() {
+            if (m_isViewTearingDown || m_playbackGeneration != stoppedGeneration ||
+                m_core->serverManager()->activeProfile().id != profile.id ||
+                m_core->serverManager()->activeProfile().userId != profile.userId) return;
+            playMedia(id, resolvedTitle, streamUrl, startTicks, sourceInfoVar);
+        });
 
         m_switcherPendingItemId.clear();
-        m_switcherPendingTitle.clear();
-        m_switcherPendingTicks = 0;
     }
-    catch (const std::exception &e)
+    catch (const std::exception &)
     {
-        if (!guard)
+        if (!isCurrent())
         {
             co_return;
         }
-        qDebug() << "[PlayerView] Media switch failed:" << e.what();
+        qWarning() << "[PlayerView] Media switch failed" << "| mediaId=" << mediaId;
+        showToast(tr("Unable to play this media."));
         m_switcherPendingItemId.clear();
-        m_switcherPendingTitle.clear();
-        m_switcherPendingTicks = 0;
     }
 }
 
@@ -2308,6 +2536,11 @@ void PlayerView::setupRightSidebar()
             {
                 if (!item || item->flags() == Qt::NoItemFlags)
                 {
+                    co_return;
+                }
+
+                if (item->data(Qt::UserRole + 3).toBool()) {
+                    retryMediaSwitcherLoad();
                     co_return;
                 }
 
@@ -2378,19 +2611,26 @@ QCoro::Task<void> PlayerView::showRightSidebar()
 
     m_sidebarTitleLabel->setText(m_isSeriesMode ? (m_seriesName.isEmpty() ? tr("Episodes") : m_seriesName)
                                                 : tr("Continue Watching"));
+    if (!m_switcherLoadError.isEmpty()) {
+        setMediaSwitcherError(m_switcherLoadError);
+        co_return;
+    }
     m_resumeList->clear();
     auto *loadingItem = new QListWidgetItem(tr("Loading..."));
     loadingItem->setFlags(Qt::NoItemFlags);
     loadingItem->setForeground(QColor(140, 140, 140));
     m_resumeList->addItem(loadingItem);
 
+    QPointer<PlayerView> guard(this);
+    const quint64 generation = m_playbackGeneration;
     co_await ensureMediaSwitcherDataLoaded();
-    if (!m_switcherCacheReady || m_switcherCacheMediaId != m_currentMediaId)
+    if (!guard || guard->m_playbackGeneration != generation || guard->m_hasReportedStop ||
+        !guard->m_switcherCacheReady || guard->m_switcherCacheMediaId != guard->m_currentMediaId)
     {
         co_return;
     }
 
-    populateRightSidebarFromCache();
+    guard->populateRightSidebarFromCache();
 }
 
 void PlayerView::hideRightSidebar(bool immediate)
@@ -2435,10 +2675,32 @@ void PlayerView::hideRightSidebar(bool immediate)
 
 void PlayerView::stopAndReport()
 {
+    const auto profile = m_core ? m_core->serverManager()->activeProfile() : ServerProfile{};
+    if (!m_currentMediaSourceInfo.liveStreamId.isEmpty() &&
+        m_currentMediaSourceInfo.requiresClosing && profile.id == m_playbackProfileId &&
+        profile.userId == m_playbackUserId) {
+        const QString liveId = m_currentMediaSourceInfo.liveStreamId;
+        m_currentMediaSourceInfo.liveStreamId.clear();
+        auto closeLive = [](QPointer<MediaService> service, QString id) -> QCoro::Task<void> {
+            try { if (service) co_await service->closeLiveStream(id); }
+            catch (...) { qWarning() << "[PlayerView] Live stream close failed"; }
+        };
+        QCoro::connect(closeLive(m_core->mediaService(), liveId), m_core, []() {});
+    }
+    ++m_playbackGeneration;
+    ++m_switcherRequestGeneration;
+    m_switcherPendingItemId.clear();
+    clearMediaSwitcherCache();
     
     if (m_hasReportedStop)
     {
         return;
+    }
+    const int partIndex = MediaPartUtils::indexOf(m_playbackParts, m_currentMediaId);
+    if (partIndex >= 0) {
+        auto &data = m_playbackParts[partIndex].userData;
+        data.playbackPositionTicks = m_isPlaybackFinished ? 0 : static_cast<long long>(m_currentPosition * 10000000.0);
+        data.played = m_isPlaybackFinished;
     }
     m_hasReportedStop = true;
     updatePowerInhibition();
@@ -2485,12 +2747,12 @@ void PlayerView::stopAndReport()
 
         
         
-        auto taskRoutine = [](MediaService *s, QString mId, QString sId, long long ticks,
+        auto taskRoutine = [](QPointer<MediaService> s, QString mId, QString sId, long long ticks,
                               QString sessId) -> QCoro::Task<void>
         {
             try
             {
-                co_await s->reportPlaybackProgress(mId, sId, ticks, true, sessId);
+                if (s) co_await s->reportPlaybackProgress(mId, sId, ticks, true, sessId);
             }
             catch (const std::exception &e)
             {
@@ -2498,7 +2760,7 @@ void PlayerView::stopAndReport()
             }
             try
             {
-                co_await s->reportPlaybackStopped(mId, sId, ticks, sessId);
+                if (s) co_await s->reportPlaybackStopped(mId, sId, ticks, sessId);
             }
             catch (const std::exception &e)
             {
@@ -2508,11 +2770,8 @@ void PlayerView::stopAndReport()
 
         
         
-        auto *lingeringTask = new QCoro::Task<void>(taskRoutine(service, mediaId, sourceId, currentTicks, sessionId));
-
-        
-        
-        QTimer::singleShot(10000, m_core, [lingeringTask]() { delete lingeringTask; });
+        QCoro::connect(taskRoutine(QPointer<MediaService>(service), mediaId,
+                                  sourceId, currentTicks, sessionId), m_core, []() {});
     }
 
     if (m_mpvWidget)
@@ -2523,7 +2782,7 @@ void PlayerView::stopAndReport()
         }
         
         disconnect(m_mpvWidget, &MpvWidget::positionChanged, this, &PlayerView::onPositionChanged);
-        m_mpvWidget->controller()->command(QVariantList{"stop"});
+        m_mpvWidget->stop();
     }
 }
 
@@ -2750,6 +3009,11 @@ void PlayerView::setEffectivePlaybackSpeed(double speed)
 
 void PlayerView::stopTransientUiAnimations(bool immediate)
 {
+    if (m_previewController) m_previewController->setSource(QString(), QVariantMap());
+    if (m_seekHoverIndicator)
+    {
+        m_seekHoverIndicator->hide();
+    }
     if (m_longPressHandler)
     {
         m_longPressHandler->stopAllAnimations();
@@ -2792,15 +3056,16 @@ void PlayerView::updateOverlayLayout()
         return;
     }
 
-    const int drawerHeight = (m_mediaSwitchDrawer && m_mediaSwitchDrawer->isVisible() && useHudMediaSwitcher())
-                                 ? m_mediaSwitchDrawer->preferredDrawerHeight()
-                                 : 0;
     
     
     
     m_bottomHUD->ensurePolished();
     QLayout *bottomLayout = m_bottomHUD->layout();
     const QMargins margins = bottomLayout->contentsMargins();
+    const int drawerHeight = (m_mediaSwitchDrawer && !m_mediaSwitchDrawer->isHidden() && useHudMediaSwitcher())
+                                 ? m_mediaSwitchDrawer->preferredDrawerHeight(width() - margins.left() - margins.right())
+                                 : 0;
+    if (drawerHeight > 0) m_mediaSwitchDrawer->setFixedHeight(drawerHeight);
     const int controlsHeight = m_bottomControlsLayout
                                    ? qMax(m_bottomControlsLayout->minimumSize().height(),
                                           m_bottomControlsLayout->sizeHint().height())
@@ -2869,6 +3134,11 @@ void PlayerView::updateOverlayLayout()
         m_longPressHandler->updateGeometry(width(), height(), m_topHUD ? m_topHUD->height() : 0);
     }
 
+    if (m_seekHoverIndicator && m_seekHoverIndicator->isVisible())
+    {
+        m_progressSlider->refreshHoverPosition();
+    }
+
     if (m_activePopup)
     {
         m_activePopup->raise();
@@ -2890,21 +3160,54 @@ void PlayerView::resizeEvent(QResizeEvent *event)
     
     
     
-    QTimer::singleShot(
-        0, this,
-        [this]()
-        {
-            if (window() && m_maxBtn)
-            {
-                bool isMax = window()->isMaximized();
-                if (!m_maxBtn->property("isMax").isValid() || m_maxBtn->property("isMax").toBool() != isMax)
-                {
-                    m_maxBtn->setIcon(QIcon(isMax ? ":/svg/player/restore.svg" : ":/svg/player/max.svg"));
-                    m_maxBtn->setProperty("isMax", isMax);
-                }
-            }
-        });
+    QTimer::singleShot(0, this, &PlayerView::syncWindowControlIcons);
     updateOverlayLayout();
+}
+
+void PlayerView::syncWindowControlIcons()
+{
+    if (m_isViewTearingDown)
+    {
+        return;
+    }
+
+    QWidget *hostWindow = window();
+    if (m_observedPlayerWindow != hostWindow)
+    {
+        if (m_observedPlayerWindow && m_observedPlayerWindow != this)
+        {
+            m_observedPlayerWindow->removeEventFilter(this);
+        }
+        m_observedPlayerWindow = hostWindow;
+        if (hostWindow && hostWindow != this)
+        {
+            hostWindow->installEventFilter(this);
+        }
+    }
+    if (!hostWindow)
+    {
+        return;
+    }
+
+    const bool isMaximized = hostWindow->isMaximized();
+    const bool isFullscreen = hostWindow->isFullScreen();
+    if (m_maxBtn && (!m_maxBtn->property("isMax").isValid() ||
+                     m_maxBtn->property("isMax").toBool() != isMaximized))
+    {
+        m_maxBtn->setIcon(QIcon(isMaximized ? ":/svg/player/restore.svg" : ":/svg/player/max.svg"));
+        m_maxBtn->setToolTip(isMaximized ? tr("Restore") : tr("Maximize"));
+        m_maxBtn->setProperty("isMax", isMaximized);
+        qDebug() << "[PlayerView] Maximize control updated | maximized:" << isMaximized;
+    }
+    if (m_fullscreenBtn && (!m_fullscreenBtn->property("isFullscreen").isValid() ||
+                            m_fullscreenBtn->property("isFullscreen").toBool() != isFullscreen))
+    {
+        m_fullscreenBtn->setIcon(QIcon(isFullscreen ? ":/svg/player/fullscreen-exit.svg"
+                                                  : ":/svg/player/fullscreen.svg"));
+        m_fullscreenBtn->setToolTip(isFullscreen ? tr("Exit Fullscreen") : tr("Fullscreen"));
+        m_fullscreenBtn->setProperty("isFullscreen", isFullscreen);
+        qDebug() << "[PlayerView] Fullscreen control updated | fullscreen:" << isFullscreen;
+    }
 }
 
 
@@ -2938,6 +3241,14 @@ bool PlayerView::eventFilter(QObject *watched, QEvent *event)
     if (m_isViewTearingDown)
     {
         return BaseView::eventFilter(watched, event);
+    }
+
+    
+    
+    if ((watched == m_observedPlayerWindow && event->type() == QEvent::WindowStateChange) ||
+        (watched == this && (event->type() == QEvent::Show || event->type() == QEvent::ParentChange)))
+    {
+        QTimer::singleShot(0, this, &PlayerView::syncWindowControlIcons);
     }
 
     if (watched == m_mpvWidget || watched == this || watched == m_topHUD || watched == m_titleLabel ||
@@ -3159,6 +3470,8 @@ void PlayerView::setCursorHidden(bool hidden)
 
 void PlayerView::setPlayerChromeVisible(bool visible)
 {
+    if (!visible && m_previewController) m_previewController->cancel();
+    if (!visible && m_seekHoverIndicator) m_seekHoverIndicator->hide();
     if (m_playerChromeVisible == visible)
     {
         return;
@@ -3590,12 +3903,10 @@ void PlayerView::showSpeedMenu()
 {
     auto *panel = new ModernScrollPanel(this);
 
-    QList<double> speeds = {0.5, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0};
-
-    for (double s : speeds)
+    for (double s : PlayerPreferenceUtils::playbackSpeedOptions())
     {
         bool isSelected = qFuzzyCompare(m_currentSpeed, s);
-        panel->addItem(QString("%1X").arg(s), s, isSelected);
+        panel->addItem(tr("%1X").arg(s), s, isSelected);
     }
 
     int maxHeight = this->height() - m_bottomHUD->height() - 40;
@@ -4239,6 +4550,7 @@ void PlayerView::resumePlaybackAfterFinishedSeek()
 
 void PlayerView::seekRelative(double delta, bool silent)
 {
+    if (m_isLiveTv) return;
     const bool shouldResumeFinishedPlayback = m_isPlaybackFinished && delta < 0.0;
     m_mpvWidget->controller()->command(QVariantList{"seek", delta, "relative"});
     if (shouldResumeFinishedPlayback)
@@ -4760,11 +5072,19 @@ QCoro::Task<void> PlayerView::resolveDanmakuPlaybackContext(
 void PlayerView::playMedia(const QString &mediaId, const QString &title, const QString &streamUrl,
                            long long startPositionTicks, const QVariant &sourceInfoVar)
 {
+    if (m_isViewTearingDown) return;
     
     
     if (!m_currentMediaId.isEmpty())
     {
         stopAndReport();
+    }
+    ++m_playbackGeneration;
+    const ServerProfile partsProfile = m_core->serverManager()->activeProfile();
+    if (m_partsServerId != partsProfile.id || m_partsUserId != partsProfile.userId ||
+        MediaPartUtils::indexOf(m_playbackParts, mediaId) < 0) {
+        m_playbackParts.clear();
+        m_partsOwnerId.clear();
     }
     m_longPressHandler->setTeardown(false);
 
@@ -4792,6 +5112,13 @@ void PlayerView::playMedia(const QString &mediaId, const QString &title, const Q
     m_currentPlaySessionId.clear();
     m_currentMediaItem = resolvedItem;
     m_currentMediaSourceInfo = resolvedSourceInfo;
+    m_isLiveTv = resolvedItem.type == QLatin1String("TvChannel") || resolvedSourceInfo.isInfiniteStream;
+    m_playbackProfileId = m_core->serverManager()->activeProfile().id;
+    m_playbackUserId = m_core->serverManager()->activeProfile().userId;
+    m_mpvWidget->setHttpHeaders(resolvedSourceInfo.requiredHttpHeaders);
+    m_mpvWidget->setTlsPolicy(QUrl(partsProfile.url), partsProfile.ignoreSslVerification);
+    m_progressSlider->setEnabled(!m_isLiveTv);
+    if (m_isLiveTv) startPositionTicks = 0;
     hideRightSidebar(true);
     hideHudMediaSwitcher();
     if (m_activePopup)
@@ -4860,7 +5187,10 @@ void PlayerView::playMedia(const QString &mediaId, const QString &title, const Q
     QString displayTitle = title.trimmed();
     if (!m_currentMediaItem.id.isEmpty())
     {
-        const QString resolvedTitle = MediaItemUtils::playbackTitle(m_currentMediaItem, displayTitle).trimmed();
+        const int partIndex = MediaPartUtils::indexOf(m_playbackParts, mediaId);
+        const QString resolvedTitle = partIndex >= 0
+            ? MediaPartUtils::displayTitle(m_playbackParts, partIndex)
+            : MediaItemUtils::playbackTitle(m_currentMediaItem, displayTitle).trimmed();
         if (!resolvedTitle.isEmpty())
         {
             displayTitle = resolvedTitle;
@@ -4919,56 +5249,8 @@ void PlayerView::playMedia(const QString &mediaId, const QString &title, const Q
     clearMediaSwitcherCache();
     updateMediaSwitcherButton();
 
-    if (resolvedItem.type == "Episode" && !resolvedItem.seriesId.isEmpty())
-    {
-        m_isSeriesMode = true;
-        m_seriesId = resolvedItem.seriesId;
-        m_seriesName = resolvedItem.seriesName;
-        updateMediaSwitcherButton();
-        requestIntroDBSegments();
-        
-        ensureMediaSwitcherDataLoaded();
-    }
-    else
-    {
-        
-        auto detectSeriesMode = [](QPointer<PlayerView> safeThis, QEmbyCore *core, QString mId) -> QCoro::Task<void>
-        {
-            try
-            {
-                MediaItem detail = co_await core->mediaService()->getItemDetail(mId);
-                if (!safeThis || safeThis->m_currentMediaId != mId)
-                    co_return;
-                if (detail.type == "Episode" && !detail.seriesId.isEmpty())
-                {
-                    safeThis->m_isSeriesMode = true;
-                    safeThis->m_seriesId = detail.seriesId;
-                    safeThis->m_seriesName = detail.seriesName;
-                    safeThis->m_currentMediaItem = detail;
-                    safeThis->clearMediaSwitcherCache();
-                    safeThis->updateMediaSwitcherButton();
-                    safeThis->requestIntroDBSegments();
-                    
-                    safeThis->ensureMediaSwitcherDataLoaded();
-                    if (safeThis->useHudMediaSwitcher() && safeThis->m_mediaSwitchDrawer &&
-                        safeThis->m_mediaSwitchDrawer->isVisible())
-                    {
-                        safeThis->showHudMediaSwitcher();
-                    }
-                    else if (safeThis->m_isRightSidebarVisible)
-                    {
-                        safeThis->showRightSidebar();
-                    }
-                }
-            }
-            catch (...)
-            {
-            }
-        };
-        detectSeriesMode(QPointer<PlayerView>(this), m_core, mediaId);
-        
-        ensureMediaSwitcherDataLoaded();
-    }
+    
+    ensureMediaSwitcherDataLoaded();
 
     
     
@@ -4978,6 +5260,10 @@ void PlayerView::playMedia(const QString &mediaId, const QString &title, const Q
     
     
     const QString activeServerId = m_core->serverManager()->activeProfile().id;
+    const double defaultSpeed = PlayerPreferenceUtils::defaultPlaybackSpeed();
+    setEffectivePlaybackSpeed(defaultSpeed);
+    qDebug() << "[PlayerView] Applying default playback speed"
+             << "| speed:" << defaultSpeed;
     m_mpvWidget->loadMedia(actualStreamUrl, activeServerId);
 
     const bool hasCompleteDanmakuContext =
@@ -5228,17 +5514,21 @@ void PlayerView::playMedia(const QString &mediaId, const QString &title, const Q
     }
 
     
-    auto startSessionTask = [](QPointer<PlayerView> safeThis, MediaService *s, QString mId, QString sId,
-                               long long ticks) -> QCoro::Task<void>
+    auto startSessionTask = [](QPointer<PlayerView> view, QPointer<MediaService> service,
+                               QString item, QString source, long long ticks,
+                               QString negotiatedSession, bool liveTv, quint64 generation, QString liveStreamId) -> QCoro::Task<void>
     {
-        QString sessionId = co_await s->reportPlaybackStart(mId, sId, ticks);
-        if (safeThis && safeThis->m_currentMediaId == mId)
-        {
-            safeThis->m_currentPlaySessionId = sessionId;
-        }
+        if (!service) co_return;
+        try {
+            const QString session = co_await service->reportPlaybackStart(item, source, ticks, negotiatedSession, false, !liveTv, liveStreamId);
+            if (view && view->m_playbackGeneration == generation && !view->m_hasReportedStop)
+                view->m_currentPlaySessionId = session;
+            else if (service) co_await service->reportPlaybackStopped(item, source, ticks, session);
+        } catch (...) { qWarning() << "[PlayerView] Session start reporting failed"; }
     };
-    startSessionTask(QPointer<PlayerView>(this), m_core->mediaService(), m_currentMediaId, m_currentMediaSourceId,
-                     startPositionTicks);
+    QCoro::connect(startSessionTask(QPointer<PlayerView>(this), m_core->mediaService(),
+                     m_currentMediaId, m_currentMediaSourceId, startPositionTicks,
+                     resolvedSourceInfo.playSessionId, m_isLiveTv, m_playbackGeneration, resolvedSourceInfo.liveStreamId), m_core, []() {});
 
     m_reportTimer->start();
     m_mousePollTimer->start();
@@ -5483,7 +5773,7 @@ void PlayerView::onDurationChanged(double duration)
 
     
     
-    if (!m_windowRestorePending && m_pendingSeekSeconds > 0 && duration > 0)
+    if (!m_isLiveTv && !m_windowRestorePending && m_pendingSeekSeconds > 0 && duration > 0)
     {
         m_mpvWidget->seek(m_pendingSeekSeconds);
         m_pendingSeekSeconds = 0.0;
@@ -5520,6 +5810,11 @@ void PlayerView::togglePlayPause()
     }
     else if (m_isPlaybackFinished)
     {
+        if (m_isLiveTv) {
+            showToast(tr("The live stream ended. Open the channel again."));
+            showControls();
+            return;
+        }
         m_currentPosition = 0.0;
         m_mpvWidget->seek(0.0);
         if (m_progressSlider)
@@ -5541,6 +5836,7 @@ void PlayerView::togglePlayPause()
 
 void PlayerView::onSliderMoved(int value)
 {
+    if (m_isLiveTv) return;
     const bool shouldResumeFinishedPlayback =
         m_isPlaybackFinished && (!m_progressSlider || value < m_progressSlider->maximum());
 

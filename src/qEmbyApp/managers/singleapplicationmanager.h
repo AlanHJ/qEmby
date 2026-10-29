@@ -28,4 +28,4 @@ private:
   std::unique_ptr<QLockFile> m_lockFile;
 };
 
-#endif 
+#endif // SINGLEAPPLICATIONMANAGER_H

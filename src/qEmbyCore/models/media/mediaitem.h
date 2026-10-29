@@ -211,6 +211,12 @@ public:
     int recursiveItemCount = 0; 
     int parentIndexNumber = -1; 
     int indexNumber = -1;       
+    QString parentId;
+    QString owningLibraryId;
+    QString albumId;
+    QString album;
+    QString albumArtist;
+    QStringList artists;
 
     
     QStringList genres;

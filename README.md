@@ -38,29 +38,30 @@
 
 ## 📥 下载
 
-最新版本：**v0.0.8**
+最新版本：**v0.0.9**
 
 | 安装包 | 说明 |
 |---|---|
-| [qEmby-0.0.8-Win-x64-Setup.exe](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qEmby-0.0.8-Win-x64-Setup.exe) | Windows 10/11 x64 安装包 |
-| [qEmby-0.0.8-Win-x64.zip](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qEmby-0.0.8-Win-x64.zip) | Windows 10/11 x64 绿色便携版 |
-| [qemby-0.0.8-macos-arm64.dmg](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qemby-0.0.8-macos-arm64.dmg) | macOS 26+ (Apple 芯片) |
-| [qemby-0.0.8-x86_64.AppImage](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qemby-0.0.8-x86_64.AppImage) | Linux x64 通用 AppImage |
-| [qemby_0.0.8-jammy_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qemby_0.0.8-jammy_amd64.deb) | Ubuntu 22.04 (Jammy) 安装包 |
-| [qemby_0.0.8-noble_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qemby_0.0.8-noble_amd64.deb) | Ubuntu 24.04 (Noble) 安装包 |
-| [qemby_0.0.8-resolute_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qemby_0.0.8-resolute_amd64.deb) | Ubuntu 26.04 (Resolute) 安装包，使用系统 Qt 依赖 |
-| [qemby_0.0.8-bookworm_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qemby_0.0.8-bookworm_amd64.deb) | Debian 12 (Bookworm) 安装包 |
-| [qemby_0.0.8-trixie_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qemby_0.0.8-trixie_amd64.deb) | Debian 13 (Trixie) 安装包 |
+| [qEmby-0.0.9-Win-x64-Setup.exe](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/qEmby-0.0.9-Win-x64-Setup.exe) | Windows 10/11 x64 安装包 |
+| [qEmby-0.0.9-Win-x64.zip](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/qEmby-0.0.9-Win-x64.zip) | Windows 10/11 x64 绿色便携版 |
+| [qemby-0.0.9-macos-arm64.dmg](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/qemby-0.0.9-macos-arm64.dmg) | macOS 26+ (Apple 芯片) |
+| [qemby_0.0.9-jammy_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/qemby_0.0.9-jammy_amd64.deb) | Ubuntu 22.04 (Jammy) 安装包 |
+| [qemby_0.0.9-noble_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/qemby_0.0.9-noble_amd64.deb) | Ubuntu 24.04 (Noble) 安装包 |
+| [qemby_0.0.9-resolute_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/qemby_0.0.9-resolute_amd64.deb) | Ubuntu 26.04 (Resolute) 安装包，使用系统 Qt 依赖 |
+| [qemby_0.0.9-bookworm_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/qemby_0.0.9-bookworm_amd64.deb) | Debian 12 (Bookworm) 安装包 |
+| [qemby_0.0.9-trixie_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/qemby_0.0.9-trixie_amd64.deb) | Debian 13 (Trixie) 安装包 |
+
+本次发布不包含 AppImage。下载文件的 SHA-256 校验值见 [SHA256SUMS.txt](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/SHA256SUMS.txt)。
 
 旧版本可以在 [Releases](https://github.com/AlanHJ/qEmby/releases) 页面下载。
 
-## 🚀 v0.0.8 更新内容
+## 🚀 v0.0.9 更新内容
 
-- 播放进度条新增弹幕密度热图，改进原生弹幕时钟、布局与 OpenGL 合成。
-- 改进视频首帧显示和播放窗口切换。
-- 支持全局或按服务器配置 User-Agent，并应用到网络和播放请求；重新登录时保留本地网络设置。
-- 侧边栏新增媒体库显示控制，改进首页媒体库刷新，记住媒体库当前标签。
-- 完善人物简介展示，并调整播放器控件、对话框及主题样式。
+- 新增首页媒体轮播，支持调整展示数量、高度和首页分区顺序。
+- 新增音乐专辑、曲目播放与迷你播放器，以及首页直播频道入口。
+- 新增进度条悬停画面预览和默认播放速度设置，改进多段视频续播、HLS 播放及 HTTP 分段缓存。
+- 新增媒体库封面布局识别与扫描、播放进度和评分显示设置，完善图片编辑与预览。
+- 改进独立登录窗口、SSL 验证切换和请求取消，优化窗口切换、媒体列表和主题样式。
 
 ## ✨ 功能特性
 
@@ -74,7 +75,7 @@
 - 🌗 深色 / 浅色主题切换
 - 🌐 国际化支持（中文 / 英文 / 法语）
 - 🔍 支持搜索历史的媒体搜索
-- 📺 当前支持电视剧、电影媒体类型
+- 📺 支持电视剧、电影、音乐及直播频道
 - 📦 提供 Windows 安装包 / 绿色版、Linux AppImage / deb 包和 macOS DMG
 - ⚡ 基于 C++20 协程的异步操作（QCoro）
 - 🪟 原生风格的自定义窗口边框（QWindowKit）
@@ -124,7 +125,7 @@
 
 ## 📦 环境要求
 
-- **Qt 6.x**（包含 Widgets、Core、Network、Concurrent、OpenGLWidgets、LinguistTools、WebSockets 模块）
+- **Qt 6.x**（包含 Widgets、Core、Network、Concurrent、OpenGLWidgets、LinguistTools、WebSockets、Svg 模块）
 - **CMake** ≥ 3.16
 - 支持 **C++20** 的编译器（推荐 MSVC 2022）
 - **libmpv** 开发文件（见下方说明）
@@ -225,29 +226,30 @@ qEmby/
 
 ## 📥 Download
 
-Latest release: **v0.0.8**
+Latest release: **v0.0.9**
 
 | Package | Description |
 |---|---|
-| [qEmby-0.0.8-Win-x64-Setup.exe](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qEmby-0.0.8-Win-x64-Setup.exe) | Windows 10/11 x64 installer |
-| [qEmby-0.0.8-Win-x64.zip](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qEmby-0.0.8-Win-x64.zip) | Windows 10/11 x64 portable package |
-| [qemby-0.0.8-macos-arm64.dmg](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qemby-0.0.8-macos-arm64.dmg) | macOS 26+ (Apple Silicon) |
-| [qemby-0.0.8-x86_64.AppImage](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qemby-0.0.8-x86_64.AppImage) | Universal Linux x64 AppImage |
-| [qemby_0.0.8-jammy_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qemby_0.0.8-jammy_amd64.deb) | Ubuntu 22.04 (Jammy) package |
-| [qemby_0.0.8-noble_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qemby_0.0.8-noble_amd64.deb) | Ubuntu 24.04 (Noble) package |
-| [qemby_0.0.8-resolute_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qemby_0.0.8-resolute_amd64.deb) | Ubuntu 26.04 (Resolute), uses system Qt packages |
-| [qemby_0.0.8-bookworm_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qemby_0.0.8-bookworm_amd64.deb) | Debian 12 (Bookworm) package |
-| [qemby_0.0.8-trixie_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.8/qemby_0.0.8-trixie_amd64.deb) | Debian 13 (Trixie) package |
+| [qEmby-0.0.9-Win-x64-Setup.exe](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/qEmby-0.0.9-Win-x64-Setup.exe) | Windows 10/11 x64 installer |
+| [qEmby-0.0.9-Win-x64.zip](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/qEmby-0.0.9-Win-x64.zip) | Windows 10/11 x64 portable package |
+| [qemby-0.0.9-macos-arm64.dmg](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/qemby-0.0.9-macos-arm64.dmg) | macOS 26+ (Apple Silicon) |
+| [qemby_0.0.9-jammy_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/qemby_0.0.9-jammy_amd64.deb) | Ubuntu 22.04 (Jammy) package |
+| [qemby_0.0.9-noble_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/qemby_0.0.9-noble_amd64.deb) | Ubuntu 24.04 (Noble) package |
+| [qemby_0.0.9-resolute_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/qemby_0.0.9-resolute_amd64.deb) | Ubuntu 26.04 (Resolute), uses system Qt packages |
+| [qemby_0.0.9-bookworm_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/qemby_0.0.9-bookworm_amd64.deb) | Debian 12 (Bookworm) package |
+| [qemby_0.0.9-trixie_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/qemby_0.0.9-trixie_amd64.deb) | Debian 13 (Trixie) package |
+
+This release does not include an AppImage. Download checksums are available in [SHA256SUMS.txt](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/SHA256SUMS.txt).
 
 Older releases are available on the [Releases](https://github.com/AlanHJ/qEmby/releases) page.
 
-## 🚀 What's New in v0.0.8
+## 🚀 What's New in v0.0.9
 
-- Added a danmaku density heatmap to the progress bar and improved native danmaku timing, layout and OpenGL compositing.
-- Improved video first-frame presentation and playback window transitions.
-- Added global and per-server User-Agent settings for network and playback requests; retained local network settings on re-login.
-- Added sidebar library visibility controls, improved home-library refresh and remembered the selected library tab.
-- Expanded person biography details and refined player controls, dialogs and theme styling.
+- Added a home media carousel with configurable item count, height and home section ordering.
+- Added music albums, track playback and a mini player, plus live TV channel sections on the home page.
+- Added progress hover previews and a default playback speed setting; improved multipart resume, HLS playback and HTTP range caching.
+- Added library artwork layout detection and scanning, playback progress and rating display settings, and improved image editing and previews.
+- Improved the standalone login window, SSL verification controls and request cancellation, along with window transitions, media lists and theme styling.
 
 ## ✨ Features
 
@@ -261,7 +263,7 @@ Older releases are available on the [Releases](https://github.com/AlanHJ/qEmby/r
 - 🌗 Dark and Light theme support
 - 🌐 Internationalization support (Chinese / English / French)
 - 🔍 Media search with history
-- 📺 TV series and movies media types
+- 📺 TV series, movies, music and live TV channels
 - 📦 Windows installer / portable packages, Linux AppImage / deb packages, and macOS DMG
 - ⚡ Asynchronous operations with C++20 coroutines (QCoro)
 - 🪟 Custom window frame with native look (QWindowKit)
@@ -311,7 +313,7 @@ Older releases are available on the [Releases](https://github.com/AlanHJ/qEmby/r
 
 ## 📦 Prerequisites
 
-- **Qt 6.x** (with Widgets, Core, Network, Concurrent, OpenGLWidgets, LinguistTools, WebSockets)
+- **Qt 6.x** (with Widgets, Core, Network, Concurrent, OpenGLWidgets, LinguistTools, WebSockets, Svg)
 - **CMake** ≥ 3.16
 - **C++20** compatible compiler (MSVC 2022 recommended)
 - **libmpv** development files (see below)

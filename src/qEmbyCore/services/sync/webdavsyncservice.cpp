@@ -204,7 +204,7 @@ QString WebdavSyncService::proposedSnapshotFileName(const ConfigBundleMetadata &
     const QString osName = sanitizeNameSegment(metadata.osName, QStringLiteral("OS"));
     const QString device = sanitizeNameSegment(metadata.deviceName, QStringLiteral("device"));
     const QString tag = sanitizeNameSegment(customTag, QString::fromLatin1(kDefaultSnapshotTag));
-    const QString ts = QDateTime::fromMSecsSinceEpoch(exportedAt, QTimeZone::LocalTime)
+    const QString ts = QDateTime::fromMSecsSinceEpoch(exportedAt)
                            .toString(QStringLiteral("yyyy-MM-dd-HH-mm-ss"));
 
     return QString::fromLatin1(kSnapshotPrefix) + version + QLatin1Char('-') + osName + QLatin1Char('-') + device +
@@ -299,7 +299,7 @@ void WebdavSyncService::parseSnapshotName(const QString &fileName, QString &appV
     QDateTime parsed = QDateTime::fromString(tsPart, QStringLiteral("yyyyMMdd-HHmmss"));
     if (parsed.isValid())
     {
-        parsed.setTimeZone(QTimeZone(QTimeZone::UTC));
+        parsed.setTimeZone(QTimeZone(0));
         createdAtOut = parsed;
     }
 }

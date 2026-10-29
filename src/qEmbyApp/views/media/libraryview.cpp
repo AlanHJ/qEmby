@@ -1,10 +1,12 @@
 #include "libraryview.h"
+#include "../../managers/libraryartworkmanager.h"
 #include "overviewdialog.h"
 #include "../../utils/mediaitemutils.h"
 #include <QTextDocument>
 #include "../../components/elidedlabel.h"
 #include "../../components/mediagridwidget.h"
 #include "../../components/modernsortbutton.h"
+#include "../../components/artworkviewbutton.h"
 #include <QButtonGroup>
 #include <QDebug>
 #include <QElapsedTimer>
@@ -97,6 +99,18 @@ LibraryView::LibraryView(QEmbyCore *core, QWidget *parent)
     connect(m_mediaGrid, &MediaGridWidget::favoriteRequested, this, &BaseView::handleFavoriteRequested);
     connect(m_mediaGrid, &MediaGridWidget::moreMenuRequested, this, &BaseView::handleMoreMenuRequested);
     connect(m_mediaGrid, &MediaGridWidget::loadMoreRequested, this, &LibraryView::onLoadMoreRequested);
+    connect(LibraryArtworkManager::instance(), &LibraryArtworkManager::policyChanged, this,
+            [this](const QString& id) {
+        if (id != currentPreferenceTargetId()) return;
+        const auto anchor = m_mediaGrid->captureViewAnchor();
+        restoreViewPreference();
+        m_mediaGrid->restoreViewAnchor(anchor);
+    });
+    connect(LibraryArtworkManager::instance(), &LibraryArtworkManager::configurationChanged, this, [this]() {
+        const auto anchor = m_mediaGrid->captureViewAnchor();
+        restoreViewPreference();
+        m_mediaGrid->restoreViewAnchor(anchor);
+    });
     
 }
 
@@ -202,22 +216,20 @@ void LibraryView::setupTopBar(QHBoxLayout *headerLayout)
     m_sortButton->setSortItems({tr("Date Added"), tr("Date Played"), tr("Title"), tr("Runtime"), tr("Premiere Date")});
     connect(m_sortButton, &ModernSortButton::sortChanged, this, &LibraryView::onFilterChanged);
 
-    
-    m_viewSwitchBtn = new QPushButton(filterBarWidget);
-    m_viewSwitchBtn->setObjectName("icon-action-btn");
-    m_viewSwitchBtn->setCheckable(true);
-    m_viewSwitchBtn->setFixedSize(32, 32); 
-    m_viewSwitchBtn->setCursor(Qt::PointingHandCursor);
-    m_viewSwitchBtn->setToolTip(tr("Toggle View Mode"));
-    
-
-    connect(m_viewSwitchBtn, &QPushButton::clicked, this,
-            [this](bool checked)
-            {
-                m_mediaGrid->setCardStyle(checked ? MediaCardDelegate::LibraryTile : MediaCardDelegate::Poster);
-                saveViewPreference();
-                onFilterChanged();
-            });
+    m_viewSwitchBtn = new ArtworkViewButton(filterBarWidget);
+    connect(m_viewSwitchBtn, &ArtworkViewButton::modeSelected, this,
+            [this](ArtworkViewButton::Mode mode) {
+        const auto anchor = m_mediaGrid->captureViewAnchor();
+        if (mode == ArtworkViewButton::FollowDefault) {
+            LibraryArtworkManager::instance()->followDefault(currentPreferenceTargetId());
+            restoreViewPreference();
+        } else {
+            const bool isTile = mode == ArtworkViewButton::Landscape;
+            saveViewPreference(isTile);
+            applyViewMode(isTile);
+        }
+        m_mediaGrid->restoreViewAnchor(anchor);
+    });
 
     m_statsLabel = new QLabel(tr("0 Items"), filterBarWidget);
     m_statsLabel->setObjectName("library-stats-label");
@@ -307,7 +319,7 @@ QCoro::Task<void> LibraryView::openPersonOverview()
 }
 
 
-QCoro::Task<void> LibraryView::loadLibrary(const QString &libraryId, const QString &libraryName)
+QCoro::Task<void> LibraryView::loadLibrary(QString libraryId, QString libraryName)
 {
     
     QPointer<LibraryView> guard(this);
@@ -372,6 +384,7 @@ QCoro::Task<void> LibraryView::loadLibrary(const QString &libraryId, const QStri
             if (detail.id == m_currentLibraryId)
             {
                 m_currentMediaItem = detail; 
+                restoreViewPreference();
 
                 
                 
@@ -652,6 +665,7 @@ LibraryView::QueryState LibraryView::buildCurrentQueryState(const QString &sortB
 
     query.targetId = m_currentLibraryId;
     query.includeTypes = "Movie,Series,Audio,Video";
+    if (m_currentMediaItem.collectionType == QLatin1String("music")) query.includeTypes = "MusicAlbum";
     query.recursive = true;
     query.needsPlaylistEnrichment = (m_currentMediaItem.type == "Playlist");
 
@@ -689,7 +703,7 @@ LibraryView::QueryState LibraryView::buildCurrentQueryState(const QString &sortB
     if (tabIdx == 4)
     {
         query.filters = "IsFavorite";
-        query.includeTypes = "Movie,Series,Audio,Video,BoxSet,Playlist";
+        query.includeTypes = "Movie,Series,Audio,Video,BoxSet,Playlist,MusicAlbum";
     }
     if (tabIdx == 5)
     {
@@ -1010,6 +1024,7 @@ void LibraryView::onMediaItemUpdated(const MediaItem &item)
 
 void LibraryView::onMediaItemRemoved(const QString& itemId)
 {
+    LibraryArtworkManager::instance()->invalidate(itemId);
     if (!m_mediaGrid) {
         return;
     }
@@ -1131,9 +1146,17 @@ QString LibraryView::currentPreferenceTargetId() const
 
 void LibraryView::applyViewMode(bool isTile)
 {
-    m_viewSwitchBtn->blockSignals(true);
-    m_viewSwitchBtn->setChecked(isTile);
-    m_viewSwitchBtn->blockSignals(false);
+    const bool music = m_currentMediaItem.collectionType == QLatin1String("music");
+    const bool automatic = !currentPreferenceTargetId().isEmpty() &&
+        !LibraryArtworkManager::instance()->hasManualOverride(currentPreferenceTargetId());
+    m_viewSwitchBtn->setAlbumOnly(music);
+    m_viewSwitchBtn->setFollowDefaultAvailable(!currentPreferenceTargetId().isEmpty());
+    m_viewSwitchBtn->setMode(automatic ? ArtworkViewButton::FollowDefault :
+        isTile ? ArtworkViewButton::Landscape : ArtworkViewButton::Portrait);
+    if (music) {
+        m_mediaGrid->setCardStyle(MediaCardDelegate::AlbumCover);
+        return;
+    }
     m_mediaGrid->setCardStyle(isTile ? MediaCardDelegate::LibraryTile : MediaCardDelegate::Poster);
 }
 
@@ -1172,7 +1195,7 @@ void LibraryView::restoreSortPreference()
              << "server=" << sid << "target=" << targetId << "index=" << savedIndex << "desc=" << savedDesc;
 }
 
-void LibraryView::saveViewPreference()
+void LibraryView::saveViewPreference(bool isTile)
 {
     QString sid = m_core->serverManager()->activeProfile().id;
     QString targetId = currentPreferenceTargetId();
@@ -1180,7 +1203,7 @@ void LibraryView::saveViewPreference()
         return;
 
     const QString viewMode =
-        m_viewSwitchBtn->isChecked() ? QStringLiteral("tile") : QStringLiteral("poster");
+        isTile ? QStringLiteral("tile") : QStringLiteral("poster");
 
     auto *store = ConfigStore::instance();
     store->set(ConfigKeys::forLibrary(sid, targetId, ConfigKeys::LibraryViewMode), viewMode);
@@ -1193,7 +1216,7 @@ void LibraryView::restoreViewPreference()
 {
     auto *store = ConfigStore::instance();
     const QString defaultViewMode =
-        store->get<QString>(ConfigKeys::DefaultLibraryView, QStringLiteral("poster"));
+        LibraryArtworkManager::instance()->fallbackViewMode();
 
     QString sid = m_core->serverManager()->activeProfile().id;
     QString targetId = currentPreferenceTargetId();
@@ -1214,7 +1237,11 @@ void LibraryView::restoreViewPreference()
                  << "mode=" << defaultViewMode;
     }
 
-    applyViewMode(viewMode == QLatin1String("tile"));
+    if (viewMode.isEmpty()) viewMode = defaultViewMode;
+    auto* artwork = LibraryArtworkManager::instance();
+    if (!artwork->hasManualOverride(targetId) && artwork->enabled() && artwork->layout(targetId) != ArtworkPolicyUtils::Layout::Default)
+        applyViewMode(artwork->layout(targetId) == ArtworkPolicyUtils::Layout::Landscape);
+    else applyViewMode(viewMode == QLatin1String("tile"));
 }
 
 void LibraryView::saveTabPreference()

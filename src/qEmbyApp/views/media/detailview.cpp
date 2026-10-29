@@ -1,4 +1,9 @@
 #include "detailview.h"
+#include <QScopeGuard>
+#include "../../components/musictracklistwidget.h"
+#include "../../managers/musicplaybackmanager.h"
+#include "../../managers/libraryartworkmanager.h"
+#include "../../utils/imageutils.h"
 #include "../../components/detailactionwidget.h"
 #include "../../components/detailbottominfowidget.h"
 #include "../../components/detailcontentwidget.h"
@@ -12,6 +17,7 @@
 #include "../../managers/playbackmanager.h"
 #include "../../managers/thememanager.h"
 #include "../../utils/detailcacheutils.h"
+#include "../../utils/layoututils.h"
 #include "../../utils/mediaitemutils.h"
 #include "../../utils/mediasourcepreferenceutils.h"
 #include "../../utils/numberextractor.h"
@@ -25,7 +31,6 @@
 #include <services/media/mediaservice.h>
 
 #include <QClipboard>
-#include <QDate>
 #include <QDebug>
 #include <QEvent>
 #include <QFuture>
@@ -41,6 +46,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QListView>
+#include <QMargins>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPointer>
@@ -195,33 +201,6 @@ QString computeBottomInfoFingerprint(const MediaItem &item, const QList<MediaSou
     return QStringLiteral("%1|tags=%2|studios=%3|urls=%4|src=%5")
         .arg(item.id, item.tags.join(QLatin1Char(',')), studioParts.join(QLatin1Char(',')),
              urlParts.join(QLatin1Char(',')), computeSourcesFingerprint(sources));
-}
-
-QString formatDetailReleaseDate(const MediaItem &item)
-{
-    QString dateText = item.premiereDate.trimmed();
-    if (!dateText.isEmpty())
-    {
-        const int timeSeparator = dateText.indexOf(QLatin1Char('T'));
-        if (timeSeparator > 0)
-            dateText = dateText.left(timeSeparator);
-
-        
-        const int dateLen = dateText.length();
-        if (dateLen > 0)
-        {
-            const QString dateOnly = dateText.left(qMin(dateLen, 10));
-            const QDate date = QDate::fromString(dateOnly, Qt::ISODate);
-            if (date.isValid())
-                return date.toString(QStringLiteral("yyyy-MM-dd"));
-            return dateOnly;
-        }
-    }
-
-    if (item.productionYear > 0)
-        return QString::number(item.productionYear);
-
-    return QString();
 }
 
 QString formatEpisodeTag(const MediaItem &item)
@@ -547,6 +526,10 @@ void DetailView::setupUi()
     m_posterLabel->setFixedSize(250, 375);
     m_posterLabel->setObjectName("detail-poster-label");
     m_posterLabel->setAlignment(Qt::AlignCenter);
+    connect(LibraryArtworkManager::instance(), &LibraryArtworkManager::policyChanged, this,
+            [this](const QString& id) { if (id == m_owningLibraryId) applyPosterPresentation(); });
+    connect(LibraryArtworkManager::instance(), &LibraryArtworkManager::configurationChanged,
+            this, &DetailView::applyPosterPresentation);
 
     
     
@@ -616,6 +599,42 @@ void DetailView::setupUi()
             {
                 if (!m_currentMediaItem.id.isEmpty())
                     handleFavoriteRequested(m_currentMediaItem);
+            });
+    connect(m_actionWidget, &DetailActionWidget::moreMenuRequested, this,
+            [this](const QPoint &globalPos)
+            {
+                
+                MediaItem item = m_currentMediaItem;
+                if (item.id.isEmpty() || item.id != m_currentItemId)
+                    return;
+                if (item.type == "Series" && m_currentPlayableItem.type == "Episode" &&
+                    !m_currentPlayableItem.id.isEmpty())
+                {
+                    item = MediaItemUtils::withResumeContext(item, m_currentPlayableItem);
+                }
+
+                QPointer<DetailView> safeThis(this);
+                
+                
+                MediaActionMenu menu(item, m_core, nullptr,
+                                     {CardContextMenuAction::Download,
+                                      CardContextMenuAction::AddToPlaylist,
+                                      CardContextMenuAction::RemoveFromPlaylist,
+                                      CardContextMenuAction::DeletePlaylist,
+                                      CardContextMenuAction::RemoveFromResume,
+                                      CardContextMenuAction::EditMetadata,
+                                      CardContextMenuAction::EditImages,
+                                      CardContextMenuAction::RefreshMetadata,
+                                      CardContextMenuAction::Identify,
+                                      CardContextMenuAction::RemoveMedia});
+                const CardContextMenuRequest request = menu.execRequest(globalPos);
+                if (!safeThis || safeThis->m_currentItemId != item.id || !request.isValid())
+                    return;
+
+                qDebug() << "[DetailView] More menu action"
+                         << "itemId=" << item.id << "type=" << item.type
+                         << "action=" << static_cast<int>(request.action);
+                safeThis->dispatchCardContextMenuRequest(item, request);
             });
     connect(m_actionWidget, &DetailActionWidget::playedToggleRequested, this,
             [this]()
@@ -695,20 +714,22 @@ void DetailView::setupUi()
     m_infoLayout->setColumnStretch(1, 10);
     m_infoLayout->setColumnStretch(2, 1);
     contentLayout->addWidget(infoContainer);
+    m_musicTracks = new MusicTrackListWidget(m_core, m_contentWidget);
+    contentLayout->addWidget(m_musicTracks);
+    m_musicTracks->hide();
 
     
     
     
     m_seasonWidget = new MediaSectionWidget(tr("Seasons"), m_core, m_contentWidget);
     m_seasonWidget->setCardStyle(MediaCardDelegate::Poster);
-    m_seasonWidget->setGalleryHeight(300);
+    m_seasonWidget->fitGalleryHeightToCards();
 
     
     m_episodeWidget = new MediaSectionWidget(tr("Episodes"), m_core, m_contentWidget);
     m_episodeWidget->setCardStyle(MediaCardDelegate::LibraryTile);
     m_episodeWidget->gallery()->setHoverControls(MediaCardDelegate::HoverControlPlay |
                                                  MediaCardDelegate::HoverControlMore);
-    
     
     {
         int imgH = 100;
@@ -717,7 +738,7 @@ void DetailView::setupUi()
         m_episodeTileWidth = episodeTileSize.width();
         m_episodeWidget->setTileSize(episodeTileSize);
     }
-    m_episodeWidget->setGalleryHeight(145);
+    m_episodeWidget->fitGalleryHeightToCards();
 
     
     m_episodeHeaderControls = new QWidget(m_episodeWidget);
@@ -751,11 +772,6 @@ void DetailView::setupUi()
     m_episodeWidget->setHeaderWidget(m_episodeHeaderControls);
     m_episodeHeaderControls->hide();
 
-    m_episodeSectionReserveWidget = createTransparentReserveWidget(m_contentWidget, "detail-episode-section-reserve",
-                                                                   reserveHeightFor(m_episodeWidget, 190));
-    m_seasonSectionReserveWidget = createTransparentReserveWidget(m_contentWidget, "detail-season-section-reserve",
-                                                                  reserveHeightFor(m_seasonWidget, 320));
-
     connect(m_seasonSwitcher, &ModernMenuButton::currentIndexChanged, this,
             [this](int idx)
             {
@@ -770,28 +786,41 @@ void DetailView::setupUi()
 
     m_castWidget = new MediaSectionWidget(tr("Cast & Crew"), m_core, m_contentWidget);
     m_castWidget->setCardStyle(MediaCardDelegate::Cast);
-    m_castWidget->setGalleryHeight(280);
+    m_castWidget->fitGalleryHeightToCards();
 
-    m_castSectionReserveWidget = new QWidget(m_contentWidget);
-    m_castSectionReserveWidget->setObjectName("detail-cast-section-reserve");
-    m_castSectionReserveWidget->setFixedHeight(qMax(320, m_castWidget->sizeHint().height()));
-    m_castSectionReserveWidget->hide();
-
-    m_additionalPartsWidget = new MediaSectionWidget(tr("Additional Parts"), m_core, m_contentWidget);
+    m_additionalPartsWidget = new MediaSectionWidget(tr("Chapters"), m_core, m_contentWidget);
     m_additionalPartsWidget->setCardStyle(MediaCardDelegate::Poster);
-    m_additionalPartsWidget->setGalleryHeight(300);
-    m_additionalPartsSectionReserveWidget = createTransparentReserveWidget(
-        m_contentWidget, "detail-additional-section-reserve", reserveHeightFor(m_additionalPartsWidget, 350));
+    m_additionalPartsWidget->fitGalleryHeightToCards();
 
     m_collectionWidget = new MediaSectionWidget(tr("Collection"), m_core, m_contentWidget);
     m_collectionWidget->setCardStyle(MediaCardDelegate::Poster);
-    m_collectionWidget->setGalleryHeight(300);
-    m_collectionSectionReserveWidget = createTransparentReserveWidget(
-        m_contentWidget, "detail-collection-section-reserve", reserveHeightFor(m_collectionWidget, 350));
+    m_collectionWidget->fitGalleryHeightToCards();
 
     m_similarWidget = new MediaSectionWidget(tr("More Like This"), m_core, m_contentWidget);
     m_similarWidget->setCardStyle(MediaCardDelegate::Poster);
-    m_similarWidget->setGalleryHeight(300);
+    m_similarWidget->fitGalleryHeightToCards();
+
+    
+    
+    for (MediaSectionWidget *section : {m_episodeWidget, m_seasonWidget, m_castWidget,
+                                       m_additionalPartsWidget, m_collectionWidget, m_similarWidget})
+    {
+        section->layout()->setContentsMargins(LayoutUtils::DetailSectionMetrics::HorizontalMargin,
+                                              LayoutUtils::DetailSectionMetrics::SectionSpacing,
+                                              LayoutUtils::DetailSectionMetrics::HorizontalMargin, 0);
+        section->layout()->setSpacing(LayoutUtils::DetailSectionMetrics::ContentSpacing);
+    }
+
+    m_episodeSectionReserveWidget = createTransparentReserveWidget(m_contentWidget, "detail-episode-section-reserve",
+                                                                   reserveHeightFor(m_episodeWidget, 190));
+    m_seasonSectionReserveWidget = createTransparentReserveWidget(m_contentWidget, "detail-season-section-reserve",
+                                                                  reserveHeightFor(m_seasonWidget, 320));
+    m_castSectionReserveWidget = createTransparentReserveWidget(m_contentWidget, "detail-cast-section-reserve",
+                                                                reserveHeightFor(m_castWidget, 320));
+    m_additionalPartsSectionReserveWidget = createTransparentReserveWidget(
+        m_contentWidget, "detail-additional-section-reserve", reserveHeightFor(m_additionalPartsWidget, 350));
+    m_collectionSectionReserveWidget = createTransparentReserveWidget(
+        m_contentWidget, "detail-collection-section-reserve", reserveHeightFor(m_collectionWidget, 350));
     m_similarSectionReserveWidget = createTransparentReserveWidget(m_contentWidget, "detail-similar-section-reserve",
                                                                    reserveHeightFor(m_similarWidget, 350));
 
@@ -935,10 +964,52 @@ void DetailView::setupUi()
     m_mainScrollArea->setWidget(m_contentWidget);
     mainLayout->addWidget(m_mainScrollArea);
     m_mainScrollArea->viewport()->installEventFilter(this);
+    m_contentWidget->installEventFilter(this);
+}
+
+void DetailView::updateSectionSpacing()
+{
+    if (!m_contentWidget || !m_contentWidget->layout())
+        return;
+
+    int previousContentInset = 0;
+    QLayout *contentLayout = m_contentWidget->layout();
+    for (int i = 0; i < contentLayout->count(); ++i)
+    {
+        QWidget *widget = contentLayout->itemAt(i)->widget();
+        
+        if (!widget || widget->isHidden())
+            continue;
+
+        if (auto *section = qobject_cast<MediaSectionWidget *>(widget))
+        {
+            const int topSpacing = qMax(0, LayoutUtils::DetailSectionMetrics::SectionSpacing - previousContentInset);
+            QLayout *sectionLayout = section->layout();
+            QMargins margins = sectionLayout->contentsMargins();
+            if (margins.top() != topSpacing)
+            {
+                margins.setTop(topSpacing);
+                sectionLayout->setContentsMargins(margins);
+                qDebug() << "[DetailView] Section spacing adjusted"
+                         << "sectionIndex=" << i << "previousContentInset=" << previousContentInset
+                         << "topSpacing=" << topSpacing;
+            }
+            previousContentInset = section->galleryBottomInset();
+        }
+        else
+        {
+            if (widget == m_bottomInfoWidget)
+                m_bottomInfoWidget->setLeadingContentInset(previousContentInset);
+            
+            previousContentInset = 0;
+        }
+    }
 }
 
 void DetailView::loadItem(QString itemId, MediaItem seedItem)
 {
+    m_owningLibraryId = seedItem.owningLibraryId;
+    setProperty("owningLibraryId", m_owningLibraryId);
     QPointer<DetailView> safeThis(this);
     setDeferredPresentationBatchActive(false);
     m_currentItemId = itemId;
@@ -987,6 +1058,9 @@ void DetailView::loadItem(QString itemId, MediaItem seedItem)
     m_appliedCachedCollectionsToUi = false;
     m_appliedCachedAdditionalPartsToUi = false;
     m_appliedCastFingerprint.clear();
+    m_castItems.clear();
+    m_loadedCastItemIds.clear();
+    ++m_castGeneration;
     m_appliedSeriesPlayableFingerprint.clear();
 
     if (m_core && m_core->serverManager())
@@ -1525,7 +1599,7 @@ void DetailView::applyCachedSecondaryData(const QString &targetId, const QString
             {
                 m_seasonWidget->setTitle(tr("Seasons"));
                 m_seasonWidget->setCardStyle(MediaCardDelegate::Poster);
-                m_seasonWidget->setGalleryHeight(300);
+                m_seasonWidget->fitGalleryHeightToCards();
                 applyReservedSectionItems(m_seasonSectionReserveWidget, m_seasonWidget, m_seriesSeasons);
                 m_appliedCachedSeriesSeasonsToUi = true;
             }
@@ -1551,6 +1625,11 @@ void DetailView::applyCachedSecondaryData(const QString &targetId, const QString
     
     if (m_hasCachedAdditionalParts && !m_appliedCachedAdditionalPartsToUi)
     {
+        if (m_core && m_core->mediaService() && m_core->serverManager() &&
+            m_core->serverManager()->activeProfile().id == m_detailCacheServerId &&
+            m_core->serverManager()->activeProfile().userId == m_detailCacheUserId) {
+            m_core->mediaService()->rememberAdditionalParts(m_currentItemId, m_cachedAdditionalParts);
+        }
         applyReservedSectionItems(m_additionalPartsSectionReserveWidget, m_additionalPartsWidget,
                                   m_cachedAdditionalParts);
         m_appliedCachedAdditionalPartsToUi = true;
@@ -1620,7 +1699,7 @@ void DetailView::updateMetaRow(const MediaItem &item, const QString &leadingMeta
     }
     if (!leadingMeta.isEmpty())
         metas << leadingMeta;
-    const QString releaseDate = formatDetailReleaseDate(item);
+    const QString releaseDate = MediaItemUtils::releaseDateText(item);
     if (!releaseDate.isEmpty())
         metas << releaseDate;
     if (item.runTimeTicks > 0)
@@ -1811,6 +1890,7 @@ void DetailView::applyCastSection(const MediaItem &item)
     if (!fp.isEmpty() && fp == m_appliedCastFingerprint)
         return;
 
+    const int generation = ++m_castGeneration;
     if (item.people.isEmpty())
     {
         applyReservedSectionItems(m_castSectionReserveWidget, m_castWidget, {});
@@ -1819,13 +1899,19 @@ void DetailView::applyCastSection(const MediaItem &item)
     }
 
     QList<MediaItem> castItems;
+    QStringList missingPersonIds;
     castItems.reserve(item.people.size());
     for (const auto &person : item.people)
     {
-        MediaItem fakeItem;
-        fakeItem.id = person.id;
-        fakeItem.name = person.name;
-        fakeItem.images.primaryTag = person.primaryImageTag;
+        MediaItem fakeItem = m_castItems.value(person.id);
+        if (!m_loadedCastItemIds.contains(person.id))
+        {
+            fakeItem.id = person.id;
+            fakeItem.name = person.name;
+            fakeItem.images.primaryTag = person.primaryImageTag;
+            if (!person.id.isEmpty())
+                missingPersonIds.append(person.id);
+        }
         
         QStringList personParts;
         if (!person.type.isEmpty())
@@ -1845,11 +1931,40 @@ void DetailView::applyCastSection(const MediaItem &item)
             personParts << person.role;
         fakeItem.overview = personParts.join(" · ");
         fakeItem.type = "Person";
+        m_castItems.insert(person.id, fakeItem);
         castItems.append(fakeItem);
     }
 
     applyReservedSectionItems(m_castSectionReserveWidget, m_castWidget, castItems);
     m_appliedCastFingerprint = fp;
+    if (!missingPersonIds.isEmpty())
+        QCoro::connect(refreshCastItems(missingPersonIds, generation), this, []() {});
+}
+
+QCoro::Task<void> DetailView::refreshCastItems(QStringList personIds, int generation)
+{
+    if (!m_core || !m_core->mediaService())
+        co_return;
+    QPointer<DetailView> safeThis(this);
+    try
+    {
+        const QList<MediaItem> people = co_await m_core->mediaService()->getItemsByIds(personIds);
+        if (!safeThis || safeThis->m_castGeneration != generation)
+            co_return;
+        for (const MediaItem &person : people)
+        {
+            
+            if (person.type == "Person" && !safeThis->m_loadedCastItemIds.contains(person.id))
+                safeThis->onMediaItemUpdated(person);
+        }
+        qDebug() << "[DetailView] Cast data hydrated"
+                 << "| requested=" << personIds.size() << "| returned=" << people.size();
+    }
+    catch (const std::exception &)
+    {
+        qWarning() << "[DetailView] Cast data hydration failed"
+                   << "| requested=" << personIds.size();
+    }
 }
 
 void DetailView::applyCollectionGalleryLayout(const QList<MediaItem> &collections)
@@ -1889,12 +2004,12 @@ void DetailView::applyCollectionGalleryLayout(const QList<MediaItem> &collection
     if (useLandscapeCards)
     {
         m_collectionWidget->setCardStyle(MediaCardDelegate::LibraryTile);
-        m_collectionWidget->setGalleryHeight(230);
+        m_collectionWidget->fitGalleryHeightToCards();
     }
     else
     {
         m_collectionWidget->setCardStyle(MediaCardDelegate::Poster);
-        m_collectionWidget->setGalleryHeight(300);
+        m_collectionWidget->fitGalleryHeightToCards();
     }
 
     qDebug() << "[DetailView] Collection gallery layout"
@@ -2018,7 +2133,7 @@ QCoro::Task<void> DetailView::executeFetchSecondaries(QPointer<DetailView> safeT
         {
             safeThis->m_seasonWidget->setTitle(tr("Seasons"));
             safeThis->m_seasonWidget->setCardStyle(MediaCardDelegate::Poster);
-            safeThis->m_seasonWidget->setGalleryHeight(300);
+            safeThis->m_seasonWidget->fitGalleryHeightToCards();
             applyReservedSectionItems(safeThis->m_seasonSectionReserveWidget, safeThis->m_seasonWidget, seasons);
         }
     }
@@ -2402,17 +2517,29 @@ QCoro::Task<void> DetailView::onVersionChanged(int index)
 
 QCoro::Task<void> DetailView::executePlay(MediaItem targetItem, long long startTicks)
 {
+    if (targetItem.type == QLatin1String("MusicAlbum") || targetItem.type == QLatin1String("Audio")) {
+        BaseView::handlePlayRequested(targetItem);
+        co_return;
+    }
     if (targetItem.id.isEmpty())
         co_return;
+    QPointer<DetailView> guard(this);
+    QPointer<MediaService> service(m_core->mediaService());
+    const quint64 intent = PlaybackManager::instance()->beginVideoIntent();
+    const auto cancelIntent = qScopeGuard([intent]() { PlaybackManager::instance()->cancelVideoIntent(intent); });
     try
     {
         MediaItem actualItem = targetItem;
-        if (actualItem.mediaSources.isEmpty())
+        if (actualItem.mediaSources.isEmpty() || actualItem.type == QLatin1String("TvChannel"))
         {
-            PlaybackInfo info = co_await m_core->mediaService()->getPlaybackInfo(actualItem.id);
+            PlaybackInfo info = co_await m_core->mediaService()->getPlaybackInfo(actualItem.id, actualItem.type == QLatin1String("TvChannel"));
+            if (!guard || !PlaybackManager::instance()->isCurrentVideoIntent(intent)) {
+                if (service) co_await service->discardPlaybackSources(info.mediaSources);
+                co_return;
+            }
             actualItem.mediaSources = info.mediaSources;
         }
-        if (actualItem.mediaSources.isEmpty())
+        if (!guard || !PlaybackManager::instance()->isCurrentVideoIntent(intent) || actualItem.mediaSources.isEmpty())
             co_return;
 
         int sourceIdx = 0;
@@ -2436,7 +2563,7 @@ QCoro::Task<void> DetailView::executePlay(MediaItem targetItem, long long startT
                     activeServerId(m_core), actualItem.id));
         }
 
-        if (sourceIdx >= actualItem.mediaSources.size())
+        if (sourceIdx < 0 || sourceIdx >= actualItem.mediaSources.size())
             sourceIdx = 0;
         MediaSourceInfo modifiedSource = actualItem.mediaSources[sourceIdx];
 
@@ -2461,7 +2588,8 @@ QCoro::Task<void> DetailView::executePlay(MediaItem targetItem, long long startT
                 ConfigStore::instance()->get<QString>(ConfigKeys::PlayerSubLang, "auto"));
         }
 
-        QString streamUrl = m_core->mediaService()->getStreamUrl(actualItem.id, modifiedSource.id);
+        if (actualItem.type == QLatin1String("TvChannel")) startTicks = 0;
+        QString streamUrl = m_core->mediaService()->getStreamUrl(actualItem.id, modifiedSource);
 
         const QString playTitle = MediaItemUtils::playbackTitle(actualItem, m_currentMediaItem.name);
 
@@ -2513,17 +2641,29 @@ QCoro::Task<void> DetailView::executePlaySeason(MediaItem seasonItem)
 
 QCoro::Task<void> DetailView::executeExternalPlay(MediaItem targetItem, QString playerPath)
 {
+    if (targetItem.type == QLatin1String("MusicAlbum") || targetItem.type == QLatin1String("Audio")) {
+        BaseView::handlePlayRequested(targetItem);
+        co_return;
+    }
     if (targetItem.id.isEmpty() || playerPath.isEmpty())
         co_return;
+    QPointer<DetailView> guard(this);
+    QPointer<MediaService> service(m_core->mediaService());
+    const quint64 intent = PlaybackManager::instance()->beginVideoIntent();
+    const auto cancelIntent = qScopeGuard([intent]() { PlaybackManager::instance()->cancelVideoIntent(intent); });
     try
     {
         MediaItem actualItem = targetItem;
-        if (actualItem.mediaSources.isEmpty())
+        if (actualItem.mediaSources.isEmpty() || actualItem.type == QLatin1String("TvChannel"))
         {
-            PlaybackInfo info = co_await m_core->mediaService()->getPlaybackInfo(actualItem.id);
+            PlaybackInfo info = co_await m_core->mediaService()->getPlaybackInfo(actualItem.id, actualItem.type == QLatin1String("TvChannel"));
+            if (!guard || !PlaybackManager::instance()->isCurrentVideoIntent(intent)) {
+                if (service) co_await service->discardPlaybackSources(info.mediaSources);
+                co_return;
+            }
             actualItem.mediaSources = info.mediaSources;
         }
-        if (actualItem.mediaSources.isEmpty())
+        if (!guard || !PlaybackManager::instance()->isCurrentVideoIntent(intent) || actualItem.mediaSources.isEmpty())
             co_return;
 
         
@@ -2537,7 +2677,7 @@ QCoro::Task<void> DetailView::executeExternalPlay(MediaItem targetItem, QString 
         {
             sourceIdx = preferredSourceIndex(m_core, actualItem);
         }
-        if (sourceIdx >= actualItem.mediaSources.size())
+        if (sourceIdx < 0 || sourceIdx >= actualItem.mediaSources.size())
             sourceIdx = 0;
         MediaSourceInfo modifiedSource = actualItem.mediaSources[sourceIdx];
 
@@ -2561,11 +2701,11 @@ QCoro::Task<void> DetailView::executeExternalPlay(MediaItem targetItem, QString 
                 ConfigStore::instance()->get<QString>(ConfigKeys::PlayerSubLang, "auto"));
         }
 
-        QString streamUrl = m_core->mediaService()->getStreamUrl(actualItem.id, modifiedSource.id);
+        QString streamUrl = m_core->mediaService()->getStreamUrl(actualItem.id, modifiedSource);
 
         const QString playTitle = MediaItemUtils::playbackTitle(actualItem, m_currentMediaItem.name);
 
-        long long startTicks = actualItem.userData.playbackPositionTicks;
+        long long startTicks = actualItem.type == QLatin1String("TvChannel") ? 0 : actualItem.userData.playbackPositionTicks;
         PlaybackManager::instance()->startExternalPlayback(playerPath, actualItem.id, playTitle, streamUrl, startTicks,
                                                            QVariant::fromValue(modifiedSource));
     }
@@ -2626,6 +2766,9 @@ void DetailView::resizeEvent(QResizeEvent *event)
 
 bool DetailView::eventFilter(QObject *obj, QEvent *event)
 {
+    if (obj == m_contentWidget && event->type() == QEvent::LayoutRequest)
+        updateSectionSpacing();
+
     if (m_mainScrollArea && obj == m_mainScrollArea->viewport() && event->type() == QEvent::Resize)
     {
         QResizeEvent *re = static_cast<QResizeEvent *>(event);
@@ -3012,6 +3155,11 @@ void DetailView::updateOverviewElidedText()
 
 QCoro::Task<void> DetailView::updateUi(MediaItem item, bool isSilentRefresh)
 {
+    if (item.owningLibraryId.isEmpty()) item.owningLibraryId = m_owningLibraryId;
+    m_currentMediaItem = item;
+    QCoro::connect(resolveArtworkContext(item), this, []() {});
+    m_musicTracks->setVisible(item.type == QLatin1String("MusicAlbum"));
+    if (item.type == QLatin1String("MusicAlbum")) m_musicTracks->loadAlbum(item.id);
     m_currentMediaItem = item;
     if (!isSilentRefresh && item.type == "Series")
         m_deferBottomInfoReveal = true;
@@ -3342,7 +3490,7 @@ QCoro::Task<void> DetailView::executeSilentRefresh(QPointer<DetailView> safeThis
                 {
                     safeThis->m_seasonWidget->setTitle(tr("Seasons"));
                     safeThis->m_seasonWidget->setCardStyle(MediaCardDelegate::Poster);
-                    safeThis->m_seasonWidget->setGalleryHeight(300);
+                    safeThis->m_seasonWidget->fitGalleryHeightToCards();
                     applyReservedSectionItems(safeThis->m_seasonSectionReserveWidget, safeThis->m_seasonWidget,
                                               seasons);
                 }
@@ -3362,6 +3510,40 @@ QCoro::Task<void> DetailView::executeSilentRefresh(QPointer<DetailView> safeThis
     catch (...)
     {
     }
+}
+
+QCoro::Task<void> DetailView::resolveArtworkContext(MediaItem item)
+{
+    QPointer<DetailView> guard(this);
+    const QString target = item.id;
+    const QString id = co_await LibraryArtworkManager::instance()->resolveLibrary(item);
+    if (!guard || guard->m_currentItemId != target) co_return;
+    guard->m_owningLibraryId = id;
+    guard->m_currentMediaItem.owningLibraryId = id;
+    guard->setProperty("owningLibraryId", id);
+    guard->applyPosterPresentation();
+}
+
+void DetailView::applyPosterPresentation()
+{
+    if (m_currentPosterPix.isNull()) return;
+    const bool album = m_currentMediaItem.type == QLatin1String("MusicAlbum");
+    const bool landscapeLayout = LibraryArtworkManager::instance()->landscape(m_owningLibraryId);
+    
+    
+    const bool horizontal = !album && landscapeLayout &&
+        m_currentPosterPix.width() > m_currentPosterPix.height();
+    const QSize size = album ? QSize(250, 250) : horizontal ? QSize(400, 260) : QSize(250, 375);
+    if (m_posterLabel->size() != size) {
+        qDebug() << "[DetailView] Poster presentation changed"
+                 << "| itemId=" << m_currentItemId << "| libraryId=" << m_owningLibraryId
+                 << "| landscapeLayout=" << landscapeLayout
+                 << "| sourceSize=" << m_currentPosterPix.size() << "| frameSize=" << size;
+    }
+    m_posterLabel->setFixedSize(size);
+    m_posterLabel->setPixmap(horizontal || album
+        ? ImageUtils::containRoundedPixmap(m_currentPosterPix, size, 12, true)
+        : ImageUtils::coverRoundedPixmap(m_currentPosterPix, size, 12));
 }
 
 QCoro::Task<void> DetailView::executeLoadImages(QPointer<DetailView> safeThis, QEmbyCore *core, MediaItem item,
@@ -3447,7 +3629,7 @@ QCoro::Task<void> DetailView::executeLoadImages(QPointer<DetailView> safeThis, Q
             if (!posterTag.isEmpty())
             {
                 result.poster =
-                    DetailCacheUtils::loadImage(cacheServerId, cacheUserId, ownerItemId, QStringLiteral("poster"),
+                    DetailCacheUtils::loadImage(cacheServerId, cacheUserId, ownerItemId, QStringLiteral("poster-source-v2"),
                                                 posterId, posterType, posterTag, posterMaxWidth);
             }
             if (!backdropTag.isEmpty())
@@ -3471,7 +3653,7 @@ QCoro::Task<void> DetailView::executeLoadImages(QPointer<DetailView> safeThis, Q
     if (cachedImages.poster.has_value())
     {
         safeThis->m_currentPosterPix = QPixmap::fromImage(cachedImages.poster.value());
-        safeThis->m_posterLabel->setPixmap(safeThis->m_currentPosterPix);
+        safeThis->applyPosterPresentation();
         qDebug() << "[DetailView] Detail poster image cache hit"
                  << "itemId=" << item.id << "imageId=" << posterId << "type=" << posterType;
     }
@@ -3502,57 +3684,13 @@ QCoro::Task<void> DetailView::executeLoadImages(QPointer<DetailView> safeThis, Q
             {
                 safeThis->m_currentPosterPix = pix;
 
-                
-                
-                
-                const QSize posterSize(250, 375);
-                const QString currentItemId = item.id;
-                QImage src = pix.toImage();
-
-                auto *watcher = new QFutureWatcher<QImage>(safeThis.data());
-                QObject::connect(watcher, &QFutureWatcher<QImage>::finished, safeThis.data(),
-                                 [safeThis, watcher, currentItemId, cacheServerId, cacheUserId, posterId, posterType,
-                                  posterTag, posterMaxWidth]()
-                                 {
-                                     if (safeThis && safeThis->m_currentItemId == currentItemId)
-                                     {
-                                         const QImage result = watcher->result();
-                                         if (!result.isNull())
-                                         {
-                                             safeThis->m_posterLabel->setPixmap(QPixmap::fromImage(result));
-                                             saveDetailImageAsync(cacheServerId, cacheUserId, currentItemId,
-                                                                  QStringLiteral("poster"), posterId, posterType,
-                                                                  posterTag, posterMaxWidth, result);
-                                         }
-                                     }
-                                     watcher->deleteLater();
-                                 });
-                watcher->setFuture(QtConcurrent::run(
-                    [src, posterSize]() -> QImage
-                    {
-                        QImage scaled =
-                            src.scaled(posterSize, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
-                        const int cropX = (scaled.width() - posterSize.width()) / 2;
-                        const int cropY = (scaled.height() - posterSize.height()) / 2;
-                        QImage cropped = scaled.copy(cropX, cropY, posterSize.width(), posterSize.height());
-
-                        
-                        QImage rounded(posterSize, QImage::Format_ARGB32_Premultiplied);
-                        rounded.fill(Qt::transparent);
-                        QPainter p(&rounded);
-                        p.setRenderHint(QPainter::Antialiasing);
-                        QPainterPath path;
-                        path.addRoundedRect(QRectF(0, 0, posterSize.width(), posterSize.height()), 12, 12);
-                        p.setClipPath(path);
-                        p.drawImage(0, 0, cropped);
-                        p.end();
-                        return rounded;
-                    }));
+                LibraryArtworkManager::instance()->observeImage(item, posterType, posterTag, pix.size());
+                safeThis->applyPosterPresentation();
+                saveDetailImageAsync(cacheServerId, cacheUserId, item.id, QStringLiteral("poster-source-v2"),
+                                     posterId, posterType, posterTag, posterMaxWidth, pix.toImage());
             }
         }
-        catch (...)
-        {
-        }
+        catch (...) {}
     }
 
     
@@ -3613,6 +3751,12 @@ QCoro::Task<void> DetailView::executeLoadImages(QPointer<DetailView> safeThis, Q
         {
         }
     }
+}
+
+void DetailView::onMediaItemRemoved(const QString &itemId)
+{
+    if (itemId == m_currentItemId)
+        Q_EMIT navigateBack();
 }
 
 void DetailView::onMediaItemUpdated(const MediaItem &item)
@@ -3704,8 +3848,15 @@ void DetailView::onMediaItemUpdated(const MediaItem &item)
         m_seasonWidget->updateItem(item);
     if (m_episodeWidget)
         m_episodeWidget->updateItem(item);
-    if (m_castWidget)
-        m_castWidget->updateItem(item);
+    if (m_castWidget && item.type == "Person" && m_castItems.contains(item.id))
+    {
+        MediaItem castItem = item;
+        
+        castItem.overview = m_castItems.value(item.id).overview;
+        m_castItems.insert(item.id, castItem);
+        m_loadedCastItemIds.insert(item.id);
+        m_castWidget->updateItem(castItem);
+    }
     if (m_additionalPartsWidget)
         m_additionalPartsWidget->updateItem(item);
     if (m_collectionWidget)
@@ -3909,7 +4060,12 @@ QCoro::Task<void> DetailView::loadEpisodesForSeason(int idx, QString highlightEp
         episodesBelongToSeason(m_cachedSeasonEpisodes, m_seriesSeasons[idx]))
     {
         shownCachedEpisodes = m_cachedSeasonEpisodes;
-        if (!m_appliedCachedSeasonEpisodesToUi)
+        
+        
+        const bool cachedSeasonAlreadyShown =
+            m_appliedCachedSeasonEpisodesToUi &&
+            episodesBelongToSeason(m_currentSeasonEpisodes, m_seriesSeasons[idx]);
+        if (!cachedSeasonAlreadyShown)
         {
             m_currentSeasonEpisodes = shownCachedEpisodes;
             applyReservedSectionItems(m_episodeSectionReserveWidget, m_episodeWidget, shownCachedEpisodes);
@@ -3925,9 +4081,9 @@ QCoro::Task<void> DetailView::loadEpisodesForSeason(int idx, QString highlightEp
             m_appliedCachedSeasonEpisodesToUi = true;
         }
         showedCachedEpisodes = true;
-        qDebug() << "[DetailView][cache-ui] Applied cached season episodes"
+        qDebug() << "[DetailView][cache-ui] Reused cached season episodes"
                  << "seriesId=" << m_currentItemId << "seasonId=" << seasonId << "seasonIndex=" << idx
-                 << "episodeCount=" << shownCachedEpisodes.size();
+                 << "episodeCount=" << shownCachedEpisodes.size() << "appliedToUi=" << !cachedSeasonAlreadyShown;
     }
     else
     {
@@ -4028,5 +4184,7 @@ QCoro::Task<void> DetailView::loadEpisodesForSeason(int idx, QString highlightEp
 
 QCoro::Task<void> DetailView::switchToSeason(int idx, bool manualSelection)
 {
+    
+    m_appliedCachedSeasonEpisodesToUi = false;
     co_await loadEpisodesForSeason(idx, QString(), false, manualSelection);
 }

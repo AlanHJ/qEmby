@@ -1,5 +1,6 @@
 #include "mediaservice.h"
 #include "../../api/apiclient.h"
+#include "../../api/networkrequesterror.h"
 #include "../../config/config_keys.h"
 #include "../../config/configstore.h"
 #include "../manager/servermanager.h"
@@ -42,6 +43,8 @@ namespace
     constexpr int kImageTransferTimeoutMs = 30 * 1000;
     constexpr int kMaxGlobalImageNetworkRequests = 8;
     constexpr qint64 kSlowImageRequestThresholdMs = 500;
+    constexpr const char* kFeaturedMetadataFields =
+        "Overview,Genres,Tags,ProviderIds,OriginalTitle,DateCreated,PrimaryImageAspectRatio";
     constexpr int kImageWidthBuckets[] = {
         160, 240, 320, 480, 640, 768, 1024, 1280, 1920};
 
@@ -482,6 +485,16 @@ MediaService::MediaService(ServerManager *serverManager, QObject *parent)
                              << "| cachedViewCount="
                              << m_userViewsCache.views.size();
                     clearUserViewsCache();
+                    const auto streams = m_liveStreams.keys();
+                    for (const auto& id : streams) {
+                        auto close = [](QPointer<MediaService> service, QString stream) -> QCoro::Task<void> {
+                            try { if (service) co_await service->closeLiveStream(stream); }
+                            catch (...) { qWarning() << "[MediaService] Live stream cleanup failed"; }
+                        };
+                        QCoro::connect(close(this, id), this, []() {});
+                    }
+                    m_additionalPartOwners.clear();
+                    ++m_additionalPartsGeneration;
                 });
     }
 }
@@ -498,13 +511,16 @@ QCoro::Task<QList<MediaItem>> MediaService::getUserViews(bool includeHidden)
 {
     ensureValidProfile();
     ServerProfile profile = m_serverManager->activeProfile();
+    QPointer<MediaService> guard(this);
 
     if (m_userViewsCache.isValid(profile.id, profile.userId, includeHidden))
     {
         qDebug() << "[MediaService] getUserViews cache hit"
                  << "| includeHidden=" << includeHidden
                  << "| count=" << m_userViewsCache.views.size();
-        co_return m_userViewsCache.views;
+        
+        
+        co_return QList<MediaItem>(m_userViewsCache.views);
     }
 
     
@@ -516,6 +532,7 @@ QCoro::Task<QList<MediaItem>> MediaService::getUserViews(bool includeHidden)
 
     const quint64 cacheGeneration = m_userViewsCacheGeneration;
     QJsonObject response = co_await m_serverManager->activeClient()->get(path);
+    if (!guard) co_return QList<MediaItem>{};
     const QList<MediaItem> views = parseJsonArray<MediaItem>(response["Items"].toArray());
     const ServerProfile activeProfile = m_serverManager->activeProfile();
     const bool requestStillCurrent =
@@ -549,9 +566,9 @@ void MediaService::clearUserViewsCache()
     m_userViewsCache.clear();
 }
 
-QCoro::Task<QList<MediaItem>> MediaService::getLibraryItems(const QString &parentId, const QString &sortBy,
-                                                            const QString &sortOrder, const QString &filters,
-                                                            const QString &includeItemTypes, int startIndex, int limit,
+QCoro::Task<QList<MediaItem>> MediaService::getLibraryItems(QString parentId, QString sortBy,
+                                                            QString sortOrder, QString filters,
+                                                            QString includeItemTypes, int startIndex, int limit,
                                                             bool recursive, bool includeChildCount)
 {
     const MediaQueryPage page =
@@ -561,13 +578,16 @@ QCoro::Task<QList<MediaItem>> MediaService::getLibraryItems(const QString &paren
     co_return page.items;
 }
 
-QCoro::Task<MediaQueryPage> MediaService::getLibraryItemsPage(const QString &parentId, const QString &sortBy,
-                                                              const QString &sortOrder, const QString &filters,
-                                                              const QString &includeItemTypes, int startIndex, int limit,
-                                                              bool recursive, bool includeChildCount)
+QCoro::Task<MediaQueryPage> MediaService::getLibraryItemsPage(QString parentId, QString sortBy,
+                                                              QString sortOrder, QString filters,
+                                                              QString includeItemTypes, int startIndex, int limit,
+                                                              bool recursive, bool includeChildCount, QObject* requestContext)
 {
     ensureValidProfile();
     ServerProfile profile = m_serverManager->activeProfile();
+    QPointer<MediaService> guard(this);
+    QPointer<QObject> contextGuard(requestContext);
+    const bool hasContext = requestContext != nullptr;
 
     QStringList fields = {QStringLiteral("BasicSyncInfo"), QStringLiteral("CanDelete"),
                           QStringLiteral("CanDownload"), QStringLiteral("PrimaryImageAspectRatio"),
@@ -603,8 +623,27 @@ QCoro::Task<MediaQueryPage> MediaService::getLibraryItemsPage(const QString &par
     if (!filters.isEmpty())
         path += QString("&Filters=%1").arg(filters);
 
-    QJsonObject response = co_await m_serverManager->activeClient()->get(path);
-    const MediaQueryPage page = parseMediaQueryPage(response, startIndex, limit);
+    QJsonObject response = co_await m_serverManager->activeClient()->get(path, contextGuard);
+    if (!guard || (hasContext && !contextGuard) || guard->m_serverManager->activeProfile().id != profile.id ||
+        guard->m_serverManager->activeProfile().userId != profile.userId) co_return MediaQueryPage{};
+    MediaQueryPage page = parseMediaQueryPage(response, startIndex, limit);
+    bool rootLibrary = false;
+    QString collectionType;
+    for (const auto& view : m_userViewsCache.views) {
+        if (view.id == parentId) { rootLibrary = true; collectionType = view.collectionType; break; }
+    }
+    if (rootLibrary) {
+        for (auto& item : page.items) item.owningLibraryId = parentId;
+        const auto types = includeItemTypes.split(',');
+        const bool completeScope = filters.isEmpty() &&
+            (includeItemTypes.isEmpty() ||
+             (collectionType == "movies" && types.contains("Movie")) ||
+             (collectionType == "tvshows" && types.contains("Series")) ||
+             (collectionType == "homevideos" && types.contains("Video")));
+
+        Q_EMIT libraryArtworkPage(parentId, page.items, startIndex,
+                                  page.hasTotalRecordCount ? page.totalRecordCount : -1, completeScope);
+    }
     qDebug() << "[MediaService] getLibraryItemsPage"
              << "| parentId=" << parentId
              << "| startIndex=" << startIndex
@@ -710,6 +749,45 @@ QCoro::Task<QList<MediaItem>> MediaService::getNextUp(const QString &seriesId)
     co_return parseJsonArray<MediaItem>(response["Items"].toArray());
 }
 
+QString MediaService::rawImageKey(QString itemId, QString type, QString tag, int width) const
+{
+    const auto profile = m_serverManager->activeProfile();
+    const auto version = m_invalidatedImageRequestVersions.value(buildImageCacheKey(itemId.trimmed(), type.trimmed(), -1));
+    const auto quality = ConfigStore::instance()->get<QString>(ConfigKeys::ImageQuality, "high");
+    if (quality == "low") width /= 2;
+    else if (quality == "medium") width = width * 3 / 4;
+    else if (quality == "original") width = 0;
+    return buildDecodedImageCacheKey(profile, itemId.trimmed(), type.trimmed(), tag, -1,
+                                     bucketImageWidth(width), version) + QStringLiteral("|original-format");
+}
+
+QCoro::Task<DownloadedImageData> MediaService::fetchImageData(QString itemId, QString imageType,
+    QString imageTag, int maxWidth, ImageRequestPriority priority, QObject* requestContext, ImageFetchPolicy policy)
+{
+    QPointer<MediaService> guard(this);
+    const QString key = rawImageKey(itemId, imageType, imageTag, maxWidth);
+    DownloadedImageData asset;
+    asset.identity = key;
+    if (policy != ImageFetchPolicy::NetworkOnly) {
+        if (const auto* bytes = m_rawImageCache.object(key)) {
+            asset.data = *bytes;
+            co_return asset;
+        }
+    }
+    ++m_rawImageRequests[key];
+    const auto rawRequestCleanup = qScopeGuard([guard, key]() {
+        if (guard && --guard->m_rawImageRequests[key] <= 0) guard->m_rawImageRequests.remove(key);
+    });
+    
+    
+    const QPixmap preview = co_await fetchImage(itemId, imageType, imageTag, maxWidth, -1,
+                                               priority, requestContext, policy);
+    if (!guard) co_return asset;
+    asset.preview = preview.toImage();
+    if (const auto* bytes = guard->m_rawImageCache.object(key)) asset.data = *bytes;
+    co_return asset;
+}
+
 QCoro::Task<QPixmap> MediaService::fetchImage(QString itemId,
                                               QString imageType,
                                               QString imageTag,
@@ -751,11 +829,12 @@ QCoro::Task<QPixmap> MediaService::fetchImage(QString itemId,
     const QString decodedCacheKey = buildDecodedImageCacheKey(
         profile, trimmedItemId, trimmedImageType, imageTag, imageIndex,
         effectiveMaxWidth, cacheVersion);
+    const QString rawKey = rawImageKey(itemId, imageType, imageTag, maxWidth);
     const bool networkOnly = fetchPolicy == ImageFetchPolicy::NetworkOnly;
 
     if (!networkOnly)
     {
-        if (QImage *cached = m_decodedImageCache.object(decodedCacheKey))
+        if (QImage *cached = m_rawImageRequests.contains(rawKey) ? nullptr : m_decodedImageCache.object(decodedCacheKey))
         {
             
             
@@ -984,6 +1063,9 @@ QCoro::Task<QPixmap> MediaService::fetchImage(QString itemId,
                  << "| maxWidth=" << effectiveMaxWidth;
     }
 
+    
+    
+    urlStr += QStringLiteral("&format=original");
     QNetworkRequest request((QUrl(urlStr)));
     const NetworkRequestOptions requestOptions =
         buildImageRequestOptions(profile, request.url());
@@ -1065,6 +1147,9 @@ QCoro::Task<QPixmap> MediaService::fetchImage(QString itemId,
     if (reply->error() == QNetworkReply::NoError)
     {
         QByteArray data = reply->readAll();
+        if (imageIndex == -1 && data.size() <= 32 * 1024 * 1024 &&
+            memoryCacheGeneration == m_imageCacheGeneration)
+            m_rawImageCache.insert(rawKey, new QByteArray(data), qMax(1, int(data.size() / 1024)));
         imageBytes = data.size();
         
         
@@ -1181,6 +1266,7 @@ void MediaService::invalidateImageCache(QString itemId, QString imageType,
     }
 
     const quint64 nextVersion = ++m_nextImageRequestVersion;
+    Q_EMIT imageInvalidated(itemId);
     m_invalidatedImageRequestVersions.insert(
         buildImageCacheKey(itemId, imageType, imageIndex), nextVersion);
     if (imageIndex >= 0)
@@ -1202,6 +1288,7 @@ void MediaService::clearImageCaches()
     const int inFlightEntries = m_inFlightImageRequests.size();
     ++m_imageCacheGeneration;
     m_decodedImageCache.clear();
+    m_rawImageCache.clear();
     m_inFlightImageRequests.clear();
     const QList<PendingImageNetworkSlot> pendingSlots =
         std::exchange(m_pendingImageNetworkSlots, {});
@@ -1516,7 +1603,7 @@ QCoro::Task<DownloadedImageData> MediaService::downloadImageByUrl(QString imageU
 }
 
 QCoro::Task<MediaQueryPage> MediaService::fetchItemPage(
-    QString basePath, int startIndex, int limit, QString context)
+    QString basePath, int startIndex, int limit, QString context, QPointer<QObject> requestContext)
 {
     ensureValidProfile();
 
@@ -1530,7 +1617,7 @@ QCoro::Task<MediaQueryPage> MediaService::fetchItemPage(
         path += QStringLiteral("&Limit=%1").arg(limit);
     }
 
-    QJsonObject response = co_await m_serverManager->activeClient()->get(path);
+    QJsonObject response = co_await m_serverManager->activeClient()->get(path, requestContext);
     const MediaQueryPage page = parseMediaQueryPage(response, startIndex, limit);
 
     qDebug() << "[MediaService] paged fetch page"
@@ -1546,6 +1633,8 @@ QCoro::Task<QList<MediaItem>> MediaService::fetchPagedItemList(
     QString basePath, int requestedLimit, QString context, bool deduplicateItems)
 {
     ensureValidProfile();
+    QPointer<MediaService> guard(this);
+    const auto profile = m_serverManager->activeProfile();
 
     QList<MediaItem> rawItems;
     int requestCount = 0;
@@ -1557,6 +1646,9 @@ QCoro::Task<QList<MediaItem>> MediaService::fetchPagedItemList(
     {
         const MediaQueryPage initialPage =
             co_await fetchItemPage(basePath, 0, normalizedLimit, context);
+        if (!guard || guard->m_serverManager->activeProfile().id != profile.id ||
+            guard->m_serverManager->activeProfile().userId != profile.userId)
+            co_return QList<MediaItem>{};
         ++requestCount;
         rawItems = initialPage.items;
         totalRecordCount =
@@ -1568,6 +1660,9 @@ QCoro::Task<QList<MediaItem>> MediaService::fetchPagedItemList(
     {
         const MediaQueryPage unboundedPage =
             co_await fetchItemPage(basePath, 0, 0, context);
+        if (!guard || guard->m_serverManager->activeProfile().id != profile.id ||
+            guard->m_serverManager->activeProfile().userId != profile.userId)
+            co_return QList<MediaItem>{};
         ++requestCount;
         rawItems = unboundedPage.items;
         totalRecordCount =
@@ -1607,6 +1702,9 @@ QCoro::Task<QList<MediaItem>> MediaService::fetchPagedItemList(
 
             const MediaQueryPage page =
                 co_await fetchItemPage(basePath, startIndex, pageLimit, context);
+        if (!guard || guard->m_serverManager->activeProfile().id != profile.id ||
+            guard->m_serverManager->activeProfile().userId != profile.userId)
+            co_return QList<MediaItem>{};
             ++requestCount;
             if (page.items.isEmpty())
             {
@@ -1705,6 +1803,133 @@ QCoro::Task<QList<MediaItem>> MediaService::getResumeItems(int limit, const QStr
 
     co_return co_await fetchPagedItemList(
         path, limit, QStringLiteral("resume"));
+}
+
+QCoro::Task<QList<MediaItem>> MediaService::getFeaturedCandidates()
+{
+    ensureValidProfile();
+    QPointer<ServerManager> manager(m_serverManager);
+    QPointer<ApiClient> client(manager->activeClient());
+    if (!client) throw std::runtime_error("No active client for featured candidates");
+    const ServerProfile profile = manager->activeProfile();
+    const int perTypeLimit = 50;
+    
+    
+    
+    const QString fields = QString::fromLatin1(kFeaturedMetadataFields);
+    QPointer<MediaService> guard(this);
+    QList<MediaItem> items;
+    QSet<QString> seen;
+    const QStringList itemTypes {QStringLiteral("Movie"), QStringLiteral("Series")};
+    
+    for (const QString itemType : itemTypes) {
+        const QString path = QStringLiteral(
+            "/Users/%1/Items?Recursive=true&IncludeItemTypes=%2"
+            "&ImageTypes=Backdrop&EnableImages=true&EnableImageTypes=Backdrop,Primary,Thumb,Logo"
+            "&EnableUserData=true&ImageTypeLimit=1&Fields=%3"
+            "&SortBy=DateCreated&SortOrder=Descending&Limit=%4")
+            .arg(profile.userId, itemType, fields).arg(perTypeLimit);
+        qDebug() << "[MediaService] Featured candidate query"
+                 << "| serverType=" << (profile.type == ServerProfile::Jellyfin ? "Jellyfin" : "Emby")
+                 << "| type=" << itemType << "| limit=" << perTypeLimit
+                 << "| imageFilter=Backdrop | sort=DateCreated | userData=true | fields=" << fields;
+        const QJsonObject response = co_await client->get(path);
+        if (!guard || !manager || !client || manager->activeClient() != client.data()) {
+            qDebug() << "[MediaService] Discarding featured candidates after client change";
+            throw std::runtime_error("Featured candidate request context expired");
+        }
+        const ServerProfile activeProfile = manager->activeProfile();
+        if (activeProfile.id != profile.id || activeProfile.userId != profile.userId) {
+            qDebug() << "[MediaService] Discarding featured candidates from an inactive session";
+            throw std::runtime_error("Featured candidate request context expired");
+        }
+
+        if (!response.value("Items").isArray())
+            throw std::runtime_error("Invalid featured candidate response");
+        const QJsonArray candidates = response.value("Items").toArray();
+        int accepted = 0;
+        int unplayed = 0;
+        int missingPlayedState = 0;
+        int missingProviderIds = 0;
+        for (const QJsonValue& value : candidates) {
+            const QJsonObject object = value.toObject();
+            const MediaItem item = MediaItem::fromJson(object);
+            
+            if (item.id.isEmpty() || seen.contains(item.id) || item.type != itemType ||
+                item.images.backdropTag.isEmpty()) continue;
+            seen.insert(item.id);
+            items.append(item);
+            ++accepted;
+            if (!item.userData.played) ++unplayed;
+            if (!object.value("UserData").toObject().contains("Played")) ++missingPlayedState;
+            if (item.providerIds.isEmpty()) ++missingProviderIds;
+            if (accepted == perTypeLimit) break;
+        }
+        qDebug() << "[MediaService] Featured candidate response"
+                 << "| type=" << itemType << "| returned=" << candidates.size()
+                 << "| usable=" << accepted << "| unplayed=" << unplayed
+                 << "| missingPlayedState=" << missingPlayedState
+                 << "| missingProviderIds=" << missingProviderIds;
+    }
+    co_return items;
+}
+
+QCoro::Task<QList<MediaItem>> MediaService::getFeaturedItemsByIds(QStringList itemIds)
+{
+    return getItemsByIds(std::move(itemIds), QString::fromLatin1(kFeaturedMetadataFields));
+}
+
+QCoro::Task<MediaItem> MediaService::getFeaturedItemMetadata(MediaItem item)
+{
+    if (item.id.isEmpty()) co_return MediaItem{};
+    QStringList missingFields;
+    if (item.overview.trimmed().isEmpty()) missingFields.append(QStringLiteral("Overview"));
+    if (item.premiereDate.trimmed().isEmpty()) missingFields.append(QStringLiteral("PremiereDate"));
+    if (item.productionYear <= 0) missingFields.append(QStringLiteral("ProductionYear"));
+    if (item.communityRating <= 0) missingFields.append(QStringLiteral("CommunityRating"));
+    if (item.genres.isEmpty()) missingFields.append(QStringLiteral("Genres"));
+    
+    if (missingFields.isEmpty()) co_return MediaItem{};
+
+    ensureValidProfile();
+    QPointer<MediaService> guard(this);
+    QPointer<ServerManager> manager(m_serverManager);
+    QPointer<ApiClient> client(manager->activeClient());
+    if (!client) co_return MediaItem{};
+    const ServerProfile profile = manager->activeProfile();
+    const QString path = QStringLiteral("/Users/%1/Items/%2?Fields=%3")
+        .arg(profile.userId, item.id, QString::fromLatin1(kFeaturedMetadataFields));
+    qDebug() << "[MediaService] Featured metadata fallback request | itemId=" << item.id
+             << "| type=" << item.type << "| missingFields=" << missingFields;
+    const QJsonObject response = co_await client->get(path);
+    if (!guard || !manager || !client || manager->activeClient() != client.data()) {
+        qDebug() << "[MediaService] Discarding featured metadata after client change";
+        co_return MediaItem{};
+    }
+    const ServerProfile activeProfile = manager->activeProfile();
+    if (activeProfile.id != profile.id || activeProfile.userId != profile.userId) {
+        qDebug() << "[MediaService] Discarding featured metadata from an inactive session";
+        co_return MediaItem{};
+    }
+    const MediaItem detail = MediaItem::fromJson(response);
+    if (detail.id != item.id || (!detail.type.isEmpty() && detail.type != item.type)) {
+        qWarning() << "[MediaService] Featured metadata identity mismatch"
+                   << "| requestedId=" << item.id << "| returnedId=" << detail.id
+                   << "| expectedType=" << item.type << "| returnedType=" << detail.type;
+        co_return MediaItem{};
+    }
+    qDebug() << "[MediaService] Featured metadata fallback response | itemId=" << item.id
+             << "| hasOverview=" << response.contains("Overview")
+             << "| overviewIsString=" << response.value("Overview").isString()
+             << "| listOverviewChars=" << item.overview.simplified().size()
+             << "| detailOverviewChars=" << detail.overview.simplified().size()
+             << "| listRating=" << item.communityRating
+             << "| detailRating=" << detail.communityRating
+             << "| premiereDate=" << detail.premiereDate
+             << "| genres=" << detail.genres.size() << "| tags=" << detail.tags.size();
+    
+    
+    co_return detail;
 }
 
 QCoro::Task<QList<MediaItem>> MediaService::getLatestItems(int limit, const QString &sortBy, const QString &sortOrder)
@@ -2190,14 +2415,165 @@ QCoro::Task<MediaItem> MediaService::getItemDetail(QString itemId)
              << "| hasOverview=" << response.contains("Overview")
              << "| overviewIsString=" << response.value("Overview").isString()
              << "| rawOverviewCharacters=" << response.value("Overview").toString().size()
-             << "| parsedOverviewCharacters=" << item.overview.size();
-    if (guard) {
+             << "| parsedOverviewCharacters=" << item.overview.size()
+             << "| communityRating=" << item.communityRating;
+    if (guard && guard->m_serverManager->activeProfile().id == profile.id &&
+        guard->m_serverManager->activeProfile().userId == profile.userId &&
+        item.id == itemId) {
         guard->updateUserViewsCache(item, profile.id, profile.userId);
+        guard->updateRecommendCacheItem(item, profile.id, profile.userId);
+        Q_EMIT guard->itemDetailFetched(item, profile.id, profile.userId);
     }
     co_return item;
 }
 
-QCoro::Task<bool> MediaService::toggleFavorite(const QString &itemId, bool isFavorite)
+QCoro::Task<double> MediaService::getItemCommunityRating(QString itemId)
+{
+    ensureValidProfile();
+    const ServerProfile profile = m_serverManager->activeProfile();
+    QPointer<MediaService> guard(this);
+    QPointer<ApiClient> client(m_serverManager->activeClient());
+    const QString path = QStringLiteral("/Users/%1/Items/%2")
+                             .arg(profile.userId, itemId);
+    const QJsonObject response = co_await client->get(path);
+    if (!guard || !client ||
+        guard->m_serverManager->activeProfile().id != profile.id ||
+        guard->m_serverManager->activeProfile().userId != profile.userId)
+        co_return 0.0;
+
+    const QJsonValue ratingValue = response.value(QStringLiteral("CommunityRating"));
+    const double rating = ratingValue.toDouble();
+    qDebug() << "[MediaService] community rating detail"
+             << "| itemId=" << itemId
+             << "| hasRating=" << (!ratingValue.isNull() && !ratingValue.isUndefined())
+             << "| rating=" << rating;
+    co_return rating;
+}
+
+QCoro::Task<QList<MediaItem>> MediaService::getItemsByIds(QStringList itemIds, QString fields)
+{
+    ensureValidProfile();
+    QPointer<ServerManager> manager(m_serverManager);
+    const ServerProfile profile = manager->activeProfile();
+    QPointer<MediaService> guard(this);
+    QPointer<ApiClient> client(manager->activeClient());
+    if (!client) throw std::runtime_error("No active client for item lookup");
+    const auto isCurrent = [guard, manager, client,
+                            serverId = profile.id, userId = profile.userId]() {
+        return guard && manager && client && manager->activeClient() == client.data() &&
+            manager->activeProfile().id == serverId &&
+            manager->activeProfile().userId == userId;
+    };
+    itemIds.removeAll(QString());
+    itemIds.removeDuplicates();
+    QList<MediaItem> items;
+    int fallbackRequests = 0;
+    int unavailableItems = 0;
+    QUrlQuery detailQuery;
+    detailQuery.addQueryItem(QStringLiteral("EnableUserData"), QStringLiteral("true"));
+    detailQuery.addQueryItem(QStringLiteral("EnableImages"), QStringLiteral("true"));
+    detailQuery.addQueryItem(QStringLiteral("EnableImageTypes"), QStringLiteral("Backdrop,Primary,Thumb,Logo"));
+    detailQuery.addQueryItem(QStringLiteral("ImageTypeLimit"), QStringLiteral("1"));
+    detailQuery.addQueryItem(QStringLiteral("Fields"), fields);
+    
+    for (qsizetype start = 0; start < itemIds.size(); start += 50)
+    {
+        const QStringList chunk = itemIds.mid(start, 50);
+        QUrlQuery query = detailQuery;
+        query.addQueryItem(QStringLiteral("Ids"), chunk.join(','));
+        
+        query.addQueryItem(QStringLiteral("Recursive"), QStringLiteral("true"));
+        query.addQueryItem(QStringLiteral("Limit"), QString::number(chunk.size()));
+        const QString path = QStringLiteral("/Users/%1/Items?%2")
+                                 .arg(profile.userId, query.toString(QUrl::FullyEncoded));
+        const QJsonObject response = co_await client->get(path);
+        if (!isCurrent())
+            throw std::runtime_error("Item lookup request context expired");
+        
+        if (!response.value("Items").isArray()) {
+            qWarning() << "[MediaService] Item lookup returned no Items array";
+            throw std::runtime_error("Invalid item list response");
+        }
+        const QJsonArray returned = response.value("Items").toArray();
+        QHash<QString, MediaItem> byId;
+        int unexpectedItems = 0;
+        int duplicateItems = 0;
+        int incompleteItems = 0;
+        for (const QJsonValue& value : returned) {
+            const MediaItem item = MediaItem::fromJson(value.toObject());
+            if (item.id.isEmpty() || !chunk.contains(item.id)) {
+                ++unexpectedItems;
+                continue;
+            }
+            if (item.type.isEmpty()) {
+                ++incompleteItems;
+                continue;
+            }
+            if (byId.contains(item.id)) {
+                ++duplicateItems;
+                continue;
+            }
+            byId.insert(item.id, item);
+        }
+        qDebug() << "[MediaService] Item lookup batch response"
+                 << "| serverType=" << profile.type << "| recursive=true"
+                 << "| requested=" << chunk.size() << "| returned=" << returned.size()
+                 << "| matched=" << byId.size() << "| unexpected=" << unexpectedItems
+                 << "| duplicates=" << duplicateItems << "| incomplete=" << incompleteItems;
+
+        
+        
+        
+        for (const QString itemId : chunk) {
+            if (byId.contains(itemId)) {
+                items.append(byId.value(itemId));
+                continue;
+            }
+            ++fallbackRequests;
+            qDebug() << "[MediaService] Item lookup detail fallback | itemId=" << itemId;
+            const QString detailPath = QStringLiteral("/Users/%1/Items/%2?%3")
+                .arg(profile.userId, itemId, detailQuery.toString(QUrl::FullyEncoded));
+            QJsonObject detailResponse;
+            try {
+                detailResponse = co_await client->get(detailPath);
+            } catch (const NetworkRequestError& error) {
+                if (!isCurrent())
+                    throw std::runtime_error("Item lookup request context expired");
+                
+                
+                if (error.httpStatus() != 404 && error.httpStatus() != 410) {
+                    qWarning() << "[MediaService] Item lookup confirmation failed"
+                               << "| itemId=" << itemId << "| httpStatus=" << error.httpStatus();
+                    throw;
+                }
+                ++unavailableItems;
+                qDebug() << "[MediaService] Item lookup confirmed unavailable"
+                         << "| itemId=" << itemId << "| httpStatus=" << error.httpStatus();
+                continue;
+            }
+            if (!isCurrent())
+                throw std::runtime_error("Item lookup request context expired");
+            const MediaItem detail = MediaItem::fromJson(detailResponse);
+            if (detail.id != itemId || detail.type.isEmpty()) {
+                qWarning() << "[MediaService] Invalid item lookup detail response"
+                           << "| requestedId=" << itemId << "| returnedId=" << detail.id
+                           << "| type=" << detail.type;
+                throw std::runtime_error("Invalid item lookup detail response");
+            }
+            qDebug() << "[MediaService] Item lookup recovered from detail"
+                     << "| itemId=" << itemId << "| type=" << detail.type
+                     << "| hasBackdrop=" << !detail.images.backdropTag.isEmpty();
+            items.append(detail);
+        }
+    }
+    qDebug() << "[MediaService] getItemsByIds"
+             << "| requested=" << itemIds.size() << "| returned=" << items.size()
+             << "| serverType=" << profile.type << "| detailFallbacks=" << fallbackRequests
+             << "| confirmedUnavailable=" << unavailableItems;
+    co_return items;
+}
+
+QCoro::Task<bool> MediaService::toggleFavorite(QString itemId, bool isFavorite)
 {
     ensureValidProfile();
     QString path = QString("/Users/%1/FavoriteItems/%2").arg(m_serverManager->activeProfile().userId, itemId);
@@ -2289,7 +2665,96 @@ QCoro::Task<QList<MediaItem>> MediaService::getCollectionItems(const QString &co
     co_return parseJsonArray<MediaItem>(response["Items"].toArray());
 }
 
-QCoro::Task<PlaybackInfo> MediaService::getPlaybackInfo(const QString &itemId)
+QCoro::Task<MediaResourceItems> MediaService::getLiveTvChannels(int limit)
+{
+    ensureValidProfile();
+    try {
+        const auto profile = m_serverManager->activeProfile();
+        QPointer<MediaService> guard(this);
+        const auto user = co_await m_serverManager->activeClient()->get(QStringLiteral("/Users/%1").arg(profile.userId));
+        if (!guard || guard->m_serverManager->activeProfile().id != profile.id ||
+            guard->m_serverManager->activeProfile().userId != profile.userId) co_return MediaResourceItems{};
+        const auto policy = user["Policy"].toObject();
+        if (policy.contains("EnableLiveTvAccess") && !policy["EnableLiveTvAccess"].toBool()) {
+            co_return MediaResourceItems{{}, false};
+        }
+        const QString path = QStringLiteral("/LiveTv/Channels?UserId=%1&Fields=PrimaryImageAspectRatio,MediaSources&EnableImageTypes=Primary,Thumb&ImageTypeLimit=1")
+                                 .arg(profile.userId);
+        const auto items = co_await fetchPagedItemList(path, limit, QStringLiteral("LiveTvChannels"), true);
+        co_return MediaResourceItems{items, true};
+    } catch (const NetworkRequestError& error) {
+        if (error.httpStatus() == 401 || error.httpStatus() == 403 || error.httpStatus() == 404)
+            co_return MediaResourceItems{{}, false};
+        throw;
+    }
+
+}
+
+QCoro::Task<MediaResourceItems> MediaService::getMusicAlbums(int limit)
+{
+    ensureValidProfile();
+    try {
+        const auto profile = m_serverManager->activeProfile();
+        QPointer<MediaService> guard(this);
+        const auto views = co_await getUserViews();
+        if (!guard || guard->m_serverManager->activeProfile().id != profile.id ||
+            guard->m_serverManager->activeProfile().userId != profile.userId) co_return MediaResourceItems{};
+        bool hasMusic = false;
+        for (const auto& view : views) if (view.collectionType == "music") hasMusic = true;
+        if (!hasMusic) {
+            co_return MediaResourceItems{{}, false};
+        }
+        const QString path = QStringLiteral("/Users/%1/Items?Recursive=true&IncludeItemTypes=MusicAlbum&SortBy=DateCreated&SortOrder=Descending&Fields=PrimaryImageAspectRatio,Album,Artists,AlbumArtist&EnableImageTypes=Primary&ImageTypeLimit=1")
+                                 .arg(profile.userId);
+        const auto items = co_await fetchPagedItemList(path, limit, QStringLiteral("MusicAlbums"), true);
+        co_return MediaResourceItems{items, true};
+    } catch (const NetworkRequestError& error) {
+        if (error.httpStatus() == 401 || error.httpStatus() == 403 || error.httpStatus() == 404)
+            co_return MediaResourceItems{{}, false};
+        throw;
+    }
+
+}
+
+QCoro::Task<QList<MediaItem>> MediaService::getAlbumTracks(QString albumId, QObject* requestContext)
+{
+    ensureValidProfile();
+    const auto profile = m_serverManager->activeProfile();
+    const QString path = QStringLiteral("/Users/%1/Items?ParentId=%2&Recursive=true&IncludeItemTypes=Audio&SortBy=ParentIndexNumber,IndexNumber&SortOrder=Ascending&Fields=Album,AlbumId,Artists,AlbumArtist,MediaSources,ParentId")
+                             .arg(profile.userId, QString::fromUtf8(QUrl::toPercentEncoding(albumId)));
+    QPointer<MediaService> guard(this);
+    QPointer<QObject> contextGuard(requestContext);
+    const bool hasContext = requestContext != nullptr;
+    QList<MediaItem> tracks;
+    QSet<QString> seen;
+    int offset = 0;
+    for (;;) {
+        if (hasContext && !contextGuard) co_return QList<MediaItem>{};
+        const auto page = co_await fetchItemPage(path, offset, 200, QStringLiteral("AlbumTracks"), contextGuard);
+        if (!guard || (hasContext && !contextGuard) || guard->m_serverManager->activeProfile().id != profile.id ||
+            guard->m_serverManager->activeProfile().userId != profile.userId)
+            co_return QList<MediaItem>{};
+        int added = 0;
+        for (auto track : page.items) {
+            if (!track.id.isEmpty() && !seen.contains(track.id)) {
+                if (track.albumId.isEmpty()) track.albumId = albumId;
+                if (track.images.primaryTag.isEmpty()) track.images.primaryImageItemId = albumId;
+                tracks.append(track);
+                seen.insert(track.id);
+                ++added;
+            }
+        }
+        offset += page.items.size();
+        if (!added && page.hasTotalRecordCount && offset < page.totalRecordCount)
+            throw std::runtime_error("album pagination did not advance");
+        if (!added || (page.hasTotalRecordCount && offset >= page.totalRecordCount) ||
+            (!page.hasTotalRecordCount && page.items.size() < 200))
+            break;
+    }
+    co_return tracks;
+}
+
+QCoro::Task<PlaybackInfo> MediaService::getPlaybackInfo(QString itemId, bool liveTv, QObject* requestContext)
 {
     ensureValidProfile();
     ServerProfile profile = m_serverManager->activeProfile();
@@ -2298,16 +2763,146 @@ QCoro::Task<PlaybackInfo> MediaService::getPlaybackInfo(const QString &itemId)
     QJsonObject payload;
     payload["UserId"] = profile.userId;
 
-    QJsonObject response = co_await m_serverManager->activeClient()->post(path, payload);
-    co_return PlaybackInfo::fromJson(response);
+    QPointer<MediaService> guard(this);
+    QPointer<QObject> contextGuard(requestContext);
+    const bool hasContext = requestContext != nullptr;
+    const auto client = m_serverManager->activeClientHandle();
+    payload["AutoOpenLiveStream"] = liveTv;
+    payload["IsPlayback"] = true;
+    if (liveTv) {
+        payload["EnableDirectPlay"] = true;
+        payload["EnableDirectStream"] = true;
+        QJsonObject device;
+        device["Name"] = "qEmby libmpv";
+        device["MaxStreamingBitrate"] = 120000000;
+        device["DirectPlayProfiles"] = QJsonArray{QJsonObject{
+            {"Type", "Video"}, {"Container", "ts,mpegts,m3u8,mp4,mkv,webm"},
+            {"VideoCodec", "h264,hevc,mpeg2video,av1,vp9"},
+            {"AudioCodec", "aac,mp3,ac3,eac3,mp2,flac,opus"}}};
+        device["TranscodingProfiles"] = QJsonArray{QJsonObject{
+            {"Type", "Video"}, {"Context", "Streaming"}, {"Protocol", "hls"},
+            {"Container", "ts"}, {"VideoCodec", "h264"}, {"AudioCodec", "aac"}}};
+        payload["DeviceProfile"] = device;
+    }
+    QJsonObject response = co_await client->post(path, payload, contextGuard);
+    auto info = PlaybackInfo::fromJson(response);
+    if (!guard || !client || (hasContext && !contextGuard) || guard->m_serverManager->activeProfile().id != profile.id ||
+        guard->m_serverManager->activeProfile().userId != profile.userId) {
+        if (guard && liveTv) co_await guard->releaseLiveStreams(info.mediaSources, client);
+        co_return PlaybackInfo{};
+    }
+    if (liveTv) {
+        if (info.mediaSources.size() > 1) info.mediaSources = info.mediaSources.mid(0, 1);
+        for (qsizetype index = 0; index < info.mediaSources.size(); ++index) {
+            auto source = info.mediaSources[index];
+            if (source.requiresOpening && !source.openToken.isEmpty()) {
+                QJsonObject open;
+                open["OpenToken"] = source.openToken;
+                open["UserId"] = profile.userId;
+                open["ItemId"] = itemId;
+                open["PlaySessionId"] = info.playSessionId;
+                open["EnableDirectPlay"] = true;
+                open["EnableDirectStream"] = true;
+                const auto opened = co_await client->post("/LiveStreams/Open", open, contextGuard);
+                source = MediaSourceInfo::fromJson(opened["MediaSource"].toObject());
+                if (!guard || !client || (hasContext && !contextGuard) || guard->m_serverManager->activeProfile().id != profile.id ||
+                    guard->m_serverManager->activeProfile().userId != profile.userId) {
+                    if (guard) {
+                        QList<MediaSourceInfo> staleSources;
+                        staleSources.append(source);
+                        co_await guard->releaseLiveStreams(staleSources, client);
+                    }
+                    co_return PlaybackInfo{};
+                }
+            }
+            source.isInfiniteStream = true;
+            source.playbackKind = PlaybackKind::LiveTv;
+            const QString negotiated = source.directStreamUrl.isEmpty() ? source.transcodingUrl : source.directStreamUrl;
+            if (!negotiated.isEmpty()) {
+                const QUrl origin(profile.url);
+                const QUrl destination = origin.resolved(QUrl(negotiated));
+                if (origin.scheme() == destination.scheme() && origin.host() == destination.host() &&
+                    origin.port(origin.scheme() == "https" ? 443 : 80) == destination.port(destination.scheme() == "https" ? 443 : 80))
+                    source.requiredHttpHeaders.insert(QStringLiteral("X-Emby-Token"), profile.accessToken);
+            }
+            info.mediaSources[index] = source;
+            if (!source.liveStreamId.isEmpty() && source.requiresClosing)
+                guard->m_liveStreams.insert(source.liveStreamId, client);
+        }
+        qDebug() << "[MediaService] Live playback negotiated | sources=" << info.mediaSources.size();
+    }
+    for (auto& source : info.mediaSources) source.playSessionId = info.playSessionId;
+    co_return info;
 }
 
-QCoro::Task<QList<MediaItem>> MediaService::getAdditionalParts(const QString &itemId)
+QCoro::Task<void> MediaService::releaseLiveStreams(QList<MediaSourceInfo> sources, QSharedPointer<ApiClient> client)
+{
+    if (!client) co_return;
+    for (auto source : sources) {
+        if (source.liveStreamId.isEmpty() || !source.requiresClosing) continue;
+        try {
+            const QString closePath = QStringLiteral("/LiveStreams/Close?LiveStreamId=%1")
+                .arg(QString::fromUtf8(QUrl::toPercentEncoding(source.liveStreamId)));
+            QJsonObject closePayload;
+            co_await client->post(closePath, closePayload);
+        } catch (...) { qWarning() << "[MediaService] Stale live stream cleanup failed"; }
+    }
+}
+
+QCoro::Task<void> MediaService::discardPlaybackSources(QList<MediaSourceInfo> sources)
+{
+    QPointer<MediaService> guard(this);
+    for (auto source : sources) {
+        if (!guard) co_return;
+        if (!source.requiresClosing || source.liveStreamId.isEmpty()) continue;
+        try { co_await guard->closeLiveStream(source.liveStreamId); }
+        catch (...) { qWarning() << "[MediaService] Discarded playback source cleanup failed"; }
+    }
+}
+
+QCoro::Task<void> MediaService::closeLiveStream(QString liveStreamId)
+{
+    if (liveStreamId.isEmpty()) co_return;
+    const auto client = m_liveStreams.take(liveStreamId);
+    if (!client) co_return;
+    co_await client->post(
+        QStringLiteral("/LiveStreams/Close?LiveStreamId=%1").arg(QString::fromUtf8(QUrl::toPercentEncoding(liveStreamId))), {});
+}
+
+QString MediaService::additionalPartsOwnerId(const QString &itemId) const
+{
+    return m_additionalPartOwners.value(itemId, itemId);
+}
+
+void MediaService::rememberAdditionalParts(const QString &itemId, const QList<MediaItem> &parts)
+{
+    if (itemId.isEmpty()) return;
+    for (auto it = m_additionalPartOwners.begin(); it != m_additionalPartOwners.end();) {
+        if (it.value() == itemId) it = m_additionalPartOwners.erase(it);
+        else ++it;
+    }
+    for (const MediaItem &part : parts) {
+        if (!part.id.isEmpty() && part.id != itemId)
+            m_additionalPartOwners.insert(part.id, itemId);
+    }
+}
+
+QCoro::Task<QList<MediaItem>> MediaService::getAdditionalParts(QString itemId)
 {
     ensureValidProfile();
-    QString path = QString("/Videos/%1/AdditionalParts?UserId=%2").arg(itemId, m_serverManager->activeProfile().userId);
+    QPointer<MediaService> guard(this);
+    const ServerProfile profile = m_serverManager->activeProfile();
+    const quint64 generation = m_additionalPartsGeneration;
+    const QString path = QString("/Videos/%1/AdditionalParts?UserId=%2&Fields=Path").arg(itemId, profile.userId);
+    qDebug() << "[MediaService] Additional parts request"
+             << "| itemId=" << itemId << "| serverType=" << profile.type;
 
     QJsonObject response = co_await m_serverManager->activeClient()->get(path);
+    if (!guard || guard->m_additionalPartsGeneration != generation ||
+        guard->m_serverManager->activeProfile().id != profile.id ||
+        guard->m_serverManager->activeProfile().userId != profile.userId) {
+        co_return QList<MediaItem>{};
+    }
     QList<MediaItem> parts;
     if (response.contains("Items"))
     {
@@ -2317,6 +2912,10 @@ QCoro::Task<QList<MediaItem>> MediaService::getAdditionalParts(const QString &it
     {
         parts = parseJsonArray<MediaItem>(response["data"].toArray());
     }
+    guard->rememberAdditionalParts(itemId, parts);
+    qDebug() << "[MediaService] Additional parts response"
+             << "| itemId=" << itemId << "| count=" << parts.size()
+             << "| responseShape=" << (response.contains("Items") ? "Items" : "data");
     co_return parts;
 }
 
@@ -2436,6 +3035,40 @@ QString MediaService::getStreamUrl(const QString &itemId, const MediaSourceInfo 
         return QString();
     }
 
+    
+    
+    const QString negotiated = !sourceInfo.directStreamUrl.isEmpty()
+                                   ? sourceInfo.directStreamUrl : sourceInfo.transcodingUrl;
+    const bool negotiatedPlayback = sourceInfo.playbackKind != PlaybackKind::VideoOnDemand ||
+        sourceInfo.isInfiniteStream || !sourceInfo.liveStreamId.isEmpty() ||
+        (sourceInfo.directStreamUrl.isEmpty() && !sourceInfo.transcodingUrl.isEmpty());
+    if (negotiatedPlayback && !negotiated.isEmpty()) {
+        QUrl base(profile.url.endsWith('/') ? profile.url : profile.url + '/');
+        QUrl url = base.resolved(QUrl(negotiated));
+        if (url.scheme() != "http" && url.scheme() != "https") return {};
+        if (url.host() == base.host() && url.port() == base.port() && url.scheme() == base.scheme()) {
+            QUrlQuery query(url);
+            if (!query.hasQueryItem("api_key")) query.addQueryItem("api_key", profile.accessToken);
+            url.setQuery(query);
+        }
+        return url.toString(QUrl::FullyEncoded);
+    }
+    if (sourceInfo.isInfiniteStream || !sourceInfo.liveStreamId.isEmpty()) {
+        if (sourceInfo.supportsDirectPlay && sourceInfo.path.startsWith("http"))
+            return sourceInfo.path;
+        qWarning() << "[MediaService] No negotiated live stream | itemId=" << itemId;
+        return {};
+    }
+    if (sourceInfo.playbackKind == PlaybackKind::Audio) {
+        QUrl url(profile.url + QStringLiteral("/Audio/%1/stream").arg(itemId));
+        QUrlQuery query;
+        query.addQueryItem("static", "true");
+        query.addQueryItem("MediaSourceId", sourceInfo.id);
+        query.addQueryItem("api_key", profile.accessToken);
+        url.setQuery(query);
+        return url.toString(QUrl::FullyEncoded);
+    }
+
     bool defaultStrmDirect = (profile.type == ServerProfile::Jellyfin);
     QSettings settings("qEmby", "Player");
     bool enableStrmDirect = settings.value("EnableStrmDirectPlay", defaultStrmDirect).toBool();
@@ -2465,9 +3098,11 @@ QString MediaService::getStreamUrl(const QString &itemId, const MediaSourceInfo 
     return getStreamUrl(itemId, sourceInfo.id);
 }
 
-QCoro::Task<QString> MediaService::reportPlaybackStart(QString itemId, QString mediaSourceId, long long positionTicks)
+QCoro::Task<QString> MediaService::reportPlaybackStart(QString itemId, QString mediaSourceId, long long positionTicks,
+    QString negotiatedSessionId, bool audio, bool canSeek, QString liveStreamId)
 {
     ensureValidProfile();
+    QPointer<MediaService> guard(this);
     QPointer<ServerManager> serverManager(m_serverManager);
     if (!serverManager)
     {
@@ -2477,9 +3112,9 @@ QCoro::Task<QString> MediaService::reportPlaybackStart(QString itemId, QString m
         co_return QString();
     }
     ServerProfile profile = serverManager->activeProfile();
-    QString playSessionId;
+    QString playSessionId = negotiatedSessionId;
 
-    if (profile.type == ServerProfile::Jellyfin)
+    if (playSessionId.isEmpty() && profile.type == ServerProfile::Jellyfin)
     {
         
         try
@@ -2507,7 +3142,7 @@ QCoro::Task<QString> MediaService::reportPlaybackStart(QString itemId, QString m
                        << playSessionId;
         }
     }
-    else
+    else if (playSessionId.isEmpty())
     {
         
         playSessionId = QUuid::createUuid().toString(QUuid::WithoutBraces);
@@ -2520,14 +3155,26 @@ QCoro::Task<QString> MediaService::reportPlaybackStart(QString itemId, QString m
     payload["PlayMethod"] = "DirectPlay";
     payload["IsPaused"] = false;
     payload["IsMuted"] = false;
-    payload["CanSeek"] = true;
+    payload["CanSeek"] = canSeek;
     payload["PlaySessionId"] = playSessionId;
+    if (!liveStreamId.isEmpty()) payload["LiveStreamId"] = liveStreamId;
 
     QJsonArray mediaTypes;
-    mediaTypes.append("Video");
+    mediaTypes.append(audio ? "Audio" : "Video");
     payload["QueueableMediaTypes"] = mediaTypes;
 
-    ApiClient *client = serverManager->activeClient();
+    if (!guard || !serverManager || serverManager->activeProfile().id != profile.id ||
+        serverManager->activeProfile().userId != profile.userId) co_return QString();
+    const auto client = serverManager->activeClientHandle();
+    guard->m_playbackClients.insert(playSessionId, client);
+    guard->m_playbackTraits.insert(playSessionId, {audio, canSeek});
+    guard->m_playbackClientOrder.removeAll(playSessionId);
+    guard->m_playbackClientOrder.append(playSessionId);
+    while (guard->m_playbackClientOrder.size() > 256) {
+        const auto oldSession = guard->m_playbackClientOrder.takeFirst();
+        guard->m_playbackClients.remove(oldSession);
+        guard->m_playbackTraits.remove(oldSession);
+    }
     if (!client)
     {
         qWarning() << "[API Warning] Playback Start skipped: active client is no "
@@ -2555,9 +3202,9 @@ QCoro::Task<void> MediaService::reportPlaybackProgress(QString itemId, QString m
 {
     if (playSessionId.isEmpty())
         co_return;
-    ensureValidProfile();
 
-    ApiClient *client = m_serverManager->activeClient();
+
+    const auto client = m_playbackClients.value(playSessionId);
     if (!client)
     {
         qWarning() << "[API Warning] Playback Progress skipped: active client is "
@@ -2573,11 +3220,11 @@ QCoro::Task<void> MediaService::reportPlaybackProgress(QString itemId, QString m
     payload["IsPaused"] = isPaused;
     payload["IsMuted"] = false;
     payload["PlayMethod"] = "DirectPlay";
-    payload["CanSeek"] = true;
+    payload["CanSeek"] = m_playbackTraits.value(playSessionId, {false, true}).second;
     payload["PlaySessionId"] = playSessionId;
 
     QJsonArray mediaTypes;
-    mediaTypes.append("Video");
+    mediaTypes.append(m_playbackTraits.value(playSessionId).first ? "Audio" : "Video");
     payload["QueueableMediaTypes"] = mediaTypes;
     payload["EventName"] = isPaused ? "pause" : "timeupdate";
 
@@ -2596,9 +3243,11 @@ QCoro::Task<void> MediaService::reportPlaybackStopped(QString itemId, QString me
 {
     if (playSessionId.isEmpty())
         co_return;
-    ensureValidProfile();
 
-    ApiClient *client = m_serverManager->activeClient();
+
+    
+    
+    const auto client = m_playbackClients.value(playSessionId);
     if (!client)
     {
         qWarning() << "[API Warning] Playback Stopped skipped: active client is no "
@@ -2700,6 +3349,50 @@ void MediaService::removeRecommendCacheItem(const QString &itemId)
              << "| currentCount=" << m_recommendCache.items.size();
 }
 
+void MediaService::updateRecommendCacheItem(const MediaItem &item,
+                                            const QString &serverId,
+                                            const QString &userId)
+{
+    if (item.id.isEmpty())
+        return;
+
+    int cacheDurationHours = ConfigStore::instance()
+                                 ->get<QString>(ConfigKeys::DataCacheDuration, "24")
+                                 .toInt();
+    if (cacheDurationHours <= 0)
+        cacheDurationHours = 24;
+
+    if (!m_recommendCache.isValid(serverId, userId, cacheDurationHours) &&
+        !m_recommendCache.loadFromDisk(serverId, userId, cacheDurationHours))
+        return;
+
+    for (MediaItem &cachedItem : m_recommendCache.items)
+    {
+        if (cachedItem.id != item.id)
+            continue;
+
+        const bool cardChanged = cachedItem.name != item.name ||
+                                 cachedItem.type != item.type ||
+                                 cachedItem.productionYear != item.productionYear ||
+                                 cachedItem.communityRating != item.communityRating ||
+                                 cachedItem.images.primaryTag != item.images.primaryTag ||
+                                 cachedItem.images.thumbTag != item.images.thumbTag ||
+                                 cachedItem.images.backdropTag != item.images.backdropTag ||
+                                 cachedItem.images.primaryImageAspectRatio !=
+                                     item.images.primaryImageAspectRatio;
+        cachedItem = item;
+        if (cardChanged)
+        {
+            m_recommendCache.saveToDisk();
+            qDebug() << "[MediaService] Updated recommended card from item detail"
+                     << "| itemId=" << item.id
+                     << "| hasPrimaryImage=" << !item.images.primaryTag.isEmpty()
+                     << "| rating=" << item.communityRating;
+        }
+        return;
+    }
+}
+
 void MediaService::updateUserViewsCache(QList<MediaItem> views, QString serverId,
                                         QString userId, bool includesHidden)
 {
@@ -2788,6 +3481,8 @@ void RecommendCache::saveToDisk() const
         obj["Type"] = item.type;
         obj["ProductionYear"] = item.productionYear;
         obj["RecursiveItemCount"] = item.recursiveItemCount;
+        if (item.communityRating > 0.0)
+            obj["CommunityRating"] = item.communityRating;
         
         QJsonObject imgTags;
         if (!item.images.primaryTag.isEmpty())

@@ -894,7 +894,7 @@ bool parsePField(QString p, qint64 *timeMs, int *mode, QColor *color, int *fontL
             const qint64 timestamp = parts[4].toLongLong(&ok);
             if (ok && timestamp > 0)
             {
-                *createdAt = QDateTime::fromSecsSinceEpoch(timestamp, QTimeZone::UTC);
+                *createdAt = QDateTime::fromSecsSinceEpoch(timestamp, QTimeZone(0));
             }
         }
         return true;
@@ -947,7 +947,7 @@ DanmakuComment commentFromJsonObject(const QJsonObject &obj)
                 const qint64 timestamp = createdAtString.toLongLong(&ok);
                 if (ok && timestamp > 0)
                 {
-                    comment.createdAt = QDateTime::fromSecsSinceEpoch(timestamp, QTimeZone::UTC);
+                    comment.createdAt = QDateTime::fromSecsSinceEpoch(timestamp, QTimeZone(0));
                 }
             }
         }
@@ -957,7 +957,7 @@ DanmakuComment commentFromJsonObject(const QJsonObject &obj)
             const qint64 timestamp = createdAtValue.toVariant().toLongLong();
             if (timestamp > 0)
             {
-                comment.createdAt = QDateTime::fromSecsSinceEpoch(timestamp, QTimeZone::UTC);
+                comment.createdAt = QDateTime::fromSecsSinceEpoch(timestamp, QTimeZone(0));
             }
         }
     }
