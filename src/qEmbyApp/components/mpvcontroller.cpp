@@ -174,23 +174,34 @@ bool MpvController::init() {
     
     
     
-    // 默认硬解策略按平台零拷贝通道下发 (用户配置优先, 未配置时生效):
-    //  - Windows + D3D11 渲染通道 (QEMBY_MPV_D3D11_RENDER): d3d11va 原生零拷贝
-    //    (与 Qt RHI 共享 ID3D11Device, 无 PCIe 回传); d3d11va-copy 保留为容灾;
-    //  - Windows GL 回退构建 (Qt < 6.7): 维持 auto-copy (GL 无法互操作 D3D11 帧);
-    //  - Linux: vaapi (Intel/AMD, EGL dma-buf 零拷贝) -> nvdec (NVIDIA CUDA-GL)
-    //    -> auto-safe, 全部为无 -copy 后缀的直通解码;
-    //  - 其余平台: 维持 auto-copy。
+    // 硬解策略: 优先读设置页"解码器优先级"弹窗保存的回退链, 链尾恒有
+    // auto-safe 兜底, mpv 全链失败后自动落到 CPU 软解; 旧单值配置仍可回退;
+    // 硬解总开关关闭时强制纯软件。默认链按平台下发:
+    //  - Windows + D3D11 渲染通道: d3d11va 原生零拷贝优先 (同 ID3D11Device);
+    //  - Windows GL 回退构建 (Qt < 6.7): 维持 auto-copy 兼容;
+    //  - Linux: vaapi (EGL dma-buf 零拷贝) -> nvdec (CUDA-GL) -> auto;
+    //  - 其余平台: 维持 auto-copy 兼容。
 #if defined(QEMBY_MPV_D3D11_RENDER)
-    const QString hwdecDefault = QStringLiteral("d3d11va");
+    const QString hwdecDefault = QStringLiteral("d3d11va,auto,auto-safe");
 #elif defined(Q_OS_WIN)
-    const QString hwdecDefault = QStringLiteral("auto-copy");
+    const QString hwdecDefault = QStringLiteral("auto-copy,auto-safe");
 #elif defined(Q_OS_LINUX)
-    const QString hwdecDefault = QStringLiteral("vaapi,nvdec,auto-safe");
+    const QString hwdecDefault = QStringLiteral("vaapi,nvdec,auto,auto-safe");
 #else
-    const QString hwdecDefault = QStringLiteral("auto-copy");
+    const QString hwdecDefault = QStringLiteral("auto-copy,auto-safe");
 #endif
-    QString hwdec = ConfigStore::instance()->get<QString>(ConfigKeys::PlayerHwDec, hwdecDefault);
+    QString hwdec;
+    if (!ConfigStore::instance()->get<bool>(ConfigKeys::PlayerHwDecEnabled, true)) {
+        hwdec = QStringLiteral("no");
+    } else {
+        hwdec = ConfigStore::instance()
+                    ->get<QString>(ConfigKeys::PlayerHwDecPriority, QString())
+                    .trimmed();
+        if (hwdec.isEmpty()) {
+            hwdec = ConfigStore::instance()->get<QString>(ConfigKeys::PlayerHwDec,
+                                                          hwdecDefault);
+        }
+    }
 
 #ifdef Q_OS_WIN
     bool isRDP = GetSystemMetrics(SM_REMOTESESSION) != 0;
