@@ -1,12 +1,21 @@
 #include "mpvinfodialog.h"
 
+#include "anime4kshadermanager.h"
 #include "mpvcontroller.h"
 
+#include <config/config_keys.h>
+#include <config/configstore.h>
+#include <QCloseEvent>
+#include <QFileInfo>
 #include <QFontDatabase>
 #include <QFrame>
+#include <QGuiApplication>
 #include <QHideEvent>
+#include <QMoveEvent>
 #include <QPlainTextEdit>
+#include <QScreen>
 #include <QScrollBar>
+#include <QSettings>
 #include <QShowEvent>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -15,6 +24,7 @@ namespace
 {
 
 constexpr int kRefreshIntervalMs = 1000;
+constexpr int kGeometrySaveDelayMs = 400;
 constexpr int kKeyColumnWidth = 30;
 
 const QString kMissingValue = QStringLiteral("-");
@@ -76,18 +86,75 @@ QString infoRow(const QString &key, const QString &value)
            QStringLiteral(" : ") + value;
 }
 
+// glsl-shaders comes back from mpv as a node array of strings.
+QStringList stringListValue(const QVariant &value)
+{
+    QStringList result;
+    if (!value.isValid())
+    {
+        return result;
+    }
+    if (value.typeId() == QMetaType::QStringList)
+    {
+        return value.toStringList();
+    }
+    if (value.typeId() == QMetaType::QVariantList)
+    {
+        for (const QVariant &item : value.toList())
+        {
+            const QString text = item.toString();
+            if (!text.isEmpty())
+            {
+                result.append(text);
+            }
+        }
+        return result;
+    }
+    const QString text = value.toString();
+    if (!text.isEmpty())
+    {
+        result.append(text);
+    }
+    return result;
+}
+
+// vf/af come back as a node array of {name, params} maps; fall back to the
+// raw text when mpv reports them differently. Returns an empty string when no
+// filter is active.
+QString filterSummary(const QVariant &value)
+{
+    if (value.typeId() == QMetaType::QVariantList)
+    {
+        QStringList names;
+        for (const QVariant &item : value.toList())
+        {
+            const QVariantMap map = item.toMap();
+            const QString name = map.contains(QStringLiteral("name"))
+                ? map.value(QStringLiteral("name")).toString()
+                : item.toString();
+            if (!name.isEmpty())
+            {
+                names.append(name);
+            }
+        }
+        return names.join(QStringLiteral(", "));
+    }
+    return value.toString();
+}
+
 } // namespace
 
-MpvInfoDialog::MpvInfoDialog(MpvController *controller, QWidget *parent)
-    : PlayerOverlayDialog(parent)
+MpvInfoDialog::MpvInfoDialog(MpvController *controller, QWidget *playerWindow)
+    : QWidget(nullptr, Qt::Window)
     , m_controller(controller)
 {
-    setSurfaceObjectName(QStringLiteral("playerMpvInfoDialog"));
-    setSurfacePreferredSize(QSize(620, 520));
-    setTitle(tr("MPV Info"));
+    setObjectName(QStringLiteral("playerMpvInfoDialog"));
+    setWindowTitle(tr("MPV Info"));
+    setMinimumSize(QSize(420, 320));
 
-    contentLayout()->setContentsMargins(16, 8, 16, 16);
-    contentLayout()->setSpacing(10);
+    auto *layout = new QVBoxLayout(this);
+    layout->setContentsMargins(16, 8, 16, 16);
+    layout->setSpacing(10);
 
     m_textView = new QPlainTextEdit(this);
     m_textView->setObjectName(QStringLiteral("playerMpvInfoText"));
@@ -98,18 +165,35 @@ MpvInfoDialog::MpvInfoDialog(MpvController *controller, QWidget *parent)
     QFont monoFont = QFontDatabase::systemFont(QFontDatabase::FixedFont);
     monoFont.setPointSize(10);
     m_textView->setFont(monoFont);
-    contentLayout()->addWidget(m_textView, 1);
+    layout->addWidget(m_textView, 1);
 
     m_refreshTimer = new QTimer(this);
     m_refreshTimer->setInterval(kRefreshIntervalMs);
     connect(m_refreshTimer, &QTimer::timeout, this, &MpvInfoDialog::refreshInfo);
 
+    m_geometrySaveTimer = new QTimer(this);
+    m_geometrySaveTimer->setSingleShot(true);
+    m_geometrySaveTimer->setInterval(kGeometrySaveDelayMs);
+    connect(m_geometrySaveTimer, &QTimer::timeout, this,
+            &MpvInfoDialog::saveGeometryToSettings);
+
+    restoreOrPlaceWindow(playerWindow);
+    refreshInfo();
+}
+
+void MpvInfoDialog::setController(MpvController *controller)
+{
+    if (m_controller == controller)
+    {
+        return;
+    }
+    m_controller = controller;
     refreshInfo();
 }
 
 void MpvInfoDialog::showEvent(QShowEvent *event)
 {
-    PlayerOverlayDialog::showEvent(event);
+    QWidget::showEvent(event);
     refreshInfo();
     m_refreshTimer->start();
 }
@@ -117,7 +201,61 @@ void MpvInfoDialog::showEvent(QShowEvent *event)
 void MpvInfoDialog::hideEvent(QHideEvent *event)
 {
     m_refreshTimer->stop();
-    PlayerOverlayDialog::hideEvent(event);
+    QWidget::hideEvent(event);
+}
+
+void MpvInfoDialog::closeEvent(QCloseEvent *event)
+{
+    saveGeometryToSettings();
+    QWidget::closeEvent(event);
+}
+
+void MpvInfoDialog::moveEvent(QMoveEvent *event)
+{
+    QWidget::moveEvent(event);
+    if (m_geometrySaveTimer)
+    {
+        m_geometrySaveTimer->start();
+    }
+}
+
+void MpvInfoDialog::restoreOrPlaceWindow(const QWidget *playerWindow)
+{
+    QSettings settings(QStringLiteral("qEmby"), QStringLiteral("MpvInfoDialog"));
+    const QByteArray saved = settings.value(QStringLiteral("geometry")).toByteArray();
+    if (!saved.isEmpty() && restoreGeometry(saved))
+    {
+        return;
+    }
+
+    resize(620, 520);
+
+    QPoint pos;
+    if (playerWindow && playerWindow->isVisible())
+    {
+        // Right of the player window so the video area stays unobstructed.
+        const QRect playerRect = playerWindow->geometry();
+        pos = QPoint(playerRect.right() + 20, playerRect.top() + 40);
+    }
+    else
+    {
+        const QRect available =
+            QGuiApplication::primaryScreen()->availableGeometry();
+        pos = available.center() - QPoint(width() / 2, height() / 2);
+    }
+
+    QScreen *screen = QGuiApplication::screenAt(pos);
+    const QRect available = screen ? screen->availableGeometry()
+                                   : QGuiApplication::primaryScreen()->availableGeometry();
+    pos.setX(qBound(available.left(), pos.x(), available.right() - width() + 1));
+    pos.setY(qBound(available.top(), pos.y(), available.bottom() - height() + 1));
+    move(pos);
+}
+
+void MpvInfoDialog::saveGeometryToSettings() const
+{
+    QSettings settings(QStringLiteral("qEmby"), QStringLiteral("MpvInfoDialog"));
+    settings.setValue(QStringLiteral("geometry"), saveGeometry());
 }
 
 void MpvInfoDialog::refreshInfo()
@@ -140,10 +278,49 @@ QString MpvInfoDialog::buildInfoText() const
 {
     if (!m_controller)
     {
-        return tr("MPV controller unavailable");
+        return tr("No playback");
     }
 
     QStringList lines;
+
+    lines << tr("Shaders");
+    const QString presetId = ConfigStore::instance()->get<QString>(
+        ConfigKeys::PlayerAnime4kPreset, QStringLiteral("balanced"));
+    const QString presetName = Anime4KShaderManager::isCustomPresetId(presetId)
+        ? tr("Custom")
+        : Anime4KShaderManager::presetDisplayName(
+              Anime4KShaderManager::presetFromId(presetId));
+    lines << infoRow(QStringLiteral("preset"), presetName);
+    const QStringList shaderChain = stringListValue(
+        m_controller->getProperty(QStringLiteral("glsl-shaders")));
+    if (shaderChain.isEmpty())
+    {
+        lines << infoRow(QStringLiteral("glsl-shaders"), tr("(none)"));
+    }
+    else
+    {
+        lines << infoRow(QStringLiteral("glsl-shaders"),
+                         QString::number(shaderChain.size()));
+        for (int index = 0; index < shaderChain.size(); ++index)
+        {
+            const QString &shaderPath = shaderChain.at(index);
+            lines << QStringLiteral("    %1. %2")
+                         .arg(index + 1)
+                         .arg(QFileInfo(shaderPath).fileName());
+            lines << QStringLiteral("       ") + shaderPath;
+        }
+    }
+
+    lines << QString();
+    lines << tr("Filters");
+    const QString videoFilters =
+        filterSummary(m_controller->getProperty(QStringLiteral("vf")));
+    const QString audioFilters =
+        filterSummary(m_controller->getProperty(QStringLiteral("af")));
+    lines << infoRow(QStringLiteral("vf"),
+                     videoFilters.isEmpty() ? tr("(none)") : videoFilters);
+    lines << infoRow(QStringLiteral("af"),
+                     audioFilters.isEmpty() ? tr("(none)") : audioFilters);
 
     QString resolution = kMissingValue;
     const QVariant width = m_controller->getProperty(QStringLiteral("video-params/w"));
@@ -155,6 +332,7 @@ QString MpvInfoDialog::buildInfoText() const
                          .arg(height.toLongLong());
     }
 
+    lines << QString();
     lines << tr("File");
     lines << infoRow(QStringLiteral("media-title"),
                      stringValue(m_controller->getProperty(QStringLiteral("media-title"))));

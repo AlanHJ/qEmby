@@ -8638,6 +8638,10 @@ Adresse: %2</translation>
         <source>%1 (Custom)</source>
         <translation>%1 (personnalisé)</translation>
     </message>
+    <message>
+        <source>Failed to prepare shader files</source>
+        <translation>Échec de la préparation des fichiers de shaders</translation>
+    </message>
 </context>
 <context>
     <name>MpvInfoDialog</name>
@@ -8672,6 +8676,26 @@ Adresse: %2</translation>
     <message>
         <source>Output</source>
         <translation>Sortie</translation>
+    </message>
+    <message>
+        <source>No playback</source>
+        <translation>Aucune lecture</translation>
+    </message>
+    <message>
+        <source>Shaders</source>
+        <translation>Shaders</translation>
+    </message>
+    <message>
+        <source>Filters</source>
+        <translation>Filtres</translation>
+    </message>
+    <message>
+        <source>Custom</source>
+        <translation>Personnalisé</translation>
+    </message>
+    <message>
+        <source>(none)</source>
+        <translation>(aucun)</translation>
     </message>
 </context>
 </TS>
