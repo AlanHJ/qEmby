@@ -749,12 +749,24 @@ void MpvWidget::render(QRhiCommandBuffer *cb) {
         {MPV_RENDER_PARAM_INVALID, nullptr}
     };
     const int result = mpv_render_context_render(m_mpv_gl, params);
+    // 有限诊断: 首几帧打印渲染结果与帧信息标志, 便于定位呈现链路断点。
+    static int diagnosticFrames = 0;
+    static int diagnosticFailures = 0;
+    if (diagnosticFrames < 5) {
+        ++diagnosticFrames;
+        qInfo() << "[MpvWidget][D3D11][Diag] frame:" << diagnosticFrames
+                << "| renderResult:" << result
+                << "| infoFlags:" << info.flags
+                << "| targetTex:" << colorTex
+                << "| targetSize:" << targetSize;
+    }
     if (result >= 0) {
         const bool framePresent = (info.flags & MPV_RENDER_FRAME_INFO_PRESENT) &&
             (!(info.flags & MPV_RENDER_FRAME_INFO_REDRAW) ||
              (m_mediaLoaded && m_videoOutputAvailable));
         recordVideoFrameRendered(framePresent);
-    } else {
+    } else if (diagnosticFailures < 16) {
+        ++diagnosticFailures;
         qWarning() << "[MpvWidget] D3D11 video render failed | error:" << result;
     }
 
