@@ -6,29 +6,150 @@
 #include "nativedanmakuoverlay.h"
 #include "../utils/logredactionutils.h"
 #include "../utils/mpvrendertimingutils.h"
-#include <QOpenGLContext>
 #include <QMetaObject>
 #include <QCoreApplication>
-#include <QSurfaceFormat>
 #include <QUrl>
 #include <QVariantMap>
-#include <QOpenGLFramebufferObject>
-#include <QOpenGLTextureBlitter>
 #include <QPainter>
 #include <algorithm>
+// MpvWidget 持有 unique_ptr<QOpenGLFramebufferObject/QOpenGLTextureBlitter>,
+// 两个后端分支的析构都需要完整类型, 故无条件包含 (Qt OpenGL 头跨平台可用)。
+#include <QOpenGLFramebufferObject>
+#include <QOpenGLTextureBlitter>
 #include "api/proxymanager.h"
 #include "api/useragentmanager.h"
 
+#if defined(QEMBY_MPV_D3D11_RENDER)
+// Windows Direct3D 11 渲染通道 (Qt RHI 桥)。仅在 CMake 判定
+// WIN32 && Qt >= 6.7 (QEMBY_MPV_D3D11_RENDER) 时编译, 其余平台绝不引入
+// Windows 独占头文件。
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <d3d11.h>
+#include <d3dcompiler.h>
+#include <cstring>
+#include <rhi/qrhi.h>
+#if defined(__has_include)
+#if __has_include(<mpv/render_d3d11.h>)
+#include <mpv/render_d3d11.h>
+#define QEMBY_HAVE_MPV_RENDER_D3D11_H 1
+#endif
+#endif
+#ifndef QEMBY_HAVE_MPV_RENDER_D3D11_H
+// 与 mpv (e471496c56) render_d3d11.h ABI 一致的最小结构定义, 供捆绑 SDK 未
+// 附带该头文件时回退 (两处定义互斥, 不会重定义)。
+typedef struct mpv_d3d11_init_params {
+    void *device;
+} mpv_d3d11_init_params;
+typedef struct mpv_d3d11_fbo {
+    void *tex;
+} mpv_d3d11_fbo;
+#endif
+#else
+#include <QOpenGLContext>
+#include <QSurfaceFormat>
+#endif
+
+namespace {
+
+#if defined(QEMBY_MPV_D3D11_RENDER)
+// 全屏三角形 (SV_VertexID, 无顶点缓冲), 采样纹理按预乘 alpha 混合,
+// 用于把弹幕 QImage 纹理叠加到 mpv 已渲染的视频帧之上。
+const char kQuadVertexShaderHlsl[] = R"(
+struct VSOut {
+    float4 pos : SV_Position;
+    float2 uv  : TEXCOORD0;
+};
+VSOut main(uint vid : SV_VertexID) {
+    VSOut o;
+    float2 uv = float2((vid << 1) & 2, vid & 2);
+    o.pos = float4(uv * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
+    o.uv = uv;
+    return o;
+}
+)";
+
+const char kQuadPixelShaderHlsl[] = R"(
+Texture2D quadTex : register(t0);
+SamplerState quadSampler : register(s0);
+struct VSOut {
+    float4 pos : SV_Position;
+    float2 uv  : TEXCOORD0;
+};
+float4 main(VSOut i) : SV_Target {
+    return quadTex.Sample(quadSampler, i.uv);
+}
+)";
+
+// d3dcompiler 为系统组件 (windeployqt 会随 Qt 一并收编), 运行期动态加载,
+// 缺失时仅禁用弹幕叠加而保留视频渲染 (容灾回退)。
+using D3DCompileFn = HRESULT(WINAPI *)(LPCVOID, SIZE_T, LPCSTR,
+                                       const D3D10_SHADER_MACRO *, LPD3D10INCLUDE,
+                                       LPCSTR, LPCSTR, UINT, UINT,
+                                       ID3DBlob **, ID3DBlob **);
+
+bool compileQuadShader(const char *source, const char *entry, const char *target,
+                       ID3DBlob **blobOut) {
+    static D3DCompileFn compile = nullptr;
+    static bool resolved = false;
+    if (!resolved) {
+        resolved = true;
+        for (const wchar_t *name : {L"d3dcompiler_47.dll", L"d3dcompiler_43.dll"}) {
+            if (HMODULE module = LoadLibraryW(name)) {
+                compile = reinterpret_cast<D3DCompileFn>(
+                    GetProcAddress(module, "D3DCompile"));
+                if (compile) {
+                    break;
+                }
+                FreeLibrary(module);
+            }
+        }
+        qInfo() << "[MpvWidget] D3DCompile resolved:" << (compile != nullptr);
+    }
+    if (!compile) {
+        return false;
+    }
+    ID3DBlob *errors = nullptr;
+    const HRESULT hr = compile(source, strlen(source), nullptr, nullptr, nullptr,
+                               entry, target, D3DCOMPILE_OPTIMIZATION_LEVEL3, 0,
+                               blobOut, &errors);
+    if (errors) {
+        if (FAILED(hr)) {
+            qWarning() << "[MpvWidget] HLSL compilation failed"
+                       << "| entry:" << entry
+                       << "| log:" << QString::fromUtf8(
+                              static_cast<const char *>(errors->GetBufferPointer()),
+                              static_cast<int>(errors->GetBufferSize()));
+        }
+        errors->Release();
+    }
+    return SUCCEEDED(hr);
+}
+#endif
+
+} // namespace
+
 MpvWidget::MpvWidget(QWidget *parent)
+#if defined(QEMBY_MPV_D3D11_RENDER)
+    : QRhiWidget(parent), m_mpv_gl(nullptr) {
+    // 显式钉住 Direct3D 11 后端 (Windows 平台 QRhiWidget 的默认值, 此处显式
+    // 声明以获得确定性)。QRhiWidget 渲染进纹理并由 Qt 背板合成, 上层兄弟控件
+    // (HUD/弹幕容器) 的堆叠与输入分发行为与 QOpenGLWidget 完全一致。
+    setApi(QRhiWidget::Api::Direct3D11);
+#else
     : QOpenGLWidget(parent), m_mpv_gl(nullptr) {
 
-    
-    
-    
-    QSurfaceFormat format = this->format(); 
-    
-    format.setSwapInterval(1); 
+
+
+
+
+    QSurfaceFormat format = this->format();
+
+    format.setSwapInterval(1);
     this->setFormat(format);
+#endif
 
     m_videoDueTimer.setSingleShot(true);
     m_videoDueTimer.setTimerType(Qt::PreciseTimer);
@@ -37,6 +158,12 @@ MpvWidget::MpvWidget(QWidget *parent)
             update();
         }
     });
+#if defined(QEMBY_MPV_D3D11_RENDER)
+    connect(this, &QRhiWidget::frameSubmitted, this, [this]() {
+        handleSurfacePresented();
+        Q_EMIT surfaceFrameSwapped();
+    }, Qt::DirectConnection);
+#else
     connect(this, &QOpenGLWidget::aboutToCompose, this, [this]() {
         if (m_nativeCompositeActive) {
             m_compositionClock.start();
@@ -48,12 +175,8 @@ MpvWidget::MpvWidget(QWidget *parent)
                 m_compositionClock.nsecsElapsed() / 1000000.0);
             m_compositionClock.invalidate();
         }
-        if (m_videoFrameForSwap) {
-            m_videoFrameForSwap = false;
-            m_videoPresented = true;
-            qInfo() << "[MpvWidget] Video presentation ready | firstFrameSwapped:" << true;
-            Q_EMIT videoPresentationChanged(true);
-        }
+        handleSurfacePresented();
+        Q_EMIT surfaceFrameSwapped();
         const bool wasWaiting = m_videoAwaitingSwap;
         m_videoAwaitingSwap = false;
         if (wasWaiting && m_nativeCompositeActive && m_videoFramePending &&
@@ -61,6 +184,7 @@ MpvWidget::MpvWidget(QWidget *parent)
             update();
         }
     }, Qt::DirectConnection);
+#endif
 
     m_controller = new MpvController(this);
     connect(m_controller, &MpvController::playbackStarting, this, [this]() {
@@ -72,6 +196,11 @@ MpvWidget::MpvWidget(QWidget *parent)
     connect(m_controller, &MpvController::fileLoaded, this, [this]() {
         m_mediaLoaded = true;
         refreshVideoOutputState();
+        qInfo() << "[MpvWidget] Active decoder"
+                << "| hwdec-current:"
+                << m_controller->getProperty(QStringLiteral("hwdec-current")).toString()
+                << "| current-vo:"
+                << m_controller->getProperty(QStringLiteral("current-vo")).toString();
     });
     connect(m_controller, &MpvController::videoOutputChanged,
             this, &MpvWidget::refreshVideoOutputState);
@@ -88,7 +217,7 @@ MpvWidget::MpvWidget(QWidget *parent)
         if (!m_videoOutputAvailable) {
             resetVideoPresentation(false);
         }
-        update(); 
+        update();
     });
     m_streamRelay = new MpvHttpStreamRelay(this);
     connect(UserAgentManager::instance(),
@@ -114,14 +243,16 @@ MpvWidget::MpvWidget(QWidget *parent)
     connect(m_streamRelay, &MpvHttpStreamRelay::upstreamSpeedChanged, this,
             &MpvWidget::networkSpeedChanged);
 
-    
+
+
+
     connect(m_controller, &MpvController::positionChanged, this, &MpvWidget::positionChanged);
     connect(m_controller, &MpvController::durationChanged, this, &MpvWidget::durationChanged);
     connect(m_controller, &MpvController::playbackStateChanged, this, &MpvWidget::playbackStateChanged);
     connect(m_controller, &MpvController::errorOccurred, this, &MpvWidget::errorOccurred);
 
-    
-    
+
+
 
     if (m_controller->init()) {
         m_defaultUserAgent =
@@ -132,17 +263,21 @@ MpvWidget::MpvWidget(QWidget *parent)
 }
 
 MpvWidget::~MpvWidget() {
-    
-    
-    
+
+
+
+
+#if !defined(QEMBY_MPV_D3D11_RENDER)
     if (QOpenGLContext *ctx = context()) {
         disconnect(ctx, &QOpenGLContext::aboutToBeDestroyed,
                    this, &MpvWidget::cleanupGL);
     }
+#endif
 
-    
-    
-    
+
+
+
+
     shutdown();
     if (m_controller) {
         m_controller->deleteLater();
@@ -156,12 +291,14 @@ void MpvWidget::shutdown() {
     m_previewUrl.clear();
     emit previewSourceChanged(QString(), QVariantMap());
 
-    
+
+
     this->blockSignals(true);
     m_controller->blockSignals(true);
 
-    
-    
+
+
+
     m_controller->command(QVariantList{"stop"});
     if (m_streamRelay) {
         m_streamRelay->stop();
@@ -171,11 +308,25 @@ void MpvWidget::shutdown() {
         Q_EMIT relayActiveChanged(false);
     }
 
+#if defined(QEMBY_MPV_D3D11_RENDER)
+    releaseD3D11Resources();
+#else
     cleanupGL();
+#endif
 
     m_controller->forceCleanup();
 }
 
+void MpvWidget::freeMpvRenderContext() {
+    if (!m_mpv_gl) {
+        return;
+    }
+    mpv_render_context_set_update_callback(m_mpv_gl, nullptr, nullptr);
+    mpv_render_context_free(m_mpv_gl);
+    m_mpv_gl = nullptr;
+}
+
+#if !defined(QEMBY_MPV_D3D11_RENDER)
 void MpvWidget::cleanupGL() {
     resetVideoPresentation(false);
     m_videoDueTimer.stop();
@@ -183,22 +334,21 @@ void MpvWidget::cleanupGL() {
         m_nativeDanmakuOverlay->setGraphicsAvailable(false);
     }
     if (m_mpv_gl) {
-        mpv_render_context_set_update_callback(m_mpv_gl, nullptr, nullptr);
 
-        
-        
-        
+
+
+
+
         if (isValid()) {
             makeCurrent();
             releaseVideoCache();
-            mpv_render_context_free(m_mpv_gl);
+            freeMpvRenderContext();
             doneCurrent();
         } else {
             releaseVideoCache();
             qWarning() << "[MpvWidget] OpenGL surface is invalid; freeing MPV render context without makeCurrent";
-            mpv_render_context_free(m_mpv_gl);
+            freeMpvRenderContext();
         }
-        m_mpv_gl = nullptr;
         qInfo() << "[MpvWidget] MPV render context released with OpenGL context";
     }
 }
@@ -208,9 +358,10 @@ void *MpvWidget::getProcAddress(void *ctx, const char *name) {
     QOpenGLContext *glctx = QOpenGLContext::currentContext();
     return glctx ? reinterpret_cast<void *>(glctx->getProcAddress(QByteArray(name))) : nullptr;
 }
+#endif
 
 void MpvWidget::onMpvRenderUpdate(void *ctx) {
-    
+
     auto *self = static_cast<MpvWidget *>(ctx);
     QMetaObject::invokeMethod(self, "maybeUpdate", Qt::QueuedConnection);
 }
@@ -245,8 +396,8 @@ void MpvWidget::resetVideoPresentation(bool resetMedia) {
 }
 
 void MpvWidget::refreshVideoOutputState() {
-    
-    
+
+
     m_controller->requestProperty(QStringLiteral("video-out-params"));
 }
 
@@ -254,11 +405,400 @@ void MpvWidget::recordVideoFrameRendered(bool framePresent) {
     if (m_videoPresented) {
         return;
     }
-    
-    
-    
+
+
+
+
+
     m_videoFrameRendered = m_videoFrameRendered || framePresent;
     m_videoFrameForSwap = m_mediaLoaded && m_videoOutputAvailable && m_videoFrameRendered;
+}
+
+void MpvWidget::handleSurfacePresented() {
+    if (m_videoFrameForSwap) {
+        m_videoFrameForSwap = false;
+        m_videoPresented = true;
+        qInfo() << "[MpvWidget] Video presentation ready | firstFrameSwapped:" << true;
+        Q_EMIT videoPresentationChanged(true);
+    }
+}
+
+void MpvWidget::onRenderContextReady() {
+    if (!m_pendingUrl.isEmpty()) {
+        loadMediaNow(m_pendingUrl, m_pendingServerId, true);
+        m_pendingUrl.clear();
+        m_pendingServerId.clear();
+    }
+
+    if (m_resumeWhenRenderReady) {
+        m_resumeWhenRenderReady = false;
+        m_controller->setProperty("pause", false);
+    }
+
+    update();
+}
+
+#if defined(QEMBY_MPV_D3D11_RENDER)
+
+// ===================== Direct3D 11 渲染管线 (Qt RHI 桥) =====================
+//
+// mpv 以 MPV_RENDER_API_TYPE_D3D11 创建渲染上下文, 直接把视频帧渲染进 Qt
+// RHI 的颜色纹理 (QRhiWidget::colorTexture); d3d11va 硬解 Surface 在同一
+// ID3D11Device 上流转, 全程无 GPU->CPU->GPU 回传 (原生零拷贝)。弹幕由
+// NativeDanmakuOverlay 以 QPainter 光栅进 QImage 后作为纹理按预乘 alpha
+// 混合叠加。整个渲染在 QRhiCommandBuffer 的 beginExternal 块内以原生 D3D11
+// 完成, 与 QRhi 状态跟踪契约兼容。
+
+ID3D11Device *MpvWidget::d3dDevice() const {
+    if (!rhi()) {
+        return nullptr;
+    }
+    auto *native = static_cast<const QRhiD3D11NativeHandles *>(rhi()->nativeHandles());
+    return native ? static_cast<ID3D11Device *>(native->dev) : nullptr;
+}
+
+ID3D11DeviceContext *MpvWidget::d3dContext() const {
+    if (!rhi()) {
+        return nullptr;
+    }
+    auto *native = static_cast<const QRhiD3D11NativeHandles *>(rhi()->nativeHandles());
+    return native ? static_cast<ID3D11DeviceContext *>(native->context) : nullptr;
+}
+
+bool MpvWidget::initMpvRenderContext() {
+    freeMpvRenderContext();
+
+    ID3D11Device *device = d3dDevice();
+    if (!device) {
+        qCritical() << "[MpvWidget] Qt RHI Direct3D 11 device unavailable";
+        emit errorOccurred(tr("Direct3D 11 rendering initialization failed."));
+        return false;
+    }
+
+    mpv_d3d11_init_params d3d11_init{device};
+    mpv_render_param params[]{
+        {MPV_RENDER_PARAM_API_TYPE, const_cast<char *>(MPV_RENDER_API_TYPE_D3D11)},
+        {MPV_RENDER_PARAM_D3D11_INIT_PARAMS, &d3d11_init},
+        {MPV_RENDER_PARAM_INVALID, nullptr}
+    };
+
+    const int createError = mpv_render_context_create(&m_mpv_gl, m_controller->mpv(), params);
+    if (createError < 0) {
+        qCritical() << "[MpvWidget] MPV D3D11 render context creation failed"
+                    << "| error:" << mpv_error_string(createError);
+        emit errorOccurred(tr("Direct3D 11 rendering initialization failed."));
+        return false;
+    }
+
+    mpv_render_context_set_update_callback(m_mpv_gl, onMpvRenderUpdate, this);
+
+    qInfo() << "[MpvWidget] MPV render context initialized"
+            << "| backend:D3D11 | zeroCopyHwdec:d3d11va"
+            << "| resumePending:" << m_resumeWhenRenderReady;
+
+    onRenderContextReady();
+    return true;
+}
+
+void MpvWidget::initialize(QRhiCommandBuffer *cb) {
+    Q_UNUSED(cb);
+    resetVideoPresentation(false);
+    releaseD3D11Resources();
+    m_nativeCompositeFailed = false;
+    if (m_nativeDanmakuOverlay) {
+        m_nativeDanmakuOverlay->invalidateGraphicsCache();
+    }
+
+    qInfo() << "[MpvWidget] Qt RHI initialized"
+            << "| api:" << (api() == QRhiWidget::Api::Direct3D11 ? "d3d11" : "other");
+    initMpvRenderContext();
+}
+
+bool MpvWidget::ensureD3D11Resources(const QSize &targetSize) {
+    ID3D11Device *device = d3dDevice();
+    if (!device || !d3dContext()) {
+        return false;
+    }
+
+    if (!m_quadVs || !m_quadPs) {
+        ID3DBlob *vsBlob = nullptr;
+        ID3DBlob *psBlob = nullptr;
+        if (!compileQuadShader(kQuadVertexShaderHlsl, "main", "vs_4_0", &vsBlob) ||
+            !compileQuadShader(kQuadPixelShaderHlsl, "main", "ps_4_0", &psBlob)) {
+            if (vsBlob) vsBlob->Release();
+            if (psBlob) psBlob->Release();
+            return false;
+        }
+        HRESULT hr = device->CreateVertexShader(vsBlob->GetBufferPointer(),
+                                                vsBlob->GetBufferSize(), nullptr, &m_quadVs);
+        if (SUCCEEDED(hr)) {
+            hr = device->CreatePixelShader(psBlob->GetBufferPointer(),
+                                           psBlob->GetBufferSize(), nullptr, &m_quadPs);
+        }
+        vsBlob->Release();
+        psBlob->Release();
+        if (FAILED(hr)) {
+            qWarning() << "[MpvWidget] Danmaku quad shader creation failed | hr:" << Qt::hex << hr;
+            return false;
+        }
+
+        D3D11_BLEND_DESC blend{};
+        blend.RenderTarget[0].BlendEnable = TRUE;
+        blend.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
+        blend.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+        blend.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+        blend.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
+        blend.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
+        blend.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+        blend.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+        device->CreateBlendState(&blend, &m_blendState);
+
+        D3D11_SAMPLER_DESC sampler{};
+        sampler.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+        sampler.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+        sampler.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+        sampler.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+        sampler.MaxLOD = D3D11_FLOAT32_MAX;
+        device->CreateSamplerState(&sampler, &m_sampler);
+
+        D3D11_RASTERIZER_DESC rasterizer{};
+        rasterizer.FillMode = D3D11_FILL_SOLID;
+        rasterizer.CullMode = D3D11_CULL_NONE;
+        rasterizer.DepthClipEnable = TRUE;
+        device->CreateRasterizerState(&rasterizer, &m_rasterState);
+
+        D3D11_DEPTH_STENCIL_DESC depth{};
+        depth.DepthEnable = FALSE;
+        depth.StencilEnable = FALSE;
+        device->CreateDepthStencilState(&depth, &m_depthState);
+
+        if (!m_blendState || !m_sampler || !m_rasterState || !m_depthState) {
+            qWarning() << "[MpvWidget] Danmaku pipeline state creation failed";
+            return false;
+        }
+    }
+
+    // Qt RHI 颜色纹理 (可能随尺寸/重建而更换), 弹幕混合需要它的 RTV。
+    auto *colorTex = reinterpret_cast<ID3D11Texture2D *>(
+        colorTexture() ? colorTexture()->nativeTexture().object : 0);
+    if (colorTex != m_d3dColorTex) {
+        if (m_d3dColorRtv) {
+            m_d3dColorRtv->Release();
+            m_d3dColorRtv = nullptr;
+        }
+        if (m_d3dColorTex) {
+            m_d3dColorTex->Release();
+            m_d3dColorTex = nullptr;
+        }
+        if (colorTex &&
+            SUCCEEDED(device->CreateRenderTargetView(colorTex, nullptr, &m_d3dColorRtv))) {
+            m_d3dColorTex = colorTex;
+            m_d3dColorTex->AddRef();
+        } else {
+            qWarning() << "[MpvWidget] Danmaku overlay RTV creation failed";
+            return false;
+        }
+    }
+
+    if (m_danmakuTex && m_danmakuTexSize != targetSize) {
+        m_danmakuSrv->Release();
+        m_danmakuSrv = nullptr;
+        m_danmakuTex->Release();
+        m_danmakuTex = nullptr;
+        m_danmakuTexSize = QSize();
+    }
+    return true;
+}
+
+void MpvWidget::releaseD3D11Resources() {
+    freeMpvRenderContext();
+    if (m_danmakuSrv) { m_danmakuSrv->Release(); m_danmakuSrv = nullptr; }
+    if (m_danmakuTex) { m_danmakuTex->Release(); m_danmakuTex = nullptr; }
+    if (m_d3dColorRtv) { m_d3dColorRtv->Release(); m_d3dColorRtv = nullptr; }
+    if (m_d3dColorTex) { m_d3dColorTex->Release(); m_d3dColorTex = nullptr; }
+    if (m_quadVs) { m_quadVs->Release(); m_quadVs = nullptr; }
+    if (m_quadPs) { m_quadPs->Release(); m_quadPs = nullptr; }
+    if (m_blendState) { m_blendState->Release(); m_blendState = nullptr; }
+    if (m_sampler) { m_sampler->Release(); m_sampler = nullptr; }
+    if (m_rasterState) { m_rasterState->Release(); m_rasterState = nullptr; }
+    if (m_depthState) { m_depthState->Release(); m_depthState = nullptr; }
+    m_danmakuBuffer = QImage();
+    m_danmakuTexSize = QSize();
+}
+
+void MpvWidget::releaseResources() {
+    resetVideoPresentation(false);
+    m_videoDueTimer.stop();
+    if (m_nativeDanmakuOverlay) {
+        m_nativeDanmakuOverlay->setGraphicsAvailable(false);
+    }
+    releaseD3D11Resources();
+    qInfo() << "[MpvWidget] MPV D3D11 render context released with Qt RHI resources";
+}
+
+bool MpvWidget::rasterizeDanmaku(const QSize &targetSize) {
+    ID3D11Device *device = d3dDevice();
+    ID3D11DeviceContext *context = d3dContext();
+    if (!device || !context || !m_nativeDanmakuOverlay) {
+        return false;
+    }
+
+    if (!m_danmakuTex) {
+        D3D11_TEXTURE2D_DESC desc{};
+        desc.Width = static_cast<UINT>(targetSize.width());
+        desc.Height = static_cast<UINT>(targetSize.height());
+        desc.MipLevels = 1;
+        desc.ArraySize = 1;
+        desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        desc.SampleDesc.Count = 1;
+        desc.Usage = D3D11_USAGE_DEFAULT;
+        desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        if (FAILED(device->CreateTexture2D(&desc, nullptr, &m_danmakuTex)) ||
+            FAILED(device->CreateShaderResourceView(m_danmakuTex, nullptr, &m_danmakuSrv))) {
+            if (m_danmakuTex) { m_danmakuTex->Release(); m_danmakuTex = nullptr; }
+            qWarning() << "[MpvWidget] Danmaku texture creation failed | size:" << targetSize;
+            return false;
+        }
+        m_danmakuTexSize = targetSize;
+    }
+
+    if (m_danmakuBuffer.size() != targetSize) {
+        m_danmakuBuffer = QImage(targetSize, QImage::Format_RGBA8888_Premultiplied);
+    }
+    m_danmakuBuffer.fill(Qt::transparent);
+    const qreal dpr = devicePixelRatioF();
+    QPainter painter(&m_danmakuBuffer);
+    // NativeDanmakuOverlay 以逻辑坐标绘制 (与 QOpenGLWidget 的设备变换一致)。
+    painter.scale(dpr, dpr);
+    const qreal danmakuPosition = m_nativeDanmakuOverlay->beginFrame();
+    m_nativeDanmakuOverlay->paint(painter, danmakuPosition);
+    painter.end();
+
+    context->UpdateSubresource(m_danmakuTex, 0, nullptr,
+                               m_danmakuBuffer.constBits(),
+                               static_cast<UINT>(m_danmakuBuffer.bytesPerLine()), 0);
+    return true;
+}
+
+void MpvWidget::drawDanmakuQuad(const QSize &targetSize) {
+    ID3D11DeviceContext *context = d3dContext();
+    if (!context || !m_d3dColorRtv || !m_danmakuSrv) {
+        return;
+    }
+    D3D11_VIEWPORT viewport{};
+    viewport.Width = static_cast<FLOAT>(targetSize.width());
+    viewport.Height = static_cast<FLOAT>(targetSize.height());
+    viewport.MaxDepth = 1.0f;
+    context->RSSetViewports(1, &viewport);
+    context->RSSetState(m_rasterState);
+    context->IASetInputLayout(nullptr);
+    context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    context->VSSetShader(m_quadVs, nullptr, 0);
+    context->PSSetShader(m_quadPs, nullptr, 0);
+    context->PSSetShaderResources(0, 1, &m_danmakuSrv);
+    context->PSSetSamplers(0, 1, &m_sampler);
+    context->OMSetBlendState(m_blendState, nullptr, 0xffffffffu);
+    context->OMSetDepthStencilState(m_depthState, 0);
+    context->OMSetRenderTargets(1, &m_d3dColorRtv, nullptr);
+    context->Draw(3, 0);
+    ID3D11ShaderResourceView *nullSrv = nullptr;
+    context->PSSetShaderResources(0, 1, &nullSrv);
+}
+
+void MpvWidget::render(QRhiCommandBuffer *cb) {
+    if (!m_mpv_gl) {
+        return;
+    }
+    const QSize targetSize = colorTexture() ? colorTexture()->pixelSize() : QSize();
+    if (targetSize.isEmpty()) {
+        return;
+    }
+
+    // 呈现记账 (与 GL 路径的 paintGL 一致)。
+    mpv_render_frame_info info{};
+    if (!m_videoPresented) {
+        mpv_render_context_get_info(m_mpv_gl, {MPV_RENDER_PARAM_NEXT_FRAME_INFO, &info});
+    }
+
+    bool danmakuActive = m_nativeDanmakuOverlay && m_nativeDanmakuOverlay->isActive() &&
+                         !m_nativeCompositeFailed;
+    if (danmakuActive && !ensureD3D11Resources(targetSize)) {
+        qWarning() << "[Danmaku][Composite] Disabled after D3D11 resource failure; preserving video";
+        m_nativeCompositeFailed = true;
+        m_nativeDanmakuOverlay->setGraphicsAvailable(false);
+        danmakuActive = false;
+    }
+    if (danmakuActive && !rasterizeDanmaku(targetSize)) {
+        qWarning() << "[Danmaku][Composite] Disabled after danmaku raster failure; preserving video";
+        m_nativeCompositeFailed = true;
+        m_nativeDanmakuOverlay->setGraphicsAvailable(false);
+        danmakuActive = false;
+    }
+
+    cb->beginPass(renderTarget(), Qt::black, {1.0f, 0}, nullptr,
+                  QRhiCommandBuffer::ExternalContent);
+    cb->beginExternal();
+
+    // mpv 直接渲染进 Qt RHI 颜色纹理 (同设备 d3d11va Surface, 零拷贝直通);
+    // mpv 使用即时上下文且不恢复状态, 其后我们显式重建自身状态。
+    auto *colorTex = reinterpret_cast<ID3D11Texture2D *>(
+        colorTexture()->nativeTexture().object);
+    mpv_d3d11_fbo fbo{colorTex};
+    mpv_render_param params[] = {
+        {MPV_RENDER_PARAM_D3D11_FBO, &fbo},
+        {MPV_RENDER_PARAM_INVALID, nullptr}
+    };
+    const int result = mpv_render_context_render(m_mpv_gl, params);
+    if (result >= 0) {
+        const bool framePresent = (info.flags & MPV_RENDER_FRAME_INFO_PRESENT) &&
+            (!(info.flags & MPV_RENDER_FRAME_INFO_REDRAW) ||
+             (m_mediaLoaded && m_videoOutputAvailable));
+        recordVideoFrameRendered(framePresent);
+    } else {
+        qWarning() << "[MpvWidget] D3D11 video render failed | error:" << result;
+    }
+
+    if (danmakuActive) {
+        drawDanmakuQuad(targetSize);
+    }
+
+    cb->endExternal();
+    cb->endPass();
+}
+
+#else
+
+// ===================== OpenGL 渲染管线 (既有 GL 合成路径) =====================
+
+bool MpvWidget::initMpvRenderContext() {
+    freeMpvRenderContext();
+
+    mpv_opengl_init_params gl_init_params{
+        getProcAddress,
+        nullptr
+    };
+
+    mpv_render_param params[]{
+        {MPV_RENDER_PARAM_API_TYPE, const_cast<char *>(MPV_RENDER_API_TYPE_OPENGL)},
+        {MPV_RENDER_PARAM_OPENGL_INIT_PARAMS, &gl_init_params},
+        {MPV_RENDER_PARAM_INVALID, nullptr}
+    };
+
+    const int createError = mpv_render_context_create(&m_mpv_gl, m_controller->mpv(), params);
+    if (createError < 0) {
+        qCritical() << "[MpvWidget] MPV render context creation failed"
+                    << "| error:" << mpv_error_string(createError);
+        emit errorOccurred(tr("OpenGL rendering initialization failed."));
+        return false;
+    }
+
+    mpv_render_context_set_update_callback(m_mpv_gl, onMpvRenderUpdate, this);
+
+    qInfo() << "[MpvWidget] MPV render context initialized"
+            << "| backend:OpenGL | resumePending:" << m_resumeWhenRenderReady;
+
+    onRenderContextReady();
+    return true;
 }
 
 void MpvWidget::initializeGL() {
@@ -279,58 +819,16 @@ void MpvWidget::initializeGL() {
         return;
     }
 
-    
-    
-    
+
+
+
+
     if (ctx) {
         connect(ctx, &QOpenGLContext::aboutToBeDestroyed,
                 this, &MpvWidget::cleanupGL, Qt::DirectConnection);
     }
 
-    
-    
-    if (m_mpv_gl) {
-        mpv_render_context_set_update_callback(m_mpv_gl, nullptr, nullptr);
-        mpv_render_context_free(m_mpv_gl);
-        m_mpv_gl = nullptr;
-    }
-
-    mpv_opengl_init_params gl_init_params{
-        getProcAddress,
-        nullptr
-    };
-
-    mpv_render_param params[]{
-        {MPV_RENDER_PARAM_API_TYPE, const_cast<char *>(MPV_RENDER_API_TYPE_OPENGL)},
-        {MPV_RENDER_PARAM_OPENGL_INIT_PARAMS, &gl_init_params},
-        {MPV_RENDER_PARAM_INVALID, nullptr}
-    };
-
-    const int createError = mpv_render_context_create(&m_mpv_gl, m_controller->mpv(), params);
-    if (createError < 0) {
-        qCritical() << "[MpvWidget] MPV render context creation failed"
-                    << "| error:" << mpv_error_string(createError);
-        emit errorOccurred(tr("OpenGL rendering initialization failed."));
-        return;
-    }
-
-    mpv_render_context_set_update_callback(m_mpv_gl, onMpvRenderUpdate, this);
-
-    qInfo() << "[MpvWidget] MPV render context initialized"
-            << "| resumePending:" << m_resumeWhenRenderReady;
-
-    if (!m_pendingUrl.isEmpty()) {
-        loadMediaNow(m_pendingUrl, m_pendingServerId, true);
-        m_pendingUrl.clear();
-        m_pendingServerId.clear();
-    }
-
-    if (m_resumeWhenRenderReady) {
-        m_resumeWhenRenderReady = false;
-        m_controller->setProperty("pause", false);
-    }
-
-    update();
+    initMpvRenderContext();
 }
 
 void MpvWidget::paintGL() {
@@ -338,15 +836,16 @@ void MpvWidget::paintGL() {
 
     int w = static_cast<int>(width() * devicePixelRatio());
     int h = static_cast<int>(height() * devicePixelRatio());
-    if (w == 0 || h == 0) return; 
+    if (w == 0 || h == 0) return;
 
     if (m_nativeDanmakuOverlay && m_nativeDanmakuOverlay->isActive() &&
         !m_nativeCompositeFailed) {
         if (paintNativeComposite(w, h)) {
             return;
         }
-        
-        
+
+
+
         m_nativeCompositeFailed = true;
         m_nativeDanmakuOverlay->setGraphicsAvailable(false);
         qWarning() << "[Danmaku][Composite] Disabled after GL resource failure; preserving video";
@@ -407,8 +906,8 @@ void MpvWidget::checkCompositeGlErrors(const char *stage) {
     if (!m_checkCompositeErrorsThisFrame) {
         return;
     }
-    
-    
+
+
     for (int i = 0; i < 8; ++i) {
         const GLenum error = glGetError();
         if (error == GL_NO_ERROR) {
@@ -425,8 +924,8 @@ bool MpvWidget::paintNativeComposite(int w, int h) {
     QElapsedTimer compositeTime;
     compositeTime.start();
     const qreal danmakuPosition = m_nativeDanmakuOverlay->beginFrame();
-    
-    
+
+
     m_checkCompositeErrorsThisFrame = m_compositeAuditFrames < 60 ||
                                      m_compositeAuditFrames % 120 == 0;
     ++m_compositeAuditFrames;
@@ -442,8 +941,8 @@ bool MpvWidget::paintNativeComposite(int w, int h) {
 
     checkCompositeGlErrors("before-qt-painter");
     QPainter painter(this);
-    
-    
+
+
     painter.beginNativePainting();
     glDisable(GL_BLEND);
     glDisable(GL_DEPTH_TEST);
@@ -473,13 +972,13 @@ bool MpvWidget::paintNativeComposite(int w, int h) {
             {MPV_RENDER_PARAM_NEXT_FRAME_INFO, &info});
         const bool hasFrame = infoResult >= 0 && (info.flags & MPV_RENDER_FRAME_INFO_PRESENT);
         const bool redraw = hasFrame && (info.flags & MPV_RENDER_FRAME_INFO_REDRAW);
-        
+
         framePresent = hasFrame && (!redraw || (m_mediaLoaded && m_videoOutputAvailable));
         const bool vsyncFrame = hasFrame && (info.flags & MPV_RENDER_FRAME_INFO_BLOCK_VSYNC);
         presentVideoFrame = hasFrame && !redraw;
         if (vsyncFrame) {
-            
-            
+
+
             ++m_vsyncVideoFrames;
             m_videoDueTimer.stop();
         } else if (hasFrame && !redraw && info.target_time > 0) {
@@ -495,9 +994,10 @@ bool MpvWidget::paintNativeComposite(int w, int h) {
             const qint64 remainingUs = target.microseconds - nowUs;
             m_maxTargetDelayMs = std::max(m_maxTargetDelayMs, remainingUs / 1000.0);
             if (remainingUs > 0) {
-                
-                
-                
+
+
+
+
                 renderVideo = false;
                 ++m_deferredVideoFrames;
                 if (!m_videoDueTimer.isActive()) {
@@ -556,7 +1056,7 @@ bool MpvWidget::paintNativeComposite(int w, int h) {
         ++m_cachedVideoFrames;
     }
 
-    
+
     glBindFramebuffer(GL_FRAMEBUFFER, defaultFramebufferObject());
     glViewport(0, 0, w, h);
     glDisable(GL_SCISSOR_TEST);
@@ -575,8 +1075,8 @@ bool MpvWidget::paintNativeComposite(int w, int h) {
             m_videoBlitter->blit(m_videoFramebuffer->texture(), transform,
                                 QOpenGLTextureBlitter::OriginBottomLeft);
             m_videoBlitter->release();
-            
-            
+
+
             recordVideoFrameRendered(false);
         }
     }
@@ -586,13 +1086,13 @@ bool MpvWidget::paintNativeComposite(int w, int h) {
         m_nativeDanmakuOverlay->paint(painter, danmakuPosition);
     }
     if (!resourcesReady) {
-        
+
         m_videoFrameForSwap = false;
     }
     painter.end();
     checkCompositeGlErrors("danmaku-paint");
-    
-    
+
+
     glUseProgram(0);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, 0);
@@ -621,6 +1121,8 @@ bool MpvWidget::paintNativeComposite(int w, int h) {
     return resourcesReady;
 }
 
+#endif
+
 
 
 void MpvWidget::loadMediaNow(const QString &url, const QString &serverId, bool wasPending) {
@@ -629,9 +1131,10 @@ void MpvWidget::loadMediaNow(const QString &url, const QString &serverId, bool w
     m_videoCacheDirty = true;
     m_currentUrl = url;
     m_currentServerId = serverId;
-    
-    
-    
+
+
+
+
     const QUrl loadQUrl(url);
     const QNetworkProxy proxy =
         serverId.isEmpty()
@@ -640,18 +1143,20 @@ void MpvWidget::loadMediaNow(const QString &url, const QString &serverId, bool w
     const QString scheme = loadQUrl.scheme().toLower();
     const bool isHttpStream =
         scheme == QStringLiteral("http") || scheme == QStringLiteral("https");
-    
-    
-    
+
+
+
+
     const QVariant tlsVerify = m_controller->getProperty(QStringLiteral("tls-verify"));
     const bool needsNativeNetwork = m_controller->getProperty(QStringLiteral("cookies")).toBool() ||
         (tlsVerify.isValid() && !tlsVerify.toBool()) ||
         !m_controller->getProperty(QStringLiteral("tls-ca-file")).toString().isEmpty() ||
         !m_controller->getProperty(QStringLiteral("tls-cert-file")).toString().isEmpty() ||
         !m_controller->getProperty(QStringLiteral("tls-key-file")).toString().isEmpty();
-    
-    
-    
+
+
+
+
     const bool shouldRelay = isHttpStream &&
         (!m_httpHeaders.isEmpty() || proxy.type() != QNetworkProxy::NoProxy ||
          (!needsNativeNetwork && !HttpRangeUtils::isPlaylist(loadQUrl)));
@@ -687,7 +1192,7 @@ void MpvWidget::loadMediaNow(const QString &url, const QString &serverId, bool w
 
     QVariantMap loadOptions;
     if (ConfigStore::instance()->get<bool>(ConfigKeys::PlayerHideSubtitles, false)) {
-        
+
         m_controller->setProperty(QStringLiteral("sid"), QStringLiteral("no"));
         m_controller->setProperty(QStringLiteral("secondary-sid"), QStringLiteral("no"));
         loadOptions.insert(QStringLiteral("sid"), QStringLiteral("no"));
@@ -753,10 +1258,10 @@ void MpvWidget::publishPreviewSource() {
     if (!m_controller || m_previewUrl.isEmpty()) return;
     QVariantMap previewOptions;
     for (const QString &name : {QStringLiteral("user-agent"), QStringLiteral("referrer"),
-                               QStringLiteral("http-header-fields"), QStringLiteral("http-proxy"),
-                               QStringLiteral("tls-verify"), QStringLiteral("tls-ca-file"),
-                               QStringLiteral("cookies"), QStringLiteral("cookies-file"),
-                               QStringLiteral("force-seekable")}) {
+                                QStringLiteral("http-header-fields"), QStringLiteral("http-proxy"),
+                                QStringLiteral("tls-verify"), QStringLiteral("tls-ca-file"),
+                                QStringLiteral("cookies"), QStringLiteral("cookies-file"),
+                                QStringLiteral("force-seekable")}) {
         const QVariant value = m_controller->getProperty(name);
         if (value.isValid()) previewOptions.insert(name, value);
     }
@@ -770,8 +1275,9 @@ void MpvWidget::applyUserAgentConfig(const UserAgentConfig &config) {
         m_customUserAgentApplied = true;
         return;
     }
-    
-    
+
+
+
     if (m_customUserAgentApplied) {
         m_controller->setProperty(QStringLiteral("user-agent"),
                                   m_defaultUserAgent);
@@ -783,7 +1289,7 @@ void MpvWidget::loadMedia(const QString &url, const QString &serverId) {
     m_previewUrl.clear();
     emit previewSourceChanged(QString(), QVariantMap());
     resetVideoPresentation(true);
-    
+
     if (!m_mpv_gl) {
         m_pendingUrl = url;
         m_pendingServerId = serverId;
@@ -797,6 +1303,18 @@ void MpvWidget::play() {
 }
 
 void MpvWidget::resumeAfterContextRestore() {
+#if defined(QEMBY_MPV_D3D11_RENDER)
+    if (!m_mpv_gl) {
+        m_resumeWhenRenderReady = true;
+        qInfo() << "[MpvWidget] Resume deferred until Direct3D 11 render context is ready";
+        update();
+        return;
+    }
+
+    m_resumeWhenRenderReady = false;
+    m_controller->setProperty("pause", false);
+    update();
+#else
     if (!m_mpv_gl || !context() || !context()->isValid()) {
         m_resumeWhenRenderReady = true;
         qInfo() << "[MpvWidget] Resume deferred until OpenGL context is ready";
@@ -807,6 +1325,7 @@ void MpvWidget::resumeAfterContextRestore() {
     m_resumeWhenRenderReady = false;
     m_controller->setProperty("pause", false);
     update();
+#endif
 }
 
 void MpvWidget::pause() {

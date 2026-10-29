@@ -8698,4 +8698,22 @@ Adresse: %2</translation>
         <translation>(aucun)</translation>
     </message>
 </context>
+<context>
+    <name>PagePlayer</name>
+    <message>
+        <source>D3D11VA (Zero-Copy)</source>
+        <translation>D3D11VA (zéro-copie)</translation>
+    </message>
+    <message>
+        <source>Auto (Zero-Copy)</source>
+        <translation>Auto (zéro-copie)</translation>
+    </message>
+</context>
+<context>
+    <name>MpvWidget</name>
+    <message>
+        <source>Direct3D 11 rendering initialization failed.</source>
+        <translation>Échec de l'initialisation du rendu Direct3D 11.</translation>
+    </message>
+</context>
 </TS>
