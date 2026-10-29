@@ -39,7 +39,20 @@ public:
     void setConfiguredChain(const QStringList &paths);
     void applyPresetTemplate(Preset preset);
 
+    // Full catalog: all bundled Anime4K v4.0.1 shaders (in a stable
+    // functional-group order) followed by user-imported shaders from
+    // customShaderDir().
     QList<ShaderEntry> shaderCatalog() const;
+
+    // User-imported shaders live in a separate data folder, kept apart from
+    // the bundled set.
+    static QString customShaderDir();
+    // Copies srcPath into customShaderDir(), deduplicating file names.
+    // Returns the stored path, or an empty string on failure.
+    QString importCustomShader(const QString &srcPath);
+    // Deletes an imported shader. Only files inside customShaderDir() may be
+    // removed. Returns true when the file was deleted.
+    bool removeCustomShader(const QString &path);
 
 private:
     explicit Anime4KShaderManager(QObject *parent = nullptr);
