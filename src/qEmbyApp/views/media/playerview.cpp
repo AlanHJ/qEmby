@@ -2970,166 +2970,9 @@ void PlayerView::keyPressEvent(QKeyEvent *event)
     }
     else
     {
-        if (tryForwardKeyToMpv(event))
-        {
-            return;
-        }
         showControls();
         BaseView::keyPressEvent(event);
     }
-}
-
-QString PlayerView::qtKeyToMpvKey(const QKeyEvent *event)
-{
-    if (!event)
-    {
-        return QString();
-    }
-
-    const Qt::KeyboardModifiers modifiers = event->modifiers();
-    const bool ctrl = modifiers.testFlag(Qt::ControlModifier);
-    const bool alt = modifiers.testFlag(Qt::AltModifier);
-    const bool shift = modifiers.testFlag(Qt::ShiftModifier);
-
-    const int key = event->key();
-    QString base;
-    if (key >= Qt::Key_A && key <= Qt::Key_Z)
-    {
-        if (!ctrl && !alt && shift)
-        {
-            return QString(QChar('A' + (key - Qt::Key_A)));
-        }
-        base = QChar('a' + (key - Qt::Key_A));
-    }
-    else if (key >= Qt::Key_0 && key <= Qt::Key_9)
-    {
-        base = QChar('0' + (key - Qt::Key_0));
-        if (!ctrl && !alt)
-        {
-            const QString text = event->text();
-            if (text.size() == 1 && text.at(0).isPrint())
-            {
-                base = text;
-            }
-        }
-    }
-    else
-    {
-        switch (key)
-        {
-        case Qt::Key_Space:
-            base = QStringLiteral("SPACE");
-            break;
-        case Qt::Key_Return:
-        case Qt::Key_Enter:
-            base = QStringLiteral("ENTER");
-            break;
-        case Qt::Key_Escape:
-            base = QStringLiteral("ESC");
-            break;
-        case Qt::Key_Tab:
-            base = QStringLiteral("TAB");
-            break;
-        case Qt::Key_Backspace:
-            base = QStringLiteral("BACKSPACE");
-            break;
-        case Qt::Key_Up:
-            base = QStringLiteral("UP");
-            break;
-        case Qt::Key_Down:
-            base = QStringLiteral("DOWN");
-            break;
-        case Qt::Key_Left:
-            base = QStringLiteral("LEFT");
-            break;
-        case Qt::Key_Right:
-            base = QStringLiteral("RIGHT");
-            break;
-        case Qt::Key_Home:
-            base = QStringLiteral("HOME");
-            break;
-        case Qt::Key_End:
-            base = QStringLiteral("END");
-            break;
-        case Qt::Key_PageUp:
-            base = QStringLiteral("PGUP");
-            break;
-        case Qt::Key_PageDown:
-            base = QStringLiteral("PGDWN");
-            break;
-        case Qt::Key_Insert:
-            base = QStringLiteral("INS");
-            break;
-        case Qt::Key_Delete:
-            base = QStringLiteral("DEL");
-            break;
-        default:
-            if (key >= Qt::Key_F1 && key <= Qt::Key_F12)
-            {
-                base = QStringLiteral("F") + QString::number(key - Qt::Key_F1 + 1);
-            }
-            break;
-        }
-    }
-
-    if (base.isEmpty())
-    {
-        return QString();
-    }
-
-    QString prefix;
-    if (ctrl)
-    {
-        prefix += QStringLiteral("Ctrl+");
-    }
-    if (alt)
-    {
-        prefix += QStringLiteral("Alt+");
-    }
-    if (shift && (ctrl || alt))
-    {
-        prefix += QStringLiteral("Shift+");
-    }
-    return prefix + base;
-}
-
-bool PlayerView::tryForwardKeyToMpv(QKeyEvent *event)
-{
-    if (!event || m_isViewTearingDown)
-    {
-        return false;
-    }
-    if (!ConfigStore::instance()->get<bool>(ConfigKeys::PlayerMpvKeyPassthrough, false))
-    {
-        return false;
-    }
-    if (!m_mpvWidget || !m_mpvWidget->controller())
-    {
-        return false;
-    }
-
-    QWidget *focusWidget = QApplication::focusWidget();
-    if (qobject_cast<QLineEdit *>(focusWidget) ||
-        qobject_cast<QTextEdit *>(focusWidget) ||
-        qobject_cast<QPlainTextEdit *>(focusWidget))
-    {
-        return false;
-    }
-    const QComboBox *comboBox = qobject_cast<QComboBox *>(focusWidget);
-    if (comboBox && comboBox->isEditable())
-    {
-        return false;
-    }
-
-    const QString keyName = qtKeyToMpvKey(event);
-    if (keyName.isEmpty())
-    {
-        return false;
-    }
-
-    m_mpvWidget->controller()->command(QVariantList{"keypress", keyName});
-    event->accept();
-    return true;
 }
 
 void PlayerView::keyReleaseEvent(QKeyEvent *event)
@@ -3583,14 +3426,6 @@ bool PlayerView::eventFilter(QObject *watched, QEvent *event)
         }
     }
 
-    if (watched != this && event->type() == QEvent::KeyPress && !event->isAccepted())
-    {
-        if (tryForwardKeyToMpv(static_cast<QKeyEvent *>(event)))
-        {
-            return true;
-        }
-    }
-
     return BaseView::eventFilter(watched, event);
 }
 
@@ -3985,7 +3820,6 @@ void PlayerView::showSettingsMenu()
               ConfigStore::instance()->get<QString>(ConfigKeys::PlayerAnime4kPreset, "balanced")))
         : tr("Off");
     panel->addItem(tr("Anime4K: %1").arg(anime4kName), "anime4k_menu", anime4kEnabled);
-    panel->addItem(tr("MPV Key Passthrough"), "mpv_key_passthrough", ConfigStore::instance()->get<bool>(ConfigKeys::PlayerMpvKeyPassthrough, false));
     panel->addItem(tr("MPV Info"), "mpv_info", false);
 
     int maxHeight = this->height() - m_bottomHUD->height() - 40;
@@ -4066,14 +3900,6 @@ void PlayerView::showSettingsMenu()
                     dismissPopup();
                     openDanmakuSettingsDialog();
                     return;
-                }
-                else if (action == "mpv_key_passthrough")
-                {
-                    const bool passthrough = !ConfigStore::instance()->get<bool>(
-                        ConfigKeys::PlayerMpvKeyPassthrough, false);
-                    ConfigStore::instance()->set(ConfigKeys::PlayerMpvKeyPassthrough, passthrough);
-                    showToast(passthrough ? tr("MPV Key Passthrough: ON")
-                                          : tr("MPV Key Passthrough: OFF"));
                 }
                 else if (action == "mpv_info")
                 {
@@ -4217,8 +4043,6 @@ void PlayerView::showSubtitleMenu()
     panel->addItem(tr("Load Local Subtitle File"), QStringLiteral("load_local"), false);
     panel->addItem(tr("Subtitle Settings"), QStringLiteral("settings"), false);
 
-    panel->addItem(tr("MPV Info"), QStringLiteral("mpv_info"), false);
-
     int maxHeight = this->height() - m_bottomHUD->height() - 40;
     panel->finalizeLayout(maxHeight < 150 ? 150 : maxHeight, 240);
 
@@ -4241,12 +4065,6 @@ void PlayerView::showSubtitleMenu()
                 {
                     dismissPopup();
                     openSubtitleSettingsDialog();
-                    return;
-                }
-                if (action == QLatin1String("mpv_info"))
-                {
-                    dismissPopup();
-                    openMpvInfoDialog();
                     return;
                 }
                 if (action == QLatin1String("hide_subtitles"))
@@ -4303,8 +4121,6 @@ void PlayerView::showDanmakuMenu()
     panel->addItem(tr("Search Danmaku"), QStringLiteral("search"), false);
     panel->addItem(tr("Danmaku Settings"), QStringLiteral("quick_settings"), false);
 
-    panel->addItem(tr("MPV Info"), QStringLiteral("mpv_info"), false);
-
     int maxHeight = this->height() - m_bottomHUD->height() - 40;
     panel->finalizeLayout(maxHeight < 160 ? 160 : maxHeight, 360);
 
@@ -4357,12 +4173,6 @@ void PlayerView::showDanmakuMenu()
                 {
                     dismissPopup();
                     openDanmakuSettingsDialog();
-                    return;
-                }
-                else if (action == QLatin1String("mpv_info"))
-                {
-                    dismissPopup();
-                    openMpvInfoDialog();
                     return;
                 }
 
@@ -4693,8 +4503,21 @@ void PlayerView::openMpvInfoDialog()
         m_activePopup = nullptr;
     }
 
-    auto *dialog = new MpvInfoDialog(m_mpvWidget->controller(), this);
-    trackPlayerDialog(dialog);
+    // The info window is a free-floating top-level window (it survives player
+    // teardown), so keep an app-wide singleton and just re-activate it.
+    static QPointer<MpvInfoDialog> s_infoDialog;
+    MpvController *controller = m_mpvWidget ? m_mpvWidget->controller() : nullptr;
+    if (!s_infoDialog)
+    {
+        s_infoDialog = new MpvInfoDialog(controller, window());
+    }
+    else
+    {
+        s_infoDialog->setController(controller);
+    }
+    s_infoDialog->show();
+    s_infoDialog->raise();
+    s_infoDialog->activateWindow();
 }
 
 void PlayerView::openDanmakuSettingsDialog()
@@ -4802,8 +4625,10 @@ void PlayerView::openAnime4kMenu()
                     ? target
                     : ConfigStore::instance()->get<QString>(ConfigKeys::PlayerAnime4kPreset, "balanced");
 
+                bool shadersPrepared = true;
                 if (enable)
                 {
+                    shadersPrepared = Anime4KShaderManager::instance().ensureShadersExtracted();
                     Anime4KShaderManager::instance().applyPresetTemplate(
                         Anime4KShaderManager::presetFromId(presetId));
                 }
@@ -4815,9 +4640,15 @@ void PlayerView::openAnime4kMenu()
                 {
                     showToast(tr("Anime4K: %1").arg(text));
                 }
-                else if (enable && Anime4KShaderManager::instance().configuredChain().isEmpty())
+                else if (enable && Anime4KShaderManager::isCustomPresetId(presetId) &&
+                         Anime4KShaderManager::instance().configuredChain().isEmpty())
                 {
+                    // Only a genuinely empty custom chain reports "no shaders".
                     showToast(tr("No shaders selected"));
+                }
+                else if (!shadersPrepared)
+                {
+                    showToast(tr("Failed to prepare shader files"));
                 }
                 else
                 {

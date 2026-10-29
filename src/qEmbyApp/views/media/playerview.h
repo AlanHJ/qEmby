@@ -174,9 +174,6 @@ private:
     void applySubtitleStyleSettings();
     void resumePlaybackAfterFinishedSeek();
 
-    static QString qtKeyToMpvKey(const QKeyEvent *event);
-    bool tryForwardKeyToMpv(QKeyEvent *event);
-
     
     QString externalSubtitleConfigKey() const;
     QString readPersistedExternalSubtitle() const;

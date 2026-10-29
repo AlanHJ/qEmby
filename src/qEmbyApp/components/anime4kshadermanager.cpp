@@ -210,13 +210,29 @@ bool Anime4KShaderManager::ensureShadersExtracted() {
     }
 
     for (const QString &name : shaderNames) {
+        const QString sourcePath = kShaderResourceRoot + name;
         const QString targetPath = targetDirPath + QLatin1Char('/') + name;
         QFile::remove(targetPath);
-        if (!QFile::copy(kShaderResourceRoot + name, targetPath)) {
+        QFile sourceFile(sourcePath);
+        if (!sourceFile.copy(targetPath)) {
             qWarning() << "[Anime4KShaderManager] ensureShadersExtracted failed"
                        << "| error: cannot extract shader"
+                       << "| reason:" << sourceFile.errorString()
                        << "| shader:" << name
+                       << "| sourcePath:" << sourcePath
                        << "| targetPath:" << targetPath;
+            QFile::remove(markerPath);
+            return false;
+        }
+        const qint64 extractedSize = QFileInfo(targetPath).size();
+        if (extractedSize <= 0) {
+            qWarning() << "[Anime4KShaderManager] ensureShadersExtracted failed"
+                       << "| error: extracted shader is empty"
+                       << "| shader:" << name
+                       << "| sourcePath:" << sourcePath
+                       << "| targetPath:" << targetPath
+                       << "| size:" << extractedSize;
+            QFile::remove(targetPath);
             QFile::remove(markerPath);
             return false;
         }
@@ -242,10 +258,12 @@ bool Anime4KShaderManager::isReady() const {
 }
 
 QStringList Anime4KShaderManager::shaderChain(Preset preset) const {
+    // Preset chains are deterministic (fixed file names under the extraction
+    // dir), so they are returned regardless of whether extraction succeeded.
     if (!m_ready) {
-        qWarning() << "[Anime4KShaderManager] shaderChain requested before shaders were extracted"
-                   << "| preset:" << presetId(preset);
-        return {};
+        qDebug() << "[Anime4KShaderManager] shaderChain requested before shaders were extracted"
+                 << "| preset:" << presetId(preset)
+                 << "| note: deterministic preset chain returned anyway";
     }
 
     QStringList names;
@@ -346,6 +364,9 @@ void Anime4KShaderManager::setConfiguredChain(const QStringList &paths) {
 }
 
 void Anime4KShaderManager::applyPresetTemplate(Preset preset) {
+    // Best effort: unpack the shaders first so the stored chain points at
+    // real files, but never persist an empty chain.
+    ensureShadersExtracted();
     ConfigStore::instance()->set(ConfigKeys::PlayerAnime4kChain,
                                  chainToJson(shaderChain(preset)));
     ConfigStore::instance()->set(ConfigKeys::PlayerAnime4kPreset,
