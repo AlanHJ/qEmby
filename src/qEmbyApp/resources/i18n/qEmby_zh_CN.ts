@@ -10665,6 +10665,10 @@ This cannot be undone.</source>
         <source>%1 (Custom)</source>
         <translation>%1（自定义）</translation>
     </message>
+    <message>
+        <source>Failed to prepare shader files</source>
+        <translation>着色器文件准备失败</translation>
+    </message>
 </context>
 <context>
     <name>MpvInfoDialog</name>
@@ -10699,6 +10703,26 @@ This cannot be undone.</source>
     <message>
         <source>Output</source>
         <translation>输出</translation>
+    </message>
+    <message>
+        <source>No playback</source>
+        <translation>无播放</translation>
+    </message>
+    <message>
+        <source>Shaders</source>
+        <translation>着色器</translation>
+    </message>
+    <message>
+        <source>Filters</source>
+        <translation>滤镜</translation>
+    </message>
+    <message>
+        <source>Custom</source>
+        <translation>自定义</translation>
+    </message>
+    <message>
+        <source>(none)</source>
+        <translation>（无）</translation>
     </message>
 </context>
 </TS>
