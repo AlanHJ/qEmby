@@ -227,14 +227,14 @@ bool Anime4KShaderManager::isCustomPresetId(const QString &id) {
 }
 
 QStringList Anime4KShaderManager::configuredChain() const {
-    const QStringList stored =
-        chainFromJson(ConfigStore::instance()->get<QString>(
+    const QString storedPreset = ConfigStore::instance()->get<QString>(
+        ConfigKeys::PlayerAnime4kPreset, QStringLiteral("balanced"));
+    if (isCustomPresetId(storedPreset)) {
+        // Custom mode: the stored chain is authoritative, even when empty.
+        return chainFromJson(ConfigStore::instance()->get<QString>(
             ConfigKeys::PlayerAnime4kChain));
-    if (!stored.isEmpty()) {
-        return stored;
     }
-    return shaderChain(presetFromId(ConfigStore::instance()->get<QString>(
-        ConfigKeys::PlayerAnime4kPreset, QStringLiteral("balanced"))));
+    return shaderChain(presetFromId(storedPreset));
 }
 
 void Anime4KShaderManager::setConfiguredChain(const QStringList &paths) {
