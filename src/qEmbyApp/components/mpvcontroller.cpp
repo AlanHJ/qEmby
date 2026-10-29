@@ -417,6 +417,7 @@ void MpvController::eventHandler() {
         const mpv_event_id eventId = event->event_id;
         QElapsedTimer dispatchTime;
         dispatchTime.start();
+        QString eventDetail;
 
         switch (event->event_id) {
         case MPV_EVENT_START_FILE:
@@ -445,6 +446,7 @@ void MpvController::eventHandler() {
         }
         case MPV_EVENT_GET_PROPERTY_REPLY: {
             const QString property = m_propertyRequests.take(event->reply_userdata);
+            eventDetail = property;
             if (property.isEmpty() ||
                 m_latestPropertyRequests.value(property) != event->reply_userdata) {
                 break;
@@ -465,6 +467,7 @@ void MpvController::eventHandler() {
             if (!prop || !prop->data || prop->format == MPV_FORMAT_NONE) break;
 
             QString propName = QString::fromUtf8(prop->name);
+            eventDetail = propName;
             QVariant data;
 
             if (prop->format == MPV_FORMAT_DOUBLE) {
@@ -499,10 +502,11 @@ void MpvController::eventHandler() {
         }
         const qreal dispatchMs = dispatchTime.nsecsElapsed() / 1000000.0;
         if (dispatchMs >= 25.0) {
-            
-            
+
+
             qDebug() << "[MpvController][Timing] Slow event dispatch | event:"
-                     << mpv_event_name(eventId) << "| elapsedMs:" << dispatchMs;
+                     << mpv_event_name(eventId) << "| detail:" << eventDetail
+                     << "| elapsedMs:" << dispatchMs;
         }
     }
 }
