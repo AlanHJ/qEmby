@@ -189,6 +189,7 @@ private:
     // 渲染回路性能剖析 (每 2s 汇总一次, 用于定位顿挫瓶颈)。
     QElapsedTimer m_perfClock;
     qint64 m_perfPaints = 0;
+    qint64 m_perfTicks = 0;
     qint64 m_perfRasterNs = 0;
     qint64 m_perfRasterMaxNs = 0;
     qint64 m_perfMpvNs = 0;

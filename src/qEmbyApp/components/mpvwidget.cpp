@@ -143,7 +143,16 @@ MpvWidget::MpvWidget(QWidget *parent)
     // (24fps 视频不再把整个 UI 渲染循环拖到 24Hz)。
     m_uiRefreshTimer.setTimerType(Qt::PreciseTimer);
     m_uiRefreshTimer.setInterval(uiRefreshIntervalMs());
-    connect(&m_uiRefreshTimer, &QTimer::timeout, this, [this]() { update(); });
+    connect(&m_uiRefreshTimer, &QTimer::timeout, this, [this]() {
+        // 间隔动态重算: 构造期 screen() 可能为空 (落到 60Hz 兜底), 显示后才
+        // 能读到真实刷新率 (实测 180Hz 屏曾因此以 17ms 节拍运行)。
+        const int interval = uiRefreshIntervalMs();
+        if (m_uiRefreshTimer.interval() != interval) {
+            m_uiRefreshTimer.setInterval(interval);
+        }
+        ++m_perfTicks;
+        update();
+    });
 #else
     : QOpenGLWidget(parent), m_mpv_gl(nullptr) {
 
@@ -822,6 +831,7 @@ void MpvWidget::updateUiRefreshTimer() {
     }
     if (needed) {
         if (!m_uiRefreshTimer.isActive()) {
+            m_uiRefreshTimer.setInterval(uiRefreshIntervalMs());
             m_uiRefreshTimer.start();
         }
     } else if (m_uiRefreshTimer.isActive()) {
@@ -947,6 +957,7 @@ void MpvWidget::render(QRhiCommandBuffer *cb) {
         const qreal sec = m_perfClock.elapsed() / 1000.0;
         const qreal paints = static_cast<qreal>(std::max<qint64>(1, m_perfPaints));
         qInfo() << "[MpvWidget][Perf] paintsPerSec:" << m_perfPaints / sec
+                << "| ticksPerSec:" << m_perfTicks / sec
                 << "| rasterAvgMs:" << m_perfRasterNs / 1e6 / paints
                 << "| rasterMaxMs:" << m_perfRasterMaxNs / 1e6
                 << "| mpvAvgMs:" << m_perfMpvNs / 1e6 / paints
@@ -955,6 +966,7 @@ void MpvWidget::render(QRhiCommandBuffer *cb) {
                 << "| uiTimerActive:" << m_uiRefreshTimer.isActive();
         m_perfClock.restart();
         m_perfPaints = 0;
+        m_perfTicks = 0;
         m_perfRasterNs = m_perfRasterMaxNs = 0;
         m_perfMpvNs = m_perfMpvMaxNs = 0;
         m_perfFrameMaxNs = 0;
