@@ -13,7 +13,12 @@ namespace WindowUtils {
 void prepareOpenGLComposition(QWidget *window)
 {
 #if (defined(Q_OS_WIN) || defined(Q_OS_LINUX)) && \
-    (QT_VERSION >= QT_VERSION_CHECK(6, 4, 0))
+    (QT_VERSION >= QT_VERSION_CHECK(6, 4, 0)) && \
+    !defined(QEMBY_MPV_D3D11_RENDER)
+    // 注意: D3D11 渲染通道构建 (QEMBY_MPV_D3D11_RENDER) 下必须跳过该锚点。
+    // 本函数在窗口原生化前植入隐藏 QOpenGLWidget, 强迫 Qt 为该窗口启用 OpenGL
+    // 合成; 而 MpvWidget (QRhiWidget) 请求 Direct3D11 —— 同一窗口只能存在一种
+    // QRhi/图形 API, 混用会导致视频表面永远无法呈现 (黑屏)。
     if (!window || !window->isWindow())
         return;
     const auto anchorName = QStringLiteral("playerCompositionAnchor");
