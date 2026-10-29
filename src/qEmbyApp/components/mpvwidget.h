@@ -174,6 +174,7 @@ private:
 
 #if defined(QEMBY_MPV_D3D11_RENDER)
     // 借用 Qt RHI 的设备/上下文/颜色纹理 (不持有所有权的除外)。
+    ID3D11Device *m_mpvDevice = nullptr;               // 渲染上下文创建时的设备 (不持有)
     ID3D11Texture2D *m_d3dColorTex = nullptr;          // AddRef
     ID3D11RenderTargetView *m_d3dColorRtv = nullptr;   // owned
     ID3D11Texture2D *m_danmakuTex = nullptr;           // owned
