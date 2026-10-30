@@ -1,6 +1,9 @@
 #include "pageplayer.h"
+#include "../../components/anime4kshadermanager.h"
+#include "../../components/collapsiblesection.h"
 #include "../../components/danmakuserverdialog.h"
 #include "../../components/danmakuoptionslider.h"
+#include "../../components/hwdecprioritydialog.h"
 #include "../../components/moderncombobox.h"
 #include "../../components/modernswitch.h"
 #include "../../components/moderntaginput.h"
@@ -10,6 +13,7 @@
 #include "../../components/settingssubpanel.h"
 #include "../../utils/danmakuoptionutils.h"
 #include "../../utils/danmakurendererutils.h"
+#include "../../utils/gpudevicemanager.h"
 #include "../../utils/playerpreferenceutils.h"
 #include "../../managers/externalplayerdetector.h"
 #include "../../managers/thememanager.h"
@@ -31,6 +35,7 @@
 #include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QPlainTextEdit>
 #include <QPointer>
 #include <QPushButton>
@@ -53,16 +58,38 @@ PagePlayer::PagePlayer(QEmbyCore *core, QWidget *parent)
     : SettingsPageBase(core, tr("Player"), parent) {
   const QString sid = m_core->serverManager()->activeProfile().id;
   
-  auto *hwCombo = new ModernComboBox(this);
-  hwCombo->addItem(tr("Auto"), "auto-copy");
-  hwCombo->addItem(tr("D3D11VA"), "d3d11va-copy");
-  hwCombo->addItem(tr("DXVA2"), "dxva2-copy");
-  hwCombo->addItem(tr("CUDA (NVIDIA)"), "cuda-copy");
-  hwCombo->addItem(tr("None (Software)"), "no");
+  auto *hwButton = new QPushButton(this);
+  const auto refreshHwButton = [this, hwButton]() {
+      const bool enabled = ConfigStore::instance()->get<bool>(
+          ConfigKeys::PlayerHwDecEnabled, true);
+      if (!enabled) {
+          hwButton->setText(tr("Software only"));
+          return;
+      }
+      QString chain = ConfigStore::instance()->get<QString>(
+          ConfigKeys::PlayerHwDecPriority, QString()).trimmed();
+      if (chain.isEmpty()) {
+          chain = QStringLiteral("auto,auto-safe");
+      }
+      hwButton->setText(chain);
+  };
+  refreshHwButton();
+  hwButton->setToolTip(tr("Decoder priority with automatic CPU fallback"));
+  connect(hwButton, &QPushButton::clicked, this, [this, refreshHwButton]() {
+      HwdecPriorityDialog dialog(this);
+      if (dialog.exec() != QDialog::Accepted) {
+          return;
+      }
+      ConfigStore::instance()->set(ConfigKeys::PlayerHwDecPriority,
+                                   dialog.priorityChain());
+      ConfigStore::instance()->set(ConfigKeys::PlayerHwDecEnabled,
+                                   dialog.hwdecEnabled());
+      refreshHwButton();
+  });
   m_mainLayout->addWidget(
       new SettingsCard(":/svg/dark/hw-decode.svg", tr("Hardware Decoding"),
-                       tr("Select GPU acceleration method for video decoding"),
-                       hwCombo, ConfigKeys::PlayerHwDec, this));
+                       tr("Decoder priority with automatic CPU fallback"),
+                       hwButton, QString(), this));
 
   
   auto *voCombo = new ModernComboBox(this);
@@ -82,6 +109,308 @@ PagePlayer::PagePlayer(QEmbyCore *core, QWidget *parent)
                        tr("Method for synchronizing video frames to display"),
                        vsyncCombo, ConfigKeys::PlayerVideoSync, this,
                        QVariant("display-resample")));
+
+  m_mainLayout->addWidget(new SettingsCard(
+      ":/svg/dark/video-output.svg", tr("Anime4K Upscaling"),
+      tr("Real-time AI upscaling and sharpening for anime video"),
+      new ModernSwitch(this), ConfigKeys::PlayerAnime4kEnabled, this,
+      QVariant(false)));
+
+  auto *anime4kPresetCombo = new ModernComboBox(this);
+  for (const Anime4KShaderManager::Preset preset :
+       Anime4KShaderManager::availablePresets()) {
+    anime4kPresetCombo->addItem(Anime4KShaderManager::presetDisplayName(preset),
+                                Anime4KShaderManager::presetId(preset));
+  }
+  anime4kPresetCombo->setCurrentIndex(
+      anime4kPresetCombo->findData("balanced"));
+  m_mainLayout->addWidget(new SettingsCard(
+      ":/svg/dark/video-output.svg", tr("Anime4K Preset"),
+      tr("Shader chain quality preset applied to video upscaling"),
+      anime4kPresetCombo, ConfigKeys::PlayerAnime4kPreset, this,
+      QVariant("balanced")));
+
+  auto *anime4kAdvanced = new CollapsibleSection(tr("Anime4K Advanced"), this);
+  auto *anime4kAdvancedLayout = anime4kAdvanced->contentLayout();
+  anime4kAdvancedLayout->setSpacing(10);
+
+  auto *anime4kAdvancedDesc = new QLabel(
+      tr("Shaders are mounted to mpv's glsl-shaders chain. It is not limited "
+         "to Anime4K — any mpv GLSL user shader (e.g. FSRCNNX, "
+         "SSimDownscaler) can be added. Order is execution order."),
+      anime4kAdvanced);
+  anime4kAdvancedDesc->setObjectName("SettingsCardDesc");
+  anime4kAdvancedDesc->setWordWrap(true);
+  anime4kAdvancedLayout->addWidget(anime4kAdvancedDesc);
+
+  auto *gpuDeviceCombo = new ModernComboBox(this);
+  gpuDeviceCombo->addItem(tr("Auto"), "auto");
+  const QList<GpuDevice> gpuDevices = GpuDeviceManager::availableDevices();
+  for (const GpuDevice &gpuDevice : gpuDevices) {
+    gpuDeviceCombo->addItem(gpuDevice.name, gpuDevice.id);
+  }
+  anime4kAdvancedLayout->addWidget(new SettingsCard(
+      ":/svg/dark/video-output.svg", tr("GPU Device"),
+      tr("Select the GPU used for video rendering"), gpuDeviceCombo,
+      ConfigKeys::PlayerGpuDevice, anime4kAdvanced, QVariant("auto")));
+
+  auto *gpuDeviceDesc = new QLabel(
+      tr("Forces the rendering GPU at the platform level (Linux: DRI_PRIME; "
+         "Windows: GPU performance preference). GPU changes take effect "
+         "after restarting the application; macOS does not support manual "
+         "selection."),
+      anime4kAdvanced);
+  gpuDeviceDesc->setObjectName("SettingsCardDesc");
+  gpuDeviceDesc->setWordWrap(true);
+  anime4kAdvancedLayout->addWidget(gpuDeviceDesc);
+
+  if (!GpuDeviceManager::isSupported() || gpuDevices.isEmpty()) {
+    gpuDeviceCombo->setEnabled(false);
+  }
+
+  connect(gpuDeviceCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+          this, [gpuDeviceCombo](int index) {
+            if (index < 0) {
+              return;
+            }
+            GpuDeviceManager::applyDevice(
+                gpuDeviceCombo->itemData(index).toString());
+          });
+
+  const QString configuredGpuDevice = ConfigStore::instance()->get<QString>(
+      ConfigKeys::PlayerGpuDevice, QStringLiteral("auto"));
+  if (!configuredGpuDevice.isEmpty() &&
+      configuredGpuDevice != QLatin1String("auto")) {
+    GpuDeviceManager::applyDevice(configuredGpuDevice);
+  }
+
+  auto *shaderChainList = new QListWidget(anime4kAdvanced);
+  shaderChainList->setSelectionMode(QAbstractItemView::SingleSelection);
+  shaderChainList->setMinimumHeight(140);
+  anime4kAdvancedLayout->addWidget(shaderChainList);
+
+  auto *shaderChainButtons = new QWidget(anime4kAdvanced);
+  auto *shaderChainButtonLayout = new QHBoxLayout(shaderChainButtons);
+  shaderChainButtonLayout->setContentsMargins(0, 0, 0, 0);
+  shaderChainButtonLayout->setSpacing(8);
+  auto createChainButton = [shaderChainButtons](const QString &text) {
+    auto *button = new QPushButton(text, shaderChainButtons);
+    button->setObjectName("SettingsCardButton");
+    button->setCursor(Qt::PointingHandCursor);
+    button->setFixedHeight(30);
+    return button;
+  };
+  auto *addShaderBtn = createChainButton(tr("Add Shader..."));
+  auto *removeShaderBtn = createChainButton(tr("Remove"));
+  auto *moveShaderUpBtn = createChainButton(tr("Move Up"));
+  auto *moveShaderDownBtn = createChainButton(tr("Move Down"));
+  shaderChainButtonLayout->addWidget(addShaderBtn);
+  shaderChainButtonLayout->addWidget(removeShaderBtn);
+  shaderChainButtonLayout->addWidget(moveShaderUpBtn);
+  shaderChainButtonLayout->addWidget(moveShaderDownBtn);
+  shaderChainButtonLayout->addStretch();
+  anime4kAdvancedLayout->addWidget(shaderChainButtons);
+
+  m_mainLayout->addWidget(anime4kAdvanced);
+
+  const auto shaderItemText =
+      [](const Anime4KShaderManager::ShaderEntry &entry) {
+        return entry.bundled ? entry.displayName
+                             : entry.displayName + PagePlayer::tr(" (Custom)");
+      };
+
+  // Rebuilds the full catalog checklist: checked entries first (in chain
+  // order), then the remaining catalog entries. The checked rows in list
+  // order are the source of truth for the glsl-shaders chain.
+  const auto refreshShaderChainList = [shaderChainList, shaderItemText]() {
+    const QSignalBlocker blocker(shaderChainList);
+    shaderChainList->clear();
+
+    const QList<Anime4KShaderManager::ShaderEntry> catalog =
+        Anime4KShaderManager::instance().shaderCatalog();
+    const QStringList chain =
+        Anime4KShaderManager::instance().configuredChain();
+
+    QList<Anime4KShaderManager::ShaderEntry> ordered;
+    for (const QString &path : chain) {
+      for (const Anime4KShaderManager::ShaderEntry &entry : catalog) {
+        if (entry.path == path) {
+          ordered.append(entry);
+          break;
+        }
+      }
+    }
+    for (const Anime4KShaderManager::ShaderEntry &entry : catalog) {
+      if (!chain.contains(entry.path)) {
+        ordered.append(entry);
+      }
+    }
+
+    for (const Anime4KShaderManager::ShaderEntry &entry : ordered) {
+      auto *item = new QListWidgetItem(shaderItemText(entry));
+      item->setData(Qt::UserRole, entry.path);
+      item->setData(Qt::UserRole + 1, entry.bundled);
+      item->setToolTip(QDir::toNativeSeparators(entry.path));
+      item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+      item->setCheckState(chain.contains(entry.path) ? Qt::Checked
+                                                     : Qt::Unchecked);
+      shaderChainList->addItem(item);
+    }
+  };
+
+  // Persists the checked entries (in list order) as the shader chain.
+  const auto collectShaderChain = [shaderChainList]() {
+    QStringList chain;
+    for (int row = 0; row < shaderChainList->count(); ++row) {
+      QListWidgetItem *item = shaderChainList->item(row);
+      if (item && item->checkState() == Qt::Checked) {
+        chain.append(item->data(Qt::UserRole).toString());
+      }
+    }
+    Anime4KShaderManager::instance().setConfiguredChain(chain);
+  };
+
+  const auto updateShaderChainButtons =
+      [shaderChainList, removeShaderBtn, moveShaderUpBtn,
+       moveShaderDownBtn]() {
+        const int row = shaderChainList->currentRow();
+        QListWidgetItem *item =
+            row >= 0 ? shaderChainList->item(row) : nullptr;
+        const bool hasSelection = item &&
+            !item->data(Qt::UserRole).toString().isEmpty();
+        // Only user-imported shaders can be deleted; bundled ones can merely
+        // be unchecked.
+        const bool removable =
+            hasSelection && !item->data(Qt::UserRole + 1).toBool();
+        removeShaderBtn->setEnabled(removable);
+        moveShaderUpBtn->setEnabled(hasSelection && row > 0);
+        moveShaderDownBtn->setEnabled(hasSelection &&
+                                      row < shaderChainList->count() - 1);
+      };
+
+  connect(shaderChainList, &QListWidget::itemSelectionChanged, this,
+          updateShaderChainButtons);
+
+  connect(shaderChainList, &QListWidget::itemChanged, this,
+          [collectShaderChain](QListWidgetItem *) { collectShaderChain(); });
+
+  connect(addShaderBtn, &QPushButton::clicked, this,
+          [this, shaderChainList, shaderItemText, collectShaderChain,
+           updateShaderChainButtons]() {
+            const QString path = QFileDialog::getOpenFileName(
+                this, tr("Add Shader"), QString(),
+                tr("GLSL Shaders (*.glsl)"));
+            if (path.isEmpty()) {
+              return;
+            }
+            const QString imported =
+                Anime4KShaderManager::instance().importCustomShader(path);
+            if (imported.isEmpty()) {
+              return;
+            }
+
+            QString text = QFileInfo(imported).fileName();
+            for (const Anime4KShaderManager::ShaderEntry &entry :
+                 Anime4KShaderManager::instance().shaderCatalog()) {
+              if (entry.path == imported) {
+                text = shaderItemText(entry);
+                break;
+              }
+            }
+
+            {
+              const QSignalBlocker blocker(shaderChainList);
+              auto *item = new QListWidgetItem(text);
+              item->setData(Qt::UserRole, imported);
+              item->setData(Qt::UserRole + 1, false);
+              item->setToolTip(QDir::toNativeSeparators(imported));
+              item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+              item->setCheckState(Qt::Checked);
+              shaderChainList->addItem(item);
+              shaderChainList->setCurrentItem(item);
+            }
+            collectShaderChain();
+            updateShaderChainButtons();
+          });
+
+  connect(removeShaderBtn, &QPushButton::clicked, this,
+          [shaderChainList, collectShaderChain, updateShaderChainButtons]() {
+            QListWidgetItem *item = shaderChainList->currentItem();
+            if (!item) {
+              return;
+            }
+            if (item->data(Qt::UserRole + 1).toBool()) {
+              return;
+            }
+            const QString path = item->data(Qt::UserRole).toString();
+            if (path.isEmpty()) {
+              return;
+            }
+            if (!Anime4KShaderManager::instance().removeCustomShader(path)) {
+              return;
+            }
+            {
+              const QSignalBlocker blocker(shaderChainList);
+              delete shaderChainList->takeItem(shaderChainList->row(item));
+            }
+            collectShaderChain();
+            updateShaderChainButtons();
+          });
+
+  connect(moveShaderUpBtn, &QPushButton::clicked, this,
+          [shaderChainList, collectShaderChain, updateShaderChainButtons]() {
+            const int row = shaderChainList->currentRow();
+            if (row <= 0) {
+              return;
+            }
+            {
+              const QSignalBlocker blocker(shaderChainList);
+              QListWidgetItem *item = shaderChainList->takeItem(row);
+              shaderChainList->insertItem(row - 1, item);
+              shaderChainList->setCurrentItem(item);
+            }
+            collectShaderChain();
+            updateShaderChainButtons();
+          });
+
+  connect(moveShaderDownBtn, &QPushButton::clicked, this,
+          [shaderChainList, collectShaderChain, updateShaderChainButtons]() {
+            const int row = shaderChainList->currentRow();
+            if (row < 0 || row + 1 >= shaderChainList->count()) {
+              return;
+            }
+            {
+              const QSignalBlocker blocker(shaderChainList);
+              QListWidgetItem *item = shaderChainList->takeItem(row);
+              shaderChainList->insertItem(row + 1, item);
+              shaderChainList->setCurrentItem(item);
+            }
+            collectShaderChain();
+            updateShaderChainButtons();
+          });
+
+  const QString anime4kPresetConfigKey = ConfigKeys::PlayerAnime4kPreset;
+  connect(ConfigStore::instance(), &ConfigStore::valueChanged, this,
+          [anime4kPresetConfigKey, refreshShaderChainList,
+           updateShaderChainButtons](const QString &key,
+                                     const QVariant &newValue) {
+            if (key != anime4kPresetConfigKey) {
+              return;
+            }
+            const QString presetValue = newValue.toString();
+            for (const Anime4KShaderManager::Preset preset :
+                 Anime4KShaderManager::availablePresets()) {
+              if (Anime4KShaderManager::presetId(preset) == presetValue) {
+                Anime4KShaderManager::instance().applyPresetTemplate(preset);
+                refreshShaderChainList();
+                updateShaderChainButtons();
+                return;
+              }
+            }
+          });
+
+  refreshShaderChainList();
+  updateShaderChainButtons();
 
   auto createLanguageRuleInput = [this](bool allowNone) {
     auto *input = new ModernTagInput(this);

@@ -24,7 +24,7 @@ NativeDanmakuOverlay::NativeDanmakuOverlay(MpvWidget *widget, QObject *parent)
         m_widget->installEventFilter(this);
         
         
-        connect(m_widget, &QOpenGLWidget::frameSwapped, this,
+        connect(m_widget, &MpvWidget::surfaceFrameSwapped, this,
                 &NativeDanmakuOverlay::requestNextFrame, Qt::DirectConnection);
     }
 

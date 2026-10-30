@@ -1,7 +1,9 @@
 #include "playerview.h"
 #include "../../managers/playbackmanager.h"
+#include "../../components/anime4kshadermanager.h"
 #include "../../components/danmakuprogressslider.h"
 #include "../../components/modernscrollpanel.h"
+#include "../../components/mpvinfodialog.h"
 #include "../../components/nativedanmakuoverlay.h"
 #include "../../components/playerdanmakuidentifydialog.h"
 #include "../../components/playerdanmakusettingsdialog.h"
@@ -21,6 +23,7 @@
 #include "qembycore.h"
 #include <QAbstractAnimation>
 #include <QApplication>
+#include <QComboBox>
 #include <QCursor>
 #include <QDebug>
 #include <QDialog>
@@ -34,17 +37,20 @@
 #include <QFontMetrics>
 #include <QGraphicsDropShadowEffect>
 #include <QHBoxLayout>
+#include <QLineEdit>
 #include <QListWidget>
 #include <QMainWindow>
 #include <QMouseEvent>
 #include <QPalette>
-#include <QPointer> 
+#include <QPlainTextEdit>
+#include <QPointer>
 #include <QPromise>
 #include <QScopeGuard>
 #include <QSharedPointer>
 #include <QSettings>
 #include <QSignalBlocker>
 #include <QStyle>
+#include <QTextEdit>
 #include <QTime>
 #include <QUrl>
 #include <QUrlQuery>
@@ -3794,19 +3800,27 @@ void PlayerView::showSettingsMenu()
     
     panel->addItem(tr("Network Speed"), "network_speed", m_showNetworkSpeed);
     panel->addItem(tr("Statistics"), "statistics", m_showStatisticsOverlay);
-    panel->addItem(tr("Subtitle Settings"), "subtitle_settings", false);
-    if (showDanmakuControls)
-    {
-        panel->addItem(tr("Danmaku Settings"), "danmaku_settings", false);
-    }
 
-    
     ServerProfile profile = m_core->serverManager()->activeProfile();
     bool defaultStrmDirect = (profile.type == ServerProfile::Jellyfin);
     QSettings settings("qEmby", "Player");
     bool strmDirect = settings.value("EnableStrmDirectPlay", defaultStrmDirect).toBool();
 
     panel->addItem(tr("STRM Direct Play"), "strm_direct", strmDirect);
+    panel->addItem(tr("Subtitle Settings"), "subtitle_settings", false);
+    if (showDanmakuControls)
+    {
+        panel->addItem(tr("Danmaku Settings"), "danmaku_settings", false);
+    }
+
+    const bool anime4kEnabled = ConfigStore::instance()->get<bool>(
+        ConfigKeys::PlayerAnime4kEnabled, false);
+    const QString anime4kName = anime4kEnabled
+        ? Anime4KShaderManager::presetDisplayName(Anime4KShaderManager::presetFromId(
+              ConfigStore::instance()->get<QString>(ConfigKeys::PlayerAnime4kPreset, "balanced")))
+        : tr("Off");
+    panel->addItem(tr("Anime4K: %1").arg(anime4kName), "anime4k_menu", anime4kEnabled);
+    panel->addItem(tr("MPV Info"), "mpv_info", false);
 
     int maxHeight = this->height() - m_bottomHUD->height() - 40;
     
@@ -3885,6 +3899,18 @@ void PlayerView::showSettingsMenu()
                 {
                     dismissPopup();
                     openDanmakuSettingsDialog();
+                    return;
+                }
+                else if (action == "mpv_info")
+                {
+                    dismissPopup();
+                    openMpvInfoDialog();
+                    return;
+                }
+                else if (action == "anime4k_menu")
+                {
+                    dismissPopup();
+                    openAnime4kMenu();
                     return;
                 }
 
@@ -4467,6 +4493,33 @@ void PlayerView::openSubtitleSettingsDialog()
     trackPlayerDialog(dialog);
 }
 
+void PlayerView::openMpvInfoDialog()
+{
+    if (m_activePopup)
+    {
+        m_activePopup->hide();
+        m_activePopup->close();
+        m_activePopup->deleteLater();
+        m_activePopup = nullptr;
+    }
+
+    // The info window is a free-floating top-level window (it survives player
+    // teardown), so keep an app-wide singleton and just re-activate it.
+    static QPointer<MpvInfoDialog> s_infoDialog;
+    MpvController *controller = m_mpvWidget ? m_mpvWidget->controller() : nullptr;
+    if (!s_infoDialog)
+    {
+        s_infoDialog = new MpvInfoDialog(controller, window());
+    }
+    else
+    {
+        s_infoDialog->setController(controller);
+    }
+    s_infoDialog->show();
+    s_infoDialog->raise();
+    s_infoDialog->activateWindow();
+}
+
 void PlayerView::openDanmakuSettingsDialog()
 {
     if (!shouldShowDanmakuHudControls())
@@ -4508,6 +4561,191 @@ void PlayerView::openDanmakuSettingsDialog()
                 }
             });
     trackPlayerDialog(dialog);
+}
+
+void PlayerView::openAnime4kMenu()
+{
+    if (m_activePopup)
+    {
+        m_activePopup->hide();
+        m_activePopup->close();
+        m_activePopup->deleteLater();
+        m_activePopup = nullptr;
+    }
+
+    auto *panel = new ModernScrollPanel(this);
+    const bool enabled = ConfigStore::instance()->get<bool>(
+        ConfigKeys::PlayerAnime4kEnabled, false);
+    const QString currentPreset = ConfigStore::instance()->get<QString>(
+        ConfigKeys::PlayerAnime4kPreset, "balanced");
+
+    panel->addItem(tr("Off"), QStringLiteral("off"), !enabled);
+    for (const Anime4KShaderManager::Preset preset : Anime4KShaderManager::availablePresets())
+    {
+        const QString id = Anime4KShaderManager::presetId(preset);
+        panel->addItem(Anime4KShaderManager::presetDisplayName(preset), id, enabled && id == currentPreset);
+    }
+    panel->addItem(tr("All Shader Configs..."), QStringLiteral("all_configs"), false);
+
+    int maxHeight = this->height() - m_bottomHUD->height() - 40;
+    panel->finalizeLayout(maxHeight < 150 ? 150 : maxHeight, 220);
+
+    connect(panel, &ModernScrollPanel::itemTriggered, this,
+            [this](const QVariant &data, const QString &text)
+            {
+                const QString target = data.toString();
+
+                auto dismissPopup = [this]()
+                {
+                    if (m_activePopup)
+                    {
+                        m_activePopup->hide();
+                        m_activePopup->close();
+                        m_activePopup->deleteLater();
+                        m_activePopup = nullptr;
+                    }
+                };
+
+                if (target == QLatin1String("all_configs"))
+                {
+                    dismissPopup();
+                    openAnime4kChainMenu();
+                    return;
+                }
+
+                if (!m_mpvWidget->controller()->anime4kAvailable())
+                {
+                    showToast(tr("Anime4K is unavailable on this rendering path"));
+                    dismissPopup();
+                    return;
+                }
+
+                const bool enable = (target != QLatin1String("off"));
+                const QString presetId = enable
+                    ? target
+                    : ConfigStore::instance()->get<QString>(ConfigKeys::PlayerAnime4kPreset, "balanced");
+
+                bool shadersPrepared = true;
+                if (enable)
+                {
+                    shadersPrepared = Anime4KShaderManager::instance().ensureShadersExtracted();
+                    Anime4KShaderManager::instance().applyPresetTemplate(
+                        Anime4KShaderManager::presetFromId(presetId));
+                }
+
+                ConfigStore::instance()->set(ConfigKeys::PlayerAnime4kEnabled, enable);
+                ConfigStore::instance()->set(ConfigKeys::PlayerAnime4kPreset, presetId);
+
+                if (m_mpvWidget->controller()->applyAnime4kShaders(enable, presetId))
+                {
+                    showToast(tr("Anime4K: %1").arg(text));
+                }
+                else if (enable && Anime4KShaderManager::isCustomPresetId(presetId) &&
+                         Anime4KShaderManager::instance().configuredChain().isEmpty())
+                {
+                    // Only a genuinely empty custom chain reports "no shaders".
+                    showToast(tr("No shaders selected"));
+                }
+                else if (!shadersPrepared)
+                {
+                    showToast(tr("Failed to prepare shader files"));
+                }
+                else
+                {
+                    showToast(tr("Failed to apply Anime4K shaders"));
+                }
+
+                dismissPopup();
+            });
+
+    showCenteredPopup(panel, m_settingsBtn);
+}
+
+void PlayerView::openAnime4kChainMenu()
+{
+    if (m_activePopup)
+    {
+        m_activePopup->hide();
+        m_activePopup->close();
+        m_activePopup->deleteLater();
+        m_activePopup = nullptr;
+    }
+
+    auto *panel = new ModernScrollPanel(this);
+    const QStringList chain = Anime4KShaderManager::instance().configuredChain();
+    for (const Anime4KShaderManager::ShaderEntry &entry :
+         Anime4KShaderManager::instance().shaderCatalog())
+    {
+        const QString text = entry.bundled
+            ? tr("%1 (Bundled)").arg(entry.displayName)
+            : tr("%1 (Custom)").arg(entry.displayName);
+        panel->addItem(text, entry.path, chain.contains(entry.path));
+        for (QPushButton *btn : panel->findChildren<QPushButton *>())
+        {
+            if (btn->text() == text)
+            {
+                btn->setToolTip(entry.path);
+                break;
+            }
+        }
+    }
+
+    int maxHeight = this->height() - m_bottomHUD->height() - 40;
+    panel->finalizeLayout(maxHeight < 150 ? 150 : maxHeight, 300);
+
+    connect(panel, &ModernScrollPanel::itemTriggered, this,
+            [this](const QVariant &data, const QString &text)
+            {
+                const QString path = data.toString();
+
+                auto dismissPopup = [this]()
+                {
+                    if (m_activePopup)
+                    {
+                        m_activePopup->hide();
+                        m_activePopup->close();
+                        m_activePopup->deleteLater();
+                        m_activePopup = nullptr;
+                    }
+                };
+
+                QStringList newChain = Anime4KShaderManager::instance().configuredChain();
+                const bool adding = !newChain.contains(path);
+                if (adding)
+                {
+                    newChain.append(path);
+                }
+                else
+                {
+                    newChain.removeAll(path);
+                }
+
+                // Keep the user-defined chain order; toggling only changes
+                // membership (new shaders are appended at the end).
+                Anime4KShaderManager::instance().setConfiguredChain(newChain);
+
+                const bool enable = !newChain.isEmpty();
+                ConfigStore::instance()->set(ConfigKeys::PlayerAnime4kEnabled, enable);
+                const bool applied = m_mpvWidget->controller()->applyAnime4kShaders(
+                    enable, Anime4KShaderManager::presetIdOfCustom());
+
+                if (!enable)
+                {
+                    showToast(tr("No shaders selected"));
+                }
+                else if (applied)
+                {
+                    showToast(adding ? tr("Shader Enabled: %1").arg(text)
+                                     : tr("Shader Disabled: %1").arg(text));
+                }
+                else
+                {
+                    showToast(tr("Failed to apply Anime4K shaders"));
+                }
+                dismissPopup();
+            });
+
+    showCenteredPopup(panel, m_settingsBtn);
 }
 
 void PlayerView::applySubtitleStyleSettings()

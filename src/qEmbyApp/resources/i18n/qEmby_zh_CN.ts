@@ -10513,4 +10513,280 @@ This cannot be undone.</source>
         <translation>跟随默认</translation>
     </message>
 </context>
+<context>
+    <name>Anime4KShaderManager</name>
+    <message>
+        <source>Fast</source>
+        <translation>快速</translation>
+    </message>
+    <message>
+        <source>Balanced</source>
+        <translation>平衡</translation>
+    </message>
+    <message>
+        <source>Quality</source>
+        <translation>画质</translation>
+    </message>
+</context>
+<context>
+    <name>PagePlayer</name>
+    <message>
+        <source>Anime4K Upscaling</source>
+        <translation>Anime4K 画质增强</translation>
+    </message>
+    <message>
+        <source>Real-time AI upscaling and sharpening for anime video</source>
+        <translation>针对动画视频的实时 AI 放大与锐化</translation>
+    </message>
+    <message>
+        <source>Anime4K Preset</source>
+        <translation>Anime4K 预设</translation>
+    </message>
+    <message>
+        <source>Shader chain quality preset applied to video upscaling</source>
+        <translation>应用于视频放大着色器链的画质预设</translation>
+    </message>
+    <message>
+        <source>Anime4K Advanced</source>
+        <translation>Anime4K 进阶</translation>
+    </message>
+    <message>
+        <source>Shaders are mounted to mpv's glsl-shaders chain. It is not limited to Anime4K — any mpv GLSL user shader (e.g. FSRCNNX, SSimDownscaler) can be added. Order is execution order.</source>
+        <translation>着色器会挂载到 mpv 的 glsl-shaders 链中。不限于 Anime4K——任何 mpv GLSL 用户着色器（如 FSRCNNX、SSimDownscaler）都可以添加。列表顺序即执行顺序。</translation>
+    </message>
+    <message>
+        <source>GPU Device</source>
+        <translation>GPU 设备</translation>
+    </message>
+    <message>
+        <source>Select the GPU used for video rendering</source>
+        <translation>选择用于视频渲染的 GPU</translation>
+    </message>
+    <message>
+        <source>Forces the rendering GPU at the platform level (Linux: DRI_PRIME; Windows: GPU performance preference). GPU changes take effect after restarting the application; macOS does not support manual selection.</source>
+        <translation>在平台层面强制指定渲染 GPU（Linux：DRI_PRIME；Windows：GPU 性能首选项）。GPU 更改将在重启应用后生效；macOS 不支持手动选择。</translation>
+    </message>
+    <message>
+        <source>Add Shader...</source>
+        <translation>添加着色器...</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>移除</translation>
+    </message>
+    <message>
+        <source>Move Up</source>
+        <translation>上移</translation>
+    </message>
+    <message>
+        <source>Move Down</source>
+        <translation>下移</translation>
+    </message>
+    <message>
+        <source>Using preset template</source>
+        <translation>使用预设模板</translation>
+    </message>
+    <message>
+        <source>Add Shader</source>
+        <translation>添加着色器</translation>
+    </message>
+    <message>
+        <source>GLSL Shaders (*.glsl)</source>
+        <translation>GLSL 着色器 (*.glsl)</translation>
+    </message>
+    <message>
+        <source>MPV Key Passthrough</source>
+        <translation>MPV 快捷键透传</translation>
+    </message>
+    <message>
+        <source>Forward keys not handled by qEmby to mpv so input.conf and mpv keybindings work</source>
+        <translation>将 qEmby 未处理的按键转发给 mpv，使 input.conf 和 mpv 快捷键绑定生效</translation>
+    </message>
+    <message>
+        <source> (Custom)</source>
+        <translation>（自定义）</translation>
+    </message>
+</context>
+<context>
+    <name>PlayerView</name>
+    <message>
+        <source>Off</source>
+        <translation>关闭</translation>
+    </message>
+    <message>
+        <source>Anime4K: %1</source>
+        <translation>Anime4K：%1</translation>
+    </message>
+    <message>
+        <source>Anime4K is unavailable on this rendering path</source>
+        <translation>当前渲染路径不支持 Anime4K</translation>
+    </message>
+    <message>
+        <source>Failed to apply Anime4K shaders</source>
+        <translation>应用 Anime4K 着色器失败</translation>
+    </message>
+    <message>
+        <source>MPV Info</source>
+        <translation>MPV 信息</translation>
+    </message>
+    <message>
+        <source>All Shader Configs...</source>
+        <translation>全部着色器配置...</translation>
+    </message>
+    <message>
+        <source>%1 (Bundled)</source>
+        <translation>%1（内置）</translation>
+    </message>
+    <message>
+        <source>Shader Enabled: %1</source>
+        <translation>着色器已启用：%1</translation>
+    </message>
+    <message>
+        <source>Shader Disabled: %1</source>
+        <translation>着色器已禁用：%1</translation>
+    </message>
+    <message>
+        <source>MPV Key Passthrough</source>
+        <translation>MPV 快捷键透传</translation>
+    </message>
+    <message>
+        <source>MPV Key Passthrough: ON</source>
+        <translation>MPV 快捷键透传：开</translation>
+    </message>
+    <message>
+        <source>MPV Key Passthrough: OFF</source>
+        <translation>MPV 快捷键透传：关</translation>
+    </message>
+    <message>
+        <source>No shaders selected</source>
+        <translation>未选择着色器</translation>
+    </message>
+    <message>
+        <source>%1 (Custom)</source>
+        <translation>%1（自定义）</translation>
+    </message>
+    <message>
+        <source>Failed to prepare shader files</source>
+        <translation>着色器文件准备失败</translation>
+    </message>
+</context>
+<context>
+    <name>MpvInfoDialog</name>
+    <message>
+        <source>MPV Info</source>
+        <translation>MPV 信息</translation>
+    </message>
+    <message>
+        <source>MPV controller unavailable</source>
+        <translation>MPV 控制器不可用</translation>
+    </message>
+    <message>
+        <source>File</source>
+        <translation>文件</translation>
+    </message>
+    <message>
+        <source>Video</source>
+        <translation>视频</translation>
+    </message>
+    <message>
+        <source>Playback</source>
+        <translation>播放</translation>
+    </message>
+    <message>
+        <source>Audio</source>
+        <translation>音频</translation>
+    </message>
+    <message>
+        <source>Bitrate/Cache</source>
+        <translation>码率/缓存</translation>
+    </message>
+    <message>
+        <source>Output</source>
+        <translation>输出</translation>
+    </message>
+    <message>
+        <source>No playback</source>
+        <translation>无播放</translation>
+    </message>
+    <message>
+        <source>Shaders</source>
+        <translation>着色器</translation>
+    </message>
+    <message>
+        <source>Filters</source>
+        <translation>滤镜</translation>
+    </message>
+    <message>
+        <source>Custom</source>
+        <translation>自定义</translation>
+    </message>
+    <message>
+        <source>(none)</source>
+        <translation>（无）</translation>
+    </message>
+</context>
+<context>
+    <name>PagePlayer</name>
+    <message>
+        <source>D3D11VA (Zero-Copy)</source>
+        <translation>D3D11VA（零拷贝）</translation>
+    </message>
+    <message>
+        <source>Auto (Zero-Copy)</source>
+        <translation>自动（零拷贝）</translation>
+    </message>
+</context>
+<context>
+    <name>MpvWidget</name>
+    <message>
+        <source>Direct3D 11 rendering initialization failed.</source>
+        <translation>Direct3D 11 渲染初始化失败。</translation>
+    </message>
+</context>
+<context>
+    <name>PagePlayer</name>
+    <message>
+        <source>Software only</source>
+        <translation>仅软件解码</translation>
+    </message>
+    <message>
+        <source>Decoder priority with automatic CPU fallback</source>
+        <translation>解码器优先级，自动回退 CPU 软解</translation>
+    </message>
+</context>
+<context>
+    <name>HwdecPriorityDialog</name>
+    <message>
+        <source>Decoder Priority</source>
+        <translation>解码器优先级</translation>
+    </message>
+    <message>
+        <source>Enable hardware decoding</source>
+        <translation>启用硬件解码</translation>
+    </message>
+    <message>
+        <source>Move Up</source>
+        <translation>上移</translation>
+    </message>
+    <message>
+        <source>Move Down</source>
+        <translation>下移</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>移除</translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation>添加</translation>
+    </message>
+    <message>
+        <source>Restore Defaults</source>
+        <translation>恢复默认</translation>
+    </message>
+    <message>
+        <source>Decoders are tried top to bottom; playback falls back to CPU (software) automatically, so it never breaks.</source>
+        <translation>解码器自上而下依次尝试；全部失败时自动回退 CPU 软解，播放不会中断。</translation>
+    </message>
+</context>
 </TS>

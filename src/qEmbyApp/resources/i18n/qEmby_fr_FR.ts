@@ -8486,4 +8486,280 @@ Adresse: %2</translation>
         <translation>Impossible de charger les médias. Vérifiez votre connexion et réessayez.</translation>
     </message>
 </context>
+<context>
+    <name>Anime4KShaderManager</name>
+    <message>
+        <source>Fast</source>
+        <translation>Rapide</translation>
+    </message>
+    <message>
+        <source>Balanced</source>
+        <translation>Équilibré</translation>
+    </message>
+    <message>
+        <source>Quality</source>
+        <translation>Qualité</translation>
+    </message>
+</context>
+<context>
+    <name>PagePlayer</name>
+    <message>
+        <source>Anime4K Upscaling</source>
+        <translation>Amélioration Anime4K</translation>
+    </message>
+    <message>
+        <source>Real-time AI upscaling and sharpening for anime video</source>
+        <translation>Amélioration et netteté IA en temps réel pour les vidéos d'animation</translation>
+    </message>
+    <message>
+        <source>Anime4K Preset</source>
+        <translation>Préréglage Anime4K</translation>
+    </message>
+    <message>
+        <source>Shader chain quality preset applied to video upscaling</source>
+        <translation>Préréglage de qualité de la chaîne de shaders appliqué à l'agrandissement vidéo</translation>
+    </message>
+    <message>
+        <source>Anime4K Advanced</source>
+        <translation>Anime4K avancé</translation>
+    </message>
+    <message>
+        <source>Shaders are mounted to mpv's glsl-shaders chain. It is not limited to Anime4K — any mpv GLSL user shader (e.g. FSRCNNX, SSimDownscaler) can be added. Order is execution order.</source>
+        <translation>Les shaders sont montés dans la chaîne glsl-shaders de mpv. Cela ne se limite pas à Anime4K — tout shader GLSL utilisateur mpv (par ex. FSRCNNX, SSimDownscaler) peut être ajouté. L'ordre de la liste est l'ordre d'exécution.</translation>
+    </message>
+    <message>
+        <source>GPU Device</source>
+        <translation>Périphérique GPU</translation>
+    </message>
+    <message>
+        <source>Select the GPU used for video rendering</source>
+        <translation>Sélectionnez le GPU utilisé pour le rendu vidéo</translation>
+    </message>
+    <message>
+        <source>Forces the rendering GPU at the platform level (Linux: DRI_PRIME; Windows: GPU performance preference). GPU changes take effect after restarting the application; macOS does not support manual selection.</source>
+        <translation>Force le GPU de rendu au niveau de la plateforme (Linux : DRI_PRIME ; Windows : préférence de performance du GPU). Les changements de GPU prennent effet après le redémarrage de l'application ; macOS ne prend pas en charge la sélection manuelle.</translation>
+    </message>
+    <message>
+        <source>Add Shader...</source>
+        <translation>Ajouter un shader...</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>Supprimer</translation>
+    </message>
+    <message>
+        <source>Move Up</source>
+        <translation>Monter</translation>
+    </message>
+    <message>
+        <source>Move Down</source>
+        <translation>Descendre</translation>
+    </message>
+    <message>
+        <source>Using preset template</source>
+        <translation>Utilisation du modèle de préréglage</translation>
+    </message>
+    <message>
+        <source>Add Shader</source>
+        <translation>Ajouter un shader</translation>
+    </message>
+    <message>
+        <source>GLSL Shaders (*.glsl)</source>
+        <translation>Shaders GLSL (*.glsl)</translation>
+    </message>
+    <message>
+        <source>MPV Key Passthrough</source>
+        <translation>Transmission des touches MPV</translation>
+    </message>
+    <message>
+        <source>Forward keys not handled by qEmby to mpv so input.conf and mpv keybindings work</source>
+        <translation>Transmet à mpv les touches non gérées par qEmby afin que input.conf et les raccourcis clavier mpv fonctionnent</translation>
+    </message>
+    <message>
+        <source> (Custom)</source>
+        <translation> (personnalisé)</translation>
+    </message>
+</context>
+<context>
+    <name>PlayerView</name>
+    <message>
+        <source>Off</source>
+        <translation>Désactivé</translation>
+    </message>
+    <message>
+        <source>Anime4K: %1</source>
+        <translation>Anime4K: %1</translation>
+    </message>
+    <message>
+        <source>Anime4K is unavailable on this rendering path</source>
+        <translation>Anime4K n'est pas disponible sur ce chemin de rendu</translation>
+    </message>
+    <message>
+        <source>Failed to apply Anime4K shaders</source>
+        <translation>Échec de l'application des shaders Anime4K</translation>
+    </message>
+    <message>
+        <source>MPV Info</source>
+        <translation>Infos MPV</translation>
+    </message>
+    <message>
+        <source>All Shader Configs...</source>
+        <translation>Tous les shaders...</translation>
+    </message>
+    <message>
+        <source>%1 (Bundled)</source>
+        <translation>%1 (intégré)</translation>
+    </message>
+    <message>
+        <source>Shader Enabled: %1</source>
+        <translation>Shader activé : %1</translation>
+    </message>
+    <message>
+        <source>Shader Disabled: %1</source>
+        <translation>Shader désactivé : %1</translation>
+    </message>
+    <message>
+        <source>MPV Key Passthrough</source>
+        <translation>Transmission des touches MPV</translation>
+    </message>
+    <message>
+        <source>MPV Key Passthrough: ON</source>
+        <translation>Transmission des touches MPV : ON</translation>
+    </message>
+    <message>
+        <source>MPV Key Passthrough: OFF</source>
+        <translation>Transmission des touches MPV : OFF</translation>
+    </message>
+    <message>
+        <source>No shaders selected</source>
+        <translation>Aucun shader sélectionné</translation>
+    </message>
+    <message>
+        <source>%1 (Custom)</source>
+        <translation>%1 (personnalisé)</translation>
+    </message>
+    <message>
+        <source>Failed to prepare shader files</source>
+        <translation>Échec de la préparation des fichiers de shaders</translation>
+    </message>
+</context>
+<context>
+    <name>MpvInfoDialog</name>
+    <message>
+        <source>MPV Info</source>
+        <translation>Infos MPV</translation>
+    </message>
+    <message>
+        <source>MPV controller unavailable</source>
+        <translation>Contrôleur MPV indisponible</translation>
+    </message>
+    <message>
+        <source>File</source>
+        <translation>Fichier</translation>
+    </message>
+    <message>
+        <source>Video</source>
+        <translation>Vidéo</translation>
+    </message>
+    <message>
+        <source>Playback</source>
+        <translation>Lecture</translation>
+    </message>
+    <message>
+        <source>Audio</source>
+        <translation>Audio</translation>
+    </message>
+    <message>
+        <source>Bitrate/Cache</source>
+        <translation>Débit/Cache</translation>
+    </message>
+    <message>
+        <source>Output</source>
+        <translation>Sortie</translation>
+    </message>
+    <message>
+        <source>No playback</source>
+        <translation>Aucune lecture</translation>
+    </message>
+    <message>
+        <source>Shaders</source>
+        <translation>Shaders</translation>
+    </message>
+    <message>
+        <source>Filters</source>
+        <translation>Filtres</translation>
+    </message>
+    <message>
+        <source>Custom</source>
+        <translation>Personnalisé</translation>
+    </message>
+    <message>
+        <source>(none)</source>
+        <translation>(aucun)</translation>
+    </message>
+</context>
+<context>
+    <name>PagePlayer</name>
+    <message>
+        <source>D3D11VA (Zero-Copy)</source>
+        <translation>D3D11VA (zéro-copie)</translation>
+    </message>
+    <message>
+        <source>Auto (Zero-Copy)</source>
+        <translation>Auto (zéro-copie)</translation>
+    </message>
+</context>
+<context>
+    <name>MpvWidget</name>
+    <message>
+        <source>Direct3D 11 rendering initialization failed.</source>
+        <translation>Échec de l'initialisation du rendu Direct3D 11.</translation>
+    </message>
+</context>
+<context>
+    <name>PagePlayer</name>
+    <message>
+        <source>Software only</source>
+        <translation>Logiciel uniquement</translation>
+    </message>
+    <message>
+        <source>Decoder priority with automatic CPU fallback</source>
+        <translation>Priorité des décodeurs avec repli automatique sur le CPU</translation>
+    </message>
+</context>
+<context>
+    <name>HwdecPriorityDialog</name>
+    <message>
+        <source>Decoder Priority</source>
+        <translation>Priorité des décodeurs</translation>
+    </message>
+    <message>
+        <source>Enable hardware decoding</source>
+        <translation>Activer le décodage matériel</translation>
+    </message>
+    <message>
+        <source>Move Up</source>
+        <translation>Monter</translation>
+    </message>
+    <message>
+        <source>Move Down</source>
+        <translation>Descendre</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>Retirer</translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation>Ajouter</translation>
+    </message>
+    <message>
+        <source>Restore Defaults</source>
+        <translation>Rétablir les valeurs par défaut</translation>
+    </message>
+    <message>
+        <source>Decoders are tried top to bottom; playback falls back to CPU (software) automatically, so it never breaks.</source>
+        <translation>Les décodeurs sont essayés de haut en bas ; la lecture bascule automatiquement sur le CPU (logiciel), elle ne s'interrompt donc jamais.</translation>
+    </message>
+</context>
 </TS>

@@ -1,7 +1,9 @@
 #include "mpvcontroller.h"
+#include "anime4kshadermanager.h"
 #include "../utils/subtitlestyleutils.h"
 #include "../utils/playerpreferenceutils.h"
 #include <QDebug>
+#include <QFile>
 #include <QMetaType>
 #include <QElapsedTimer>
 #include <QThreadPool>
@@ -142,8 +144,26 @@ bool MpvController::init() {
     
     
     
+#if defined(QEMBY_MPV_D3D11_RENDER)
+    // D3D11 渲染通道: display-resample 以 vsync 反馈为节拍, 会把渲染 API 的
+    // 重绘循环拖到视频帧率 (24fps 视频 => 全 UI 24Hz 顿挫), 强制回落音频主
+    // 时钟; 弹幕/UI 动画由 MpvWidget 的独立高刷定时器驱动。
+    QString vsyncMode = ConfigStore::instance()->get<QString>(
+        ConfigKeys::PlayerVideoSync, "audio");
+    if (vsyncMode == QLatin1String("display-resample")) {
+        qWarning() << "[MpvController] video-sync=display-resample downgraded to audio"
+                   << "| reason=D3D11 render loop decoupling";
+        vsyncMode = QStringLiteral("audio");
+    }
+    // 渲染 API 的内部计时等待 (BLOCK_FOR_TARGET_TIME 默认开启) 会阻塞渲染
+    // 调用方直至帧目标显示时间; 除在渲染调用中禁用外, 按 render.h 的建议把
+    // video-timing-offset 归零 —— mpv 在目标时间才投递帧, 调用方即时呈现,
+    // 音画同步保持且 GUI 线程零阻塞。
+    mpv_set_option_string(m_mpv, "video-timing-offset", "0");
+#else
     QString vsyncMode = ConfigStore::instance()->get<QString>(
         ConfigKeys::PlayerVideoSync, "display-resample");
+#endif
     mpv_set_option_string(m_mpv, "video-sync", vsyncMode.toUtf8().constData());
     
     mpv_set_option_string(m_mpv, "interpolation", vsyncMode == "display-resample" ? "yes" : "no");
@@ -154,24 +174,48 @@ bool MpvController::init() {
     
     
     
-    QString hwdec = ConfigStore::instance()->get<QString>(ConfigKeys::PlayerHwDec, "auto-copy");
+    // 硬解策略: 优先读设置页"解码器优先级"弹窗保存的回退链, 链尾恒有
+    // auto-safe 兜底, mpv 全链失败后自动落到 CPU 软解; 旧单值配置仍可回退;
+    // 硬解总开关关闭时强制纯软件。默认链按平台下发:
+    //  - Windows + D3D11 渲染通道: d3d11va 原生零拷贝优先 (同 ID3D11Device);
+    //  - Windows GL 回退构建 (Qt < 6.7): 维持 auto-copy 兼容;
+    //  - Linux: vaapi (EGL dma-buf 零拷贝) -> nvdec (CUDA-GL) -> auto;
+    //  - 其余平台: 维持 auto-copy 兼容。
+#if defined(QEMBY_MPV_D3D11_RENDER)
+    const QString hwdecDefault = QStringLiteral("d3d11va,auto,auto-safe");
+#elif defined(Q_OS_WIN)
+    const QString hwdecDefault = QStringLiteral("auto-copy,auto-safe");
+#elif defined(Q_OS_LINUX)
+    const QString hwdecDefault = QStringLiteral("vaapi,nvdec,auto,auto-safe");
+#else
+    const QString hwdecDefault = QStringLiteral("auto-copy,auto-safe");
+#endif
+    QString hwdec;
+    if (!ConfigStore::instance()->get<bool>(ConfigKeys::PlayerHwDecEnabled, true)) {
+        hwdec = QStringLiteral("no");
+    } else {
+        hwdec = ConfigStore::instance()
+                    ->get<QString>(ConfigKeys::PlayerHwDecPriority, QString())
+                    .trimmed();
+        if (hwdec.isEmpty()) {
+            hwdec = ConfigStore::instance()->get<QString>(ConfigKeys::PlayerHwDec,
+                                                          hwdecDefault);
+        }
+    }
 
 #ifdef Q_OS_WIN
-    mpv_set_option_string(m_mpv, "gpu-api", "opengl");
-    mpv_set_option_string(m_mpv, "opengl-es", "no");
     bool isRDP = GetSystemMetrics(SM_REMOTESESSION) != 0;
     if (isRDP) {
-        
+
         hwdec = "no";
         mpv_set_option_string(m_mpv, "profile", "sw-fast");
-
-        
-        mpv_set_option_string(m_mpv, "gpu-dumb-mode", "yes");
-        mpv_set_option_string(m_mpv, "opengl-pbo", "no");
-        mpv_set_option_string(m_mpv, "dither-depth", "no");
+        m_gpuDumbMode = true;
     }
 #endif
     mpv_set_option_string(m_mpv, "hwdec", hwdec.toUtf8().constData());
+    qDebug() << "[MpvController] Hardware decoding policy"
+             << "| hwdec=" << hwdec
+             << "| source=" << (hwdec == hwdecDefault ? "default" : "config");
 
     
     
@@ -230,6 +274,18 @@ bool MpvController::init() {
 
     SubtitleStyleUtils::applyToController(this);
 
+    const bool anime4kEnabled = ConfigStore::instance()->get<bool>(
+        ConfigKeys::PlayerAnime4kEnabled, false);
+    if (anime4kEnabled) {
+        const QString anime4kPreset = ConfigStore::instance()->get<QString>(
+            ConfigKeys::PlayerAnime4kPreset, "balanced");
+        if (!applyAnime4kShaders(true, anime4kPreset)) {
+            qDebug() << "[MpvController] Anime4K shaders not applied at startup"
+                     << "| preset=" << anime4kPreset
+                     << "| gpu-dumb-mode=" << m_gpuDumbMode;
+        }
+    }
+
     mpv_set_wakeup_callback(m_mpv, MpvController::onMpvEvents, this);
 
     
@@ -253,6 +309,114 @@ bool MpvController::init() {
     return true;
 }
 
+bool MpvController::anime4kAvailable() const {
+    return !m_gpuDumbMode;
+}
+
+bool MpvController::applyAnime4kShaders(bool enabled, const QString &presetId) {
+    if (!m_mpv) return false;
+
+    // mpv 的 change-list 命令要求 name/operation/value 三个参数, 即使是 clr 也
+    // 必须传 value (空串即可, 会被忽略)。此前清空调用少传参数被 mpv 拒绝且错误
+    // 被吞, 导致列表从不清理、append 链不断叠加。
+    auto clearShaders = [this]() {
+        return command(QVariantList{"change-list", "glsl-shaders", "clr", ""},
+                       nullptr) >= 0;
+    };
+    // glsl-shaders 以节点字符串数组返回 (与 mpvinfodialog 的展示口径一致)。
+    auto shaderCount = [this]() -> int {
+        const QVariant value = getProperty(QStringLiteral("glsl-shaders"));
+        if (value.typeId() == QMetaType::QStringList) {
+            return value.toStringList().size();
+        }
+        int count = 0;
+        for (const QVariant &item : value.toList()) {
+            if (!item.toString().isEmpty()) {
+                ++count;
+            }
+        }
+        return count;
+    };
+
+    if (!enabled) {
+        if (!clearShaders()) {
+            qWarning() << "[MpvController] Failed to clear glsl-shaders";
+            return false;
+        }
+        const int remaining = shaderCount();
+        qDebug() << "[MpvController] Cleared Anime4K shaders"
+                 << "| remaining=" << remaining;
+        if (remaining != 0) {
+            qWarning() << "[MpvController] glsl-shaders not empty after clear"
+                       << "| remaining=" << remaining;
+        }
+        return true;
+    }
+
+    if (m_gpuDumbMode) {
+        qDebug() << "[MpvController] Anime4K shaders unavailable"
+                 << "| reason=gpu-dumb-mode";
+        return false;
+    }
+
+    const bool extracted = Anime4KShaderManager::instance().ensureShadersExtracted();
+
+    const QStringList chain = Anime4KShaderManager::isCustomPresetId(presetId)
+        ? Anime4KShaderManager::instance().configuredChain()
+        : Anime4KShaderManager::instance().shaderChain(
+              Anime4KShaderManager::presetFromId(presetId));
+    if (chain.isEmpty()) {
+        qDebug() << "[MpvController] Anime4K shaders unavailable"
+                 << "| reason=empty shader chain" << "| preset=" << presetId;
+        return false;
+    }
+
+    if (!extracted) {
+        // Tolerate leftovers of a previous extraction: when every shader file
+        // of the chain already exists on disk, applying is still safe.
+        bool allPresent = true;
+        for (const QString &shaderPath : chain) {
+            if (!QFile::exists(shaderPath)) {
+                allPresent = false;
+                break;
+            }
+        }
+        if (!allPresent) {
+            qDebug() << "[MpvController] Anime4K shaders unavailable"
+                     << "| reason=shader extraction failed";
+            return false;
+        }
+        qDebug() << "[MpvController] Using previously extracted Anime4K shaders"
+                 << "| reason=extraction failed but chain files present"
+                 << "| preset=" << presetId;
+    }
+
+    // 清空失败必须中止: 在残留链上继续 append 只会叠加。
+    if (!clearShaders()) {
+        qWarning() << "[MpvController] Failed to clear glsl-shaders before apply"
+                   << "| preset=" << presetId;
+        return false;
+    }
+    for (const QString &shaderPath : chain) {
+        if (command(QVariantList{"change-list", "glsl-shaders", "append",
+                                 shaderPath},
+                    nullptr) < 0) {
+            qDebug() << "[MpvController] Failed to append Anime4K shader"
+                     << "| path=" << shaderPath;
+            return false;
+        }
+    }
+    const int applied = shaderCount();
+    qDebug() << "[MpvController] Applied Anime4K shaders"
+             << "| preset=" << presetId
+             << "| expected=" << chain.size() << "| actual=" << applied;
+    if (applied != chain.size()) {
+        qWarning() << "[MpvController] glsl-shaders count mismatch after apply"
+                   << "| expected=" << chain.size() << "| actual=" << applied;
+    }
+    return true;
+}
+
 void MpvController::onMpvEvents(void *ctx) {
     
     auto *self = static_cast<MpvController *>(ctx);
@@ -269,6 +433,7 @@ void MpvController::eventHandler() {
         const mpv_event_id eventId = event->event_id;
         QElapsedTimer dispatchTime;
         dispatchTime.start();
+        QString eventDetail;
 
         switch (event->event_id) {
         case MPV_EVENT_START_FILE:
@@ -297,6 +462,7 @@ void MpvController::eventHandler() {
         }
         case MPV_EVENT_GET_PROPERTY_REPLY: {
             const QString property = m_propertyRequests.take(event->reply_userdata);
+            eventDetail = property;
             if (property.isEmpty() ||
                 m_latestPropertyRequests.value(property) != event->reply_userdata) {
                 break;
@@ -317,6 +483,7 @@ void MpvController::eventHandler() {
             if (!prop || !prop->data || prop->format == MPV_FORMAT_NONE) break;
 
             QString propName = QString::fromUtf8(prop->name);
+            eventDetail = propName;
             QVariant data;
 
             if (prop->format == MPV_FORMAT_DOUBLE) {
@@ -351,10 +518,11 @@ void MpvController::eventHandler() {
         }
         const qreal dispatchMs = dispatchTime.nsecsElapsed() / 1000000.0;
         if (dispatchMs >= 25.0) {
-            
-            
+
+
             qDebug() << "[MpvController][Timing] Slow event dispatch | event:"
-                     << mpv_event_name(eventId) << "| elapsedMs:" << dispatchMs;
+                     << mpv_event_name(eventId) << "| detail:" << eventDetail
+                     << "| elapsedMs:" << dispatchMs;
         }
     }
 }

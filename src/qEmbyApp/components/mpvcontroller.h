@@ -1,6 +1,9 @@
 #ifndef MPVCONTROLLER_H
 #define MPVCONTROLLER_H
 
+// Qt wrapper around a libmpv playback context: option setup, property
+// observation, command dispatch and Anime4K glsl-shader chain switching for
+// the embedded player.
 #include <QObject>
 #include <QVariant>
 #include <QString>
@@ -51,6 +54,9 @@ public:
     int command(const QVariant &params, QVariant *resultOut);
     QVariant command(const QVariant &params);
 
+    bool anime4kAvailable() const;
+    bool applyAnime4kShaders(bool enabled, const QString &presetId);
+
 signals:
     
     void propertyChanged(const QString &property, const QVariant &value);
@@ -83,6 +89,7 @@ private:
     quint64 m_propertyRequestSerial = 0;
     QHash<quint64, QString> m_propertyRequests;
     QHash<QString, quint64> m_latestPropertyRequests;
+    bool m_gpuDumbMode = false;
 
     
     

@@ -329,5 +329,44 @@
         <file>svg/dark/cloud-sync.svg</file>
         <file>svg/light/cloud-sync.svg</file>
         <file>html/licenses.html</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Clamp_Highlights.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Restore_CNN_S.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Restore_CNN_M.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Restore_CNN_L.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Upscale_CNN_x2_S.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Upscale_CNN_x2_M.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Upscale_CNN_x2_L.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_AutoDownscalePre_x2.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_AutoDownscalePre_x4.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Darken_Fast.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Darken_HQ.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Darken_VeryFast.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Deblur_DoG.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Deblur_Original.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Denoise_Bilateral_Mean.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Denoise_Bilateral_Median.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Denoise_Bilateral_Mode.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Restore_CNN_Soft_L.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Restore_CNN_Soft_M.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Restore_CNN_Soft_S.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Restore_CNN_Soft_UL.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Restore_CNN_Soft_VL.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Restore_CNN_UL.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Restore_CNN_VL.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Thin_Fast.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Thin_HQ.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Thin_VeryFast.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Upscale_CNN_x2_UL.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Upscale_CNN_x2_VL.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Upscale_Deblur_DoG_x2.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Upscale_Deblur_Original_x2.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Upscale_Denoise_CNN_x2_L.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Upscale_Denoise_CNN_x2_M.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Upscale_Denoise_CNN_x2_S.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Upscale_Denoise_CNN_x2_UL.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Upscale_Denoise_CNN_x2_VL.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Upscale_DoG_x2.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Upscale_DTD_x2.glsl</file>
+        <file>shaders/anime4k/v4.0.1/Anime4K_Upscale_Original_x2.glsl</file>
     </qresource>
 </RCC> 

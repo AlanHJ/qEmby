@@ -3,6 +3,8 @@
 #include <QApplication>
 #include <QIcon>
 #include <QLocale>
+#include <QSettings>
+#include <QStandardPaths>
 #include <QSurfaceFormat>
 #include <QThread>
 #include <QTranslator>
@@ -13,6 +15,7 @@
 #include "managers/singleapplicationmanager.h"
 #include "config/config_keys.h"
 #include "config/configstore.h"
+#include "utils/gpudevicemanager.h"
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -36,6 +39,24 @@ int main(int argc, char *argv[]) {
   format.setSwapInterval(1);      
   format.setSwapBehavior(QSurfaceFormat::DoubleBuffer); 
   QSurfaceFormat::setDefaultFormat(format);
+
+  // GPU 设备选择必须在 Qt 图形栈初始化（首个 GL 上下文）之前应用：Linux 的
+  // DRI_PRIME 由 Mesa 在 GL 栈初始化时读取，Windows 的 GPU 性能偏好注册表同样
+  // 需在进程图形栈初始化前写入，晚了均不生效。此处位于 QApplication 构造前，
+  // ConfigStore 依赖 QApplication，故用 QSettings 直接读同一 config.ini
+  // （组织名/应用名与下方保持一致，键 player/gpu_device）。
+  QCoreApplication::setApplicationName(APP_NAME);
+  QCoreApplication::setOrganizationName("AlanHJ");
+  QCoreApplication::setOrganizationDomain("github.com/AlanHJ/qEmby");
+  {
+    QSettings gpuSettings(
+        QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) +
+            QStringLiteral("/config.ini"),
+        QSettings::IniFormat);
+    GpuDeviceManager::applyDevice(
+        gpuSettings.value(ConfigKeys::PlayerGpuDevice, QStringLiteral("auto"))
+            .toString());
+  }
 
   QGuiApplication::setAttribute(Qt::AA_DontCreateNativeWidgetSiblings);
   QApplication a(argc, argv);

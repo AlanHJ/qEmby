@@ -131,6 +131,8 @@ constexpr const char* ImageCacheDuration = "cache/image_cache_duration";
 
 
 constexpr const char* PlayerHwDec = "player/hw_decoding";
+constexpr const char* PlayerHwDecPriority = "player/hw_decoding_priority";
+constexpr const char* PlayerHwDecEnabled = "player/hw_decoding_enabled";
 constexpr const char* PlayerVo = "player/video_output";
 constexpr const char* PlayerVideoSync = "player/video_sync";
 constexpr const char* PlayerDefaultScale = "player/default_scale";
@@ -158,6 +160,10 @@ constexpr const char* PlayerMediaSwitcherMode =
 constexpr const char* PlayerClickToPause = "player/click_to_pause";
 constexpr const char* PlayerSkipIntro = "player/skip_intro";
 constexpr const char* PlayerSkipOutro = "player/skip_outro";
+constexpr const char* PlayerAnime4kEnabled = "player/anime4k_enabled";
+constexpr const char* PlayerAnime4kPreset = "player/anime4k_preset";
+constexpr const char* PlayerAnime4kChain = "player/anime4k_chain";
+constexpr const char* PlayerGpuDevice = "player/gpu_device";
 constexpr const char* PlayerIndependentWindow = "player/independent_window";
 constexpr const char* PlayerUseMpvConf = "player/use_mpv_conf";
 constexpr const char* PlayerVolumeLevel = "player/volume_level";
