@@ -44,7 +44,11 @@ jobs:
         if: inputs.source_run != ''
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/release/reuse_appimage.py --source-run '${{ inputs.source_run }}'
+        shell: bash
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends python3 ca-certificates
+          python3 scripts/release/reuse_appimage.py --source-run '${{ inputs.source_run }}'
       - uses: actions/download-artifact@v4
         if: inputs.source_run != ''
         with:

@@ -1059,7 +1059,7 @@
     "scripts/release/reuse_deb.py": "aeeb27ea07e4030da3a3210cf6c672c4c7839ac018d6841deab91612945234ba",
     "scripts/release/submit_test.py": "4e29b79f8ea9ddb0079f78f5f7ca786a51fbe4a5701ef70b8a69be18abf3535a",
     "scripts/release/verify_source.py": "aa85a39675c3103db228cbcaae041cd4e1dd2e02d461bd6a393ceb8667cc245a",
-    ".github/workflows/cloud-build-test.yml": "73477ce91c0cd94934787d0bbdff0d965be5148f1906caf73c798eac25a04393",
+    ".github/workflows/cloud-build-test.yml": "d039b83de462f818a0a23fe5edd05122fe31d960eac317969df25bc8a2ec3abd",
     "installer/ChineseSimplified.isl": "47fde4f972985f1078614c18f22294b87bf5b5aaa1488126db8daaa1cf0b2372",
     "installer/qEmby.iss": "ff6f036e4e63538ac50cff8168f0a3bfd35aac6807a4e0b1f3bb32bc913ae1ea",
     "CMakeLists.txt": "3696cdcae6411f83a4fd4a1cdd878e1e8231f4e7ec6cfd1520533be86286d09d",
