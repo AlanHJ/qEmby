@@ -156,6 +156,10 @@ namespace QWK {
         }
 
         ~NSWindowProxy() override {
+            for (NSButton *button : observedButtons) {
+                [button removeObserver:observer forKeyPath:@"hidden"];
+                [button release];
+            }
             [nsview removeObserver:observer forKeyPath:@"window"];
             [observer release];
         }
@@ -188,6 +192,7 @@ namespace QWK {
                 }
 
                 case DidResize: {
+                    updateSystemButtonVisibility();
                     if (!screenRectCallback || !systemButtonVisible) {
                         return;
                     }
@@ -304,13 +309,33 @@ namespace QWK {
 
         void updateSystemButtonVisibility() {
             const auto &buttons = systemButtons();
+            // Qt 6.11 updates all three buttons' hidden state together, even when
+            // only the close button is enabled. Observe the actual buttons so our
+            // per-button policy survives those updates and native button recreation.
+            for (size_t i = 0; i < buttons.size(); ++i) {
+                NSButton *button = (!systemButtonVisible || (systemCloseButtonOnly && i > 0))
+                                       ? buttons[i] : nil;
+                if (observedButtons[i] == button)
+                    continue;
+                [observedButtons[i] removeObserver:observer forKeyPath:@"hidden"];
+                [observedButtons[i] release];
+                observedButtons[i] = [button retain];
+                [observedButtons[i] addObserver:observer
+                                     forKeyPath:@"hidden"
+                                        options:NSKeyValueObservingOptionNew
+                                        context:nil];
+            }
             const BOOL allButtonsHidden = systemButtonVisible ? NO : YES;
             const BOOL secondaryButtonsHidden =
                 (!systemButtonVisible || systemCloseButtonOnly) ? YES : NO;
 
-            buttons[0].hidden = allButtonsHidden;
-            buttons[1].hidden = secondaryButtonsHidden;
-            buttons[2].hidden = secondaryButtonsHidden;
+            // Only write changed values: KVO delivers these notifications synchronously.
+            if (buttons[0].hidden != allButtonsHidden)
+                buttons[0].hidden = allButtonsHidden;
+            if (buttons[1].hidden != secondaryButtonsHidden)
+                buttons[1].hidden = secondaryButtonsHidden;
+            if (buttons[2].hidden != secondaryButtonsHidden)
+                buttons[2].hidden = secondaryButtonsHidden;
         }
 
         // Blur effect
@@ -481,6 +506,11 @@ namespace QWK {
             if (oldSetStyleMask) {
                 oldSetStyleMask(obj, sel, styleMask);
             }
+            // AppKit can recreate the titlebar buttons when Qt changes the style mask.
+            // Reapply the configured visibility to the current native buttons.
+            if (auto proxy = g_proxyList->value(reinterpret_cast<WId>([nswindow contentView]))) {
+                proxy->updateSystemButtonVisibility();
+            }
         }
 
         static void setTitlebarAppearsTransparent(id obj, SEL sel, BOOL transparent) {
@@ -524,6 +554,7 @@ namespace QWK {
 
         bool systemButtonVisible = true;
         bool systemCloseButtonOnly = false;
+        std::array<NSButton *, 3> observedButtons = {nil, nil, nil};
         ScreenRectCallback screenRectCallback;
 
         static inline QWK_NSWindowObserver *windowObserver = nil;
@@ -693,6 +724,9 @@ namespace QWK {
             case QEvent::MouseButtonDblClick: {
                 if (me->button() == Qt::LeftButton && inTitleBar && !m_context->isHostSizeFixed()) {
                     Qt::WindowFlags windowFlags = delegate->getWindowFlags(host);
+                    if (!(windowFlags & Qt::WindowMaximizeButtonHint)) {
+                        break;
+                    }
                     Qt::WindowStates windowState = delegate->getWindowState(host);
                     if (!(windowState & Qt::WindowFullScreen)) {
                         if (windowState & Qt::WindowMaximized) {
@@ -852,6 +886,10 @@ namespace QWK {
                       ofObject:(id)object
                         change:(NSDictionary*)change
                        context:(void*)context {
+    if ([keyPath isEqualToString:@"hidden"]) {
+        _proxy->updateSystemButtonVisibility();
+        return;
+    }
     if ([keyPath isEqualToString:@"window"]) {
         NSWindow* newWindow = change[NSKeyValueChangeNewKey];
         // NSWindow* oldWindow = change[NSKeyValueChangeOldKey];

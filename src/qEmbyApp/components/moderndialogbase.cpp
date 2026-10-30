@@ -56,6 +56,24 @@ ModernDialogBase::ModernDialogBase(QWidget *parent,
     
     setWindowFlag(Qt::WindowContextHelpButtonHint, false);
 
+#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
+    
+    setWindowFlag(Qt::CustomizeWindowHint, true);
+    setWindowFlag(Qt::WindowTitleHint, true);
+    setWindowFlag(Qt::WindowCloseButtonHint, true);
+    setWindowFlag(Qt::WindowMinMaxButtonsHint, false);
+    setWindowFlag(Qt::WindowFullscreenButtonHint, false);
+#endif
+
+#if (defined(Q_OS_MACOS) || defined(Q_OS_MAC)) && \
+    (QT_VERSION >= QT_VERSION_CHECK(6, 9, 0))
+    
+    
+    setWindowFlag(Qt::ExpandedClientAreaHint, true);
+    setWindowFlag(Qt::NoTitleBarBackgroundHint, true);
+    setAttribute(Qt::WA_ContentsMarginsRespectsSafeArea, false);
+#endif
+
     
     setAttribute(Qt::WA_StyledBackground, true);
 

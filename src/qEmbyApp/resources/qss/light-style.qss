@@ -1808,14 +1808,15 @@ QListWidget#sidebar-list::item {
     color: #4B5563;
     font-size: 14px;
     font-weight: 500;
-    padding: 8px 12px;
+    /* Embedded rows need the full height for macOS text and emoji metrics. */
+    padding: 0px 12px;
     border-radius: 8px;
     margin-bottom: 4px;
     /* 列表项之间的间距 */
 }
 
 QWidget#floating-sidebar[pinned="true"] QListWidget#sidebar-list::item {
-    padding: 8px 10px;
+    padding: 0px 10px;
 }
 
 /* 列表悬停 - 【同步加深】 */

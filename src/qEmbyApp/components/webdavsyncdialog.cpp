@@ -170,6 +170,10 @@ void WebdavSyncDialog::buildUi()
 {
     auto *root = contentLayout();
     root->setSpacing(10);
+#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
+    
+    layout()->setSizeConstraint(QLayout::SetMinimumSize);
+#endif
 
     
     {
@@ -376,6 +380,9 @@ void WebdavSyncDialog::buildUi()
         m_snapshotTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::Stretch);
 
         cardLayout->addWidget(m_snapshotTable);
+#if defined(Q_OS_MACOS) || defined(Q_OS_MAC)
+        cardLayout->setStretchFactor(m_snapshotTable, 1);
+#endif
 
         
         {

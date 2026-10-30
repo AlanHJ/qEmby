@@ -1,4 +1,5 @@
 #include "homeview.h"
+#include "../../utils/servericonutils.h"
 #include "../../components/minimusicplayer.h"
 #include "../../managers/musicplaybackmanager.h"
 #include "../../components/sidebarlibraryrow.h"
@@ -1406,23 +1407,8 @@ QCoro::Task<void> HomeView::refreshProfile()
                currentProfile.userId == activeProfile.userId;
     };
 
-    if (activeProfile.type == ServerProfile::Jellyfin)
-    {
-        m_serverIconLabel->setPixmap(QPixmap(":/svg/jellyfin.svg"));
-    }
-    else
-    {
-        if (!activeProfile.iconBase64.isEmpty())
-        {
-            QPixmap pix;
-            pix.loadFromData(QByteArray::fromBase64(activeProfile.iconBase64.toUtf8()));
-            m_serverIconLabel->setPixmap(pix);
-        }
-        else
-        {
-            m_serverIconLabel->setPixmap(QPixmap(":/svg/emby.svg"));
-        }
-    }
+    m_serverIconLabel->setPixmap(ServerIconUtils::loadIcon(
+        activeProfile, m_serverIconLabel->size(), m_serverIconLabel->devicePixelRatioF()));
 
     QString displayName = activeProfile.name.isEmpty() ? tr("My Server") : activeProfile.name;
     m_serverNameLabel->setFullText(displayName);

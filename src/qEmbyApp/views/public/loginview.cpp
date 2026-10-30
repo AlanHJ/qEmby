@@ -1,4 +1,5 @@
 #include "loginview.h"
+#include "../../utils/servericonutils.h"
 #include "../../components/loadingoverlay.h"
 #include "../../components/moderncombobox.h"
 #include "../../components/modernmessagebox.h"
@@ -756,17 +757,8 @@ void LoginView::refreshServerList() {
       iconLabel->setScaledContents(true);
       iconLabel->setAlignment(Qt::AlignCenter);
 
-      if (server.type == ServerProfile::Jellyfin) {
-        iconLabel->setPixmap(QPixmap(":/svg/jellyfin.svg"));
-      } else {
-        if (!server.iconBase64.isEmpty()) {
-          QPixmap pix;
-          pix.loadFromData(QByteArray::fromBase64(server.iconBase64.toUtf8()));
-          iconLabel->setPixmap(pix);
-        } else {
-          iconLabel->setPixmap(QPixmap(":/svg/emby.svg"));
-        }
-      }
+      iconLabel->setPixmap(ServerIconUtils::loadIcon(
+          server, iconLabel->size(), iconLabel->devicePixelRatioF()));
 
       auto *infoLayout = new QVBoxLayout();
       infoLayout->setSpacing(2);

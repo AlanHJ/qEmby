@@ -152,10 +152,9 @@ MainWindow::MainWindow(QWidget *parent)
     agent->setWindowAttribute("no-system-buttons", false);
 #endif
 
-    QPalette pal = palette();
-    pal.setColor(QPalette::Window, QColor(241, 245, 249)); 
-    setPalette(pal);
-    setAutoFillBackground(true);
+    
+    
+    setAttribute(Qt::WA_StyledBackground);
 
     
     auto titleLabel = new QLabel(qApp->applicationName());
@@ -422,8 +421,7 @@ MainWindow::MainWindow(QWidget *parent)
     
     m_viewStack = new QStackedWidget(this);
     m_viewStack->setObjectName("main-view-stack"); 
-    m_viewStack->setPalette(pal);
-    m_viewStack->setAutoFillBackground(true);
+    m_viewStack->setAttribute(Qt::WA_StyledBackground);
     setCentralWidget(m_viewStack);
 
     m_loginView = new LoginView(m_core, this);
@@ -660,6 +658,16 @@ MainWindow::MainWindow(QWidget *parent)
     connect(windowBar, &QWK::WindowBar::closeRequested, this, &QWidget::close);
 
     
+#ifdef Q_OS_WIN
+    
+    connect(ThemeManager::instance(), &ThemeManager::themeChanged, agent,
+            [agent](ThemeManager::Theme theme) {
+        const bool applied = agent->setWindowAttribute("dark-mode", theme == ThemeManager::Dark);
+        qInfo() << "[MainWindow] Native frame theme | dark:" << (theme == ThemeManager::Dark)
+                << "| applied:" << applied
+                << "| systemBorders:" << agent->windowAttribute("windows-system-border-enabled").toBool();
+    });
+#endif
     QString savedThemeMode = ConfigStore::instance()->get<QString>(ConfigKeys::ThemeMode, "system");
     ThemeManager::instance()->applyThemeMode(savedThemeMode);
     

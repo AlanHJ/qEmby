@@ -42,7 +42,7 @@ set(QEMBY_QT_ROOT "" CACHE PATH
 qemby_append_default_qt_prefixes()
 
 # 寻找 Qt6 (不再允许降级)
-find_package(Qt6 6.2 REQUIRED COMPONENTS Widgets Core Network Concurrent OpenGLWidgets LinguistTools WebSockets)
+find_package(Qt6 6.2 REQUIRED COMPONENTS Widgets Core Network Concurrent OpenGLWidgets LinguistTools WebSockets Svg)
 if(UNIX AND NOT APPLE)
     find_package(Qt6 QUIET COMPONENTS DBus)
 endif()
@@ -108,6 +108,15 @@ unset(_qemby_saved_skip_install_rules)
 
 set(QWINDOWKIT_INSTALL OFF CACHE BOOL
     "Disable QWindowKit development install rules inside qEmby" FORCE)
+
+if(WIN32)
+    # Let Qt paint the entire client area, including the resize edges. Keeping
+    # native side/bottom borders can expose a light frame during login expansion
+    # even when the application uses the dark theme. QWindowKit retains DWM
+    # shadows and handles resizing inside the client edges in this mode.
+    set(QWINDOWKIT_ENABLE_WINDOWS_SYSTEM_BORDERS OFF CACHE BOOL
+        "Use application-painted window edges on Windows" FORCE)
+endif()
 
 add_subdirectory(libs/qwindowkit)
 add_subdirectory(libs/qwindowkit/examples/shared)
