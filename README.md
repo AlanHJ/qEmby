@@ -45,13 +45,14 @@
 | [qEmby-0.0.9-Win-x64-Setup.exe](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/qEmby-0.0.9-Win-x64-Setup.exe) | Windows 10/11 x64 安装包 |
 | [qEmby-0.0.9-Win-x64.zip](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/qEmby-0.0.9-Win-x64.zip) | Windows 10/11 x64 绿色便携版 |
 | [qemby-0.0.9-macos-arm64.dmg](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/qemby-0.0.9-macos-arm64.dmg) | macOS 26+ (Apple 芯片) |
+| [qemby-0.0.9-x86_64.AppImage](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/qemby-0.0.9-x86_64.AppImage) | Linux x64 通用 AppImage，运行前执行 `chmod +x` |
 | [qemby_0.0.9-jammy_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/qemby_0.0.9-jammy_amd64.deb) | Ubuntu 22.04 (Jammy) 安装包 |
 | [qemby_0.0.9-noble_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/qemby_0.0.9-noble_amd64.deb) | Ubuntu 24.04 (Noble) 安装包 |
 | [qemby_0.0.9-resolute_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/qemby_0.0.9-resolute_amd64.deb) | Ubuntu 26.04 (Resolute) 安装包，使用系统 Qt 依赖 |
 | [qemby_0.0.9-bookworm_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/qemby_0.0.9-bookworm_amd64.deb) | Debian 12 (Bookworm) 安装包 |
 | [qemby_0.0.9-trixie_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/qemby_0.0.9-trixie_amd64.deb) | Debian 13 (Trixie) 安装包 |
 
-本次发布不包含 AppImage。下载文件的 SHA-256 校验值见 [SHA256SUMS.txt](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/SHA256SUMS.txt)。
+下载文件的 SHA-256 校验值见 [SHA256SUMS.txt](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/SHA256SUMS.txt)。
 
 旧版本可以在 [Releases](https://github.com/AlanHJ/qEmby/releases) 页面下载。
 
@@ -233,13 +234,14 @@ Latest release: **v0.0.9**
 | [qEmby-0.0.9-Win-x64-Setup.exe](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/qEmby-0.0.9-Win-x64-Setup.exe) | Windows 10/11 x64 installer |
 | [qEmby-0.0.9-Win-x64.zip](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/qEmby-0.0.9-Win-x64.zip) | Windows 10/11 x64 portable package |
 | [qemby-0.0.9-macos-arm64.dmg](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/qemby-0.0.9-macos-arm64.dmg) | macOS 26+ (Apple Silicon) |
+| [qemby-0.0.9-x86_64.AppImage](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/qemby-0.0.9-x86_64.AppImage) | Universal Linux x64 AppImage; run `chmod +x` before launching |
 | [qemby_0.0.9-jammy_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/qemby_0.0.9-jammy_amd64.deb) | Ubuntu 22.04 (Jammy) package |
 | [qemby_0.0.9-noble_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/qemby_0.0.9-noble_amd64.deb) | Ubuntu 24.04 (Noble) package |
 | [qemby_0.0.9-resolute_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/qemby_0.0.9-resolute_amd64.deb) | Ubuntu 26.04 (Resolute), uses system Qt packages |
 | [qemby_0.0.9-bookworm_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/qemby_0.0.9-bookworm_amd64.deb) | Debian 12 (Bookworm) package |
 | [qemby_0.0.9-trixie_amd64.deb](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/qemby_0.0.9-trixie_amd64.deb) | Debian 13 (Trixie) package |
 
-This release does not include an AppImage. Download checksums are available in [SHA256SUMS.txt](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/SHA256SUMS.txt).
+Download checksums are available in [SHA256SUMS.txt](https://github.com/AlanHJ/qEmby/releases/download/v0.0.9/SHA256SUMS.txt).
 
 Older releases are available on the [Releases](https://github.com/AlanHJ/qEmby/releases) page.
 
