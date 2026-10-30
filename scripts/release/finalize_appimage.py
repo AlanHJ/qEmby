@@ -4,17 +4,18 @@ import os
 from pathlib import Path
 import re
 import shutil
-from release_contract import hash_file
+from release_contract import APPIMAGE_DISTROS, hash_file, validate_appimage_report
 
 
 root = Path(__file__).resolve().parents[2]
 image, = (root / 'build/appimage').glob('*.AppImage')
 digest = hash_file(image)
 reports = [json.loads(p.read_text()) for p in (root / 'build/appimage-reports').rglob('*.json')]
-expected = {'jammy', 'noble', 'bookworm', 'trixie', 'nixos'}
+expected = APPIMAGE_DISTROS
 if len(reports) != len(expected) or {r['distro'] for r in reports} != expected:
     raise RuntimeError('Missing distribution smoke reports')
 for report in reports:
+    validate_appimage_report(report)
     if report['sha256'] != digest or any(report.get(key) != 'passed' for key in
                                        ('x11', 'native_wayland', 'static_runtime')):
         raise RuntimeError('AppImage smoke tests failed or used a different file')

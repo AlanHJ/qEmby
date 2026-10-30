@@ -12,6 +12,17 @@ GROUPS = {
     **{f"package-linux-{name}-amd64": ("linux", name)
        for name in ("jammy", "noble", "resolute", "bookworm", "trixie")},
 }
+APPIMAGE_DISTROS = {'jammy', 'noble', 'resolute', 'bookworm', 'trixie', 'nixos'}
+
+
+def validate_appimage_report(report):
+    if any(report.get(key) != 'passed' for key in ('x11', 'native_wayland', 'static_runtime')):
+        raise ValueError('AppImage startup validation is missing')
+    playback = report.get('video_playback', [])
+    expected = {(p, m) for p in ('xcb', 'wayland') for m in ('embedded', 'independent')}
+    if (len(playback) != 4 or {(r.get('platform'), r.get('mode')) for r in playback} != expected
+            or any(r.get('result') != 'passed' for r in playback)):
+        raise ValueError('AppImage playback/clean exit validation is missing')
 
 
 def hash_file(path):
@@ -71,10 +82,12 @@ def validate_artifact(folder, run_id, commit):
     if info["platform"] == "appimage":
         reports = validation.get("distro_smoke", [])
         if (validation.get("dependency_closure") != "passed" or validation.get("glibc_maximum") != "2.35"
-                or len(reports) != 5 or {r.get("distro") for r in reports} != {'jammy', 'noble', 'bookworm', 'trixie', 'nixos'}
+                or len(reports) != len(APPIMAGE_DISTROS) or {r.get("distro") for r in reports} != APPIMAGE_DISTROS
                 or any(any(r.get(key) != 'passed' for key in ('x11', 'native_wayland', 'static_runtime'))
                        for r in reports)):
             raise ValueError("AppImage compatibility validation is missing")
+        for report in reports:
+            validate_appimage_report(report)
     if info["platform"] == "linux":
         validate_linux_report(validation)
     elif info["platform"] == "windows" and validation.get("native_dll_loading") != "passed":

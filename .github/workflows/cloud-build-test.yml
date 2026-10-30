@@ -45,6 +45,12 @@ jobs:
           path: dist/appimage/*.AppImage
           if-no-files-found: error
           retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-linux-appimage-probe
+          path: dist/appimage-probe/*
+          if-no-files-found: error
+          retention-days: 7
 
   test_appimage:
     needs: appimage
@@ -58,6 +64,8 @@ jobs:
             codename: jammy
           - image: ubuntu:24.04
             codename: noble
+          - image: ubuntu:26.04
+            codename: resolute
           - image: debian:12
             codename: bookworm
           - image: debian:13
@@ -69,14 +77,20 @@ jobs:
         with:
           name: build-linux-appimage-x86_64
           path: build/appimage
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-linux-appimage-probe
+          path: build/appimage-probe
+      - name: Restore diagnostic executable permission
+        run: chmod +x build/appimage-probe/qEmbyPlaybackProbe
       - name: Install test displays and host graphics drivers
         shell: bash
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends ca-certificates python3 binutils xvfb xauth xdotool weston libgl1-mesa-dri fonts-dejavu-core
+          apt-get install -y --no-install-recommends ca-certificates python3 binutils xvfb xauth xdotool weston libgl1-mesa-dri libegl1 libgl1 libopengl0 libwayland-client0 libwayland-cursor0 libwayland-egl1 fonts-dejavu-core
       - name: Launch AppImage on X11 and native Wayland
         shell: bash
-        run: python3 scripts/release/check_appimage.py --image build/appimage/*.AppImage --distro '${{ matrix.codename }}' --report build/appimage-reports/${{ matrix.codename }}.json
+        run: python3 scripts/release/check_appimage.py --image build/appimage/*.AppImage --probe build/appimage-probe/qEmbyPlaybackProbe --video build/appimage-probe/sample.mp4 --distro '${{ matrix.codename }}' --report build/appimage-reports/${{ matrix.codename }}.json
       - uses: actions/upload-artifact@v4
         with:
           name: appimage-report-${{ matrix.codename }}
@@ -120,6 +134,12 @@ jobs:
           path: build/appimage
           run-id: ${{ inputs.source_run || github.run_id }}
           github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-linux-appimage-probe
+          path: build/appimage-probe
+          run-id: ${{ inputs.source_run || github.run_id }}
+          github-token: ${{ github.token }}
       - uses: cachix/install-nix-action@v31
         with:
           extra_nix_config: |
@@ -131,7 +151,7 @@ jobs:
           sudo setfacl -m "u:$(whoami):rw" /dev/kvm
           images=("$GITHUB_WORKSPACE"/build/appimage/*.AppImage)
           test "${#images[@]}" = 1
-          nix-build scripts/release/appimage-nixos.nix --arg image "${images[0]}" --out-link build/nixos-result --option sandbox false
+          nix-build scripts/release/appimage-nixos.nix --arg image "${images[0]}" --arg probe "$GITHUB_WORKSPACE/build/appimage-probe/qEmbyPlaybackProbe" --arg video "$GITHUB_WORKSPACE/build/appimage-probe/sample.mp4" --out-link build/nixos-result --option sandbox false
       - uses: actions/upload-artifact@v4
         with:
           name: appimage-report-nixos

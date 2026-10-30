@@ -3,7 +3,8 @@ set -eu
 
 HERE="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 export APPDIR="$HERE"
-export LD_LIBRARY_PATH="$HERE/usr/lib/qemby${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+# Private ELF RPATHs resolve application libraries. Do not export them to host
+# helpers: newer coreutils/systemd may require symbols absent in bundled libs.
 # Keep host desktop Qt plugins from mixing with the bundled Qt version.
 export QT_PLUGIN_PATH="$HERE/usr/lib/qemby/plugins"
 export QT_QPA_PLATFORM_PLUGIN_PATH="$QT_PLUGIN_PATH/platforms"
@@ -18,4 +19,6 @@ elif [ -z "${QT_QPA_PLATFORM:-}" ] && [ -n "${WAYLAND_DISPLAY:-}" ]; then
     export QT_QPA_PLATFORM='wayland;xcb'
 fi
 
-exec "$HERE/usr/bin/qEmbyApp" "$@"
+# Bypass the DEB wrapper: it invokes host readlink/dirname after environment
+# setup, and is unnecessary inside the already located AppDir.
+exec "$HERE/usr/lib/qemby/qEmbyApp" "$@"

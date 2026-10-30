@@ -10,7 +10,7 @@ apt-get install -y --no-install-recommends \
   libxkbcommon-dev libxkbcommon-x11-dev libxcb-cursor-dev libx11-xcb-dev \
   libxcb-icccm4-dev libxcb-image0-dev libxcb-keysyms1-dev libxcb-randr0-dev \
   libxcb-render-util0-dev libxcb-shape0-dev libxcb-sync-dev libxcb-xfixes0-dev \
-  libxcb-xkb-dev libxcb-util-dev
+  libxcb-xkb-dev libxcb-util-dev ffmpeg
 git config --global --add safe.directory "$GITHUB_WORKSPACE"
 python3 scripts/release/verify_source.py
 mkdir -p "$RUNNER_TEMP/appimage-tools"
@@ -27,4 +27,13 @@ printf '%s  %s\n' ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384e
 export BUILD_DIR="$GITHUB_WORKSPACE/build/cloud"
 export OUTPUT_DIR="$GITHUB_WORKSPACE/dist/appimage"
 export CMAKE_BUILD_PARALLEL_LEVEL=2
+export QEMBY_PLAYBACK_PROBE=ON
 bash packaging/linux/build-appimage.sh
+# Diagnostic executable and generated local clip are separate CI artifacts;
+# neither is installed in the released AppImage.
+cmake --build "$BUILD_DIR" --target qEmbyPlaybackProbe --parallel 2
+mkdir -p "$GITHUB_WORKSPACE/dist/appimage-probe"
+cp "$BUILD_DIR/bin/qEmbyPlaybackProbe" "$GITHUB_WORKSPACE/dist/appimage-probe/"
+patchelf --set-rpath '$ORIGIN' "$GITHUB_WORKSPACE/dist/appimage-probe/qEmbyPlaybackProbe"
+ffmpeg -loglevel error -f lavfi -i 'testsrc2=size=640x360:rate=30' \
+  -t 20 -c:v mpeg4 -q:v 4 "$GITHUB_WORKSPACE/dist/appimage-probe/sample.mp4"

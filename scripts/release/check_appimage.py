@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import tempfile
 import time
@@ -21,8 +22,8 @@ def stop(process):
             process.wait()
 
 
-def smoke(image, platform, base):
-    work = base / platform
+def smoke(image, platform, base, *, mode=None, payload=None, video=None):
+    work = base / (platform if mode is None else f'{platform}-{mode}')
     work.mkdir()
     runtime = work / 'runtime'
     runtime.mkdir(mode=0o700)
@@ -56,7 +57,19 @@ def smoke(image, platform, base):
                 time.sleep(.1)
             else:
                 raise RuntimeError('Test display did not become ready')
-            app = subprocess.Popen([str(image)], env=env, stdout=applog, stderr=applog, start_new_session=True)
+            application = [str(image)]
+            if mode is not None:
+                application = [str(payload / 'AppRun'), str(video), mode]
+                if shutil.which('appimage-run'):
+                    application = ['appimage-run', '-w', str(payload), str(video), mode]
+            app = subprocess.Popen(application, env=env, stdout=applog, stderr=applog, start_new_session=True)
+            if mode is not None:
+                code = app.wait(timeout=65)
+                logs = (work / 'application.log').read_text(errors='replace')
+                if code != 0 or '[PlaybackProbe] PASS' not in logs:
+                    raise RuntimeError(f'Playback/clean exit failed: {platform}/{mode}, exit={code}')
+                print(f'PASS AppImage video and clean exit: {platform}/{mode}', flush=True)
+                return
             shown = False
             for _ in range(200):
                 if app.poll() is not None:
@@ -101,6 +114,8 @@ def main():
     parser.add_argument('--image', type=Path, required=True)
     parser.add_argument('--report', type=Path, required=True)
     parser.add_argument('--distro', required=True)
+    parser.add_argument('--probe', type=Path, required=True)
+    parser.add_argument('--video', type=Path, required=True)
     args = parser.parse_args()
     image = args.image.resolve()
     image.chmod(0o755)
@@ -109,13 +124,33 @@ def main():
     if 'INTERP' in header:
         raise RuntimeError('AppImage runtime unexpectedly needs a dynamic ELF interpreter')
     with tempfile.TemporaryDirectory(prefix='qemby-appimage-smoke-') as temporary:
+        base = Path(temporary)
         for platform in ('xcb', 'wayland'):
-            smoke(image, platform, Path(temporary))
+            smoke(image, platform, base)
+        # Test the exact release libraries with a same-source offline driver.
+        # Replace only the app executable in a disposable extraction; the
+        # original AppImage remains unchanged and was smoke-tested above.
+        if shutil.which('appimage-run'):
+            payload = base / 'payload'
+            subprocess.run(['appimage-run', '-x', str(payload), str(image)], check=True)
+        else:
+            subprocess.run([str(image), '--appimage-extract'], cwd=base,
+                           stdout=subprocess.DEVNULL, check=True)
+            payload = base / 'squashfs-root'
+        private = payload / 'usr/lib/qemby'
+        shutil.copy2(args.probe.resolve(), private / 'qEmbyApp')
+        (private / 'qEmbyApp').chmod(0o755)
+        playback = []
+        for platform in ('xcb', 'wayland'):
+            for mode in ('embedded', 'independent'):
+                smoke(image, platform, base, mode=mode, payload=payload, video=args.video.resolve())
+                playback.append({'platform': platform, 'mode': mode, 'result': 'passed'})
     from release_contract import hash_file
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps({'distro': args.distro, 'sha256': hash_file(image),
                                       'x11': 'passed', 'native_wayland': 'passed',
-                                      'static_runtime': 'passed'}, indent=2) + '\n', encoding='utf-8')
+                                      'static_runtime': 'passed', 'video_playback': playback},
+                                     indent=2) + '\n', encoding='utf-8')
 
 
 if __name__ == '__main__':

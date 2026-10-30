@@ -1,4 +1,4 @@
-"""Bundle the application and Qt plugin ELF closure; retain only host glibc/drivers."""
+"""Bundle Qt/mpv; retain the host graphics ABI used by dynamically loaded drivers."""
 import argparse
 import hashlib
 import json
@@ -9,11 +9,14 @@ import shutil
 import subprocess
 
 
-# These are supplied by the host glibc or GPU driver installation. GLVND,
-# Wayland, XCB, audio libraries and libstdc++ are deliberately bundled.
+# Keep driver-facing libraries with the host. In particular, a recent Mesa
+# dlopen fails against old bundled Wayland (wl_fixes_interface etc.). See the
+# AppImageCommunity/pkg2appimage excludelist for the same ABI boundary.
 HOST_LIBRARY = re.compile(
     r"^(?:ld-linux.*|lib(?:c|m|mvec|pthread|dl|rt|resolv|util|anl|thread_db|BrokenLocale|nss_[^.]+)\.so(?:\..*)?"
-    r"|lib(?:GLX_mesa|EGL_mesa|nvidia[^.]*)\.so(?:\..*)?)$")
+    r"|lib(?:GL|EGL|GLX|GLdispatch|OpenGL|GLESv1_CM|GLESv2|glapi|gbm|drm(?:_[a-z0-9]+)?"
+    r"|wayland-(?:client|server|cursor|egl)|X11(?:-xcb)?|xcb|stdc\+\+|gcc_s"
+    r"|GLX_mesa|EGL_mesa|nvidia[^.]*)\.so(?:\..*)?)$")
 
 
 def output(*args, env=None):
@@ -136,7 +139,8 @@ def main():
         'glibc_maximum': '2.35', 'elf_files': len(visited),
         'bundled_libraries': sorted(origins), 'qt_plugins': sorted(
             str(p.relative_to(libdir / 'plugins')) for p in (libdir / 'plugins').rglob('*.so')),
-        'host_requirements': ['glibc >= 2.35', 'GPU drivers', 'desktop session', 'fonts'],
+        'host_requirements': ['glibc >= 2.35', 'GPU/GLVND/DRM libraries',
+                              'Wayland/X11 base libraries', 'C++ runtime', 'desktop session', 'fonts'],
     }, indent=2) + '\n', encoding='utf-8')
     print(f'AppImage dependency closure verified: {len(visited)} ELF files')
 
