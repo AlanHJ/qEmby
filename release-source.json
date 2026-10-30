@@ -1037,7 +1037,7 @@
     "libs/qwindowkit/src/widgets/widgetwindowagent_p.h": "aa78cd5e03209dc90343f1cdbd7ef2b2eba4183fd6da4ef4e6ae9329d6f46702",
     "libs/qwindowkit/src/widgets/widgetwindowagent_win.cpp": "8f529e6cfe6d0b2a8b3b17fe86f0751706d831198b46f259b7bf1a52fdfff376",
     "scripts/release/appimage-build.sh": "5013314a6612d49f9c75d718ae550a243ce2442fbec346806782df309e415024",
-    "scripts/release/appimage-nixos.nix": "1148386cbb2b99808627fae8faf37e8fbe0e6f2e9ef2e810cea4c49b5f55a3e6",
+    "scripts/release/appimage-nixos.nix": "7dd27c20a501fd5455fb2e12a1c0c46e94b5605f224554a49b2bf804e1bc64e9",
     "scripts/release/bundle_appimage.py": "07cbbde22ae8e418a9ef76ca6488e74a7255f738f96bcb2eb2325273f0b95731",
     "scripts/release/check_appimage.py": "1a5a41d0356dc39f6f1a5290e95a0516cf54aec8e6b5da5c78d8ec2649d59d4d",
     "scripts/release/check_appimage_helpers.py": "490b318d37ee01efffab3384a40e044f7ff9d34fa5627cc9dde73fa20d768d63",

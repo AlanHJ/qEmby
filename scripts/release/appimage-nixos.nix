@@ -9,6 +9,10 @@ pkgs.testers.runNixOSTest {
   nodes.machine = { pkgs, ... }: {
     virtualisation.memorySize = 3072;
     virtualisation.cores = 2;
+    # Startup uses two isolated appimage-run caches, then playback extracts a
+    # third copy. The test VM's default small root disk is insufficient.
+    virtualisation.diskSize = 8192;
+    boot.tmp.useTmpfs = false;
     programs.appimage.enable = true;
     programs.appimage.binfmt = true;
     hardware.graphics.enable = true;
