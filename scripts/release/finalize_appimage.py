@@ -27,6 +27,7 @@ shutil.copy2(image, dist / image.name)
 version = re.search(r'project\(qEmby VERSION ([\d.]+)', (root / 'CMakeLists.txt').read_text())[1]
 info = {'schema_version': 1, 'group': 'package-linux-appimage-x86_64', 'version': version,
         'commit': os.environ['GITHUB_SHA'], 'run': os.environ['GITHUB_RUN_ID'],
+        'image_source_run': os.environ.get('QEMBY_APPIMAGE_SOURCE_RUN', os.environ['GITHUB_RUN_ID']),
         'platform': 'appimage', 'packages': [image.name],
         'validation': {'dependency_closure': 'passed', 'glibc_maximum': '2.35',
                        'distro_smoke': reports}}

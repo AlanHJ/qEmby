@@ -77,7 +77,7 @@ def smoke(image, platform, base, *, mode=None, payload=None, video=None):
                 logs = (work / 'application.log').read_text(errors='replace')
                 if platform == 'wayland':
                     # A native surface configure proves this did not use XWayland.
-                    shown = bool(re.search(r'xdg_toplevel@\d+\.configure', logs))
+                    shown = bool(re.search(r'xdg_toplevel[@#]\d+\.configure', logs))
                 else:
                     window = subprocess.run(['xdotool', 'search', '--onlyvisible', '--class', '.'],
                                             env=env, capture_output=True)

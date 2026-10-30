@@ -37,8 +37,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build Release AppImage with complete Qt and mpv runtime
+        if: inputs.source_run == ''
         shell: bash
         run: bash scripts/release/appimage-build.sh
+      - name: Verify identical packaged inputs before replaying AppImage tests
+        if: inputs.source_run != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/release/reuse_appimage.py --source-run '${{ inputs.source_run }}'
+      - uses: actions/download-artifact@v4
+        if: inputs.source_run != ''
+        with:
+          name: build-linux-appimage-x86_64
+          path: dist/appimage
+          run-id: ${{ inputs.source_run }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        if: inputs.source_run != ''
+        with:
+          name: build-linux-appimage-probe
+          path: dist/appimage-probe
+          run-id: ${{ inputs.source_run }}
+          github-token: ${{ github.token }}
       - uses: actions/upload-artifact@v4
         with:
           name: build-linux-appimage-x86_64
@@ -113,6 +133,8 @@ jobs:
           pattern: appimage-report-*
           path: build/appimage-reports
       - name: Verify compatibility reports and package checksums
+        env:
+          QEMBY_APPIMAGE_SOURCE_RUN: ${{ inputs.source_run || github.run_id }}
         run: python3 scripts/release/finalize_appimage.py
       - uses: actions/upload-artifact@v4
         with:
